@@ -35,7 +35,8 @@ ipcMain.on('window-close', () => {
 });
 
 ipcMain.on('window-minimize', () => {
-    if (BrowserWindow) BrowserWindow.minimize();
+    const win = BrowserWindow.getFocusedWindow();
+    if (win) win.minimize();
 });
 
 // Get HWID from C++ Bridge
