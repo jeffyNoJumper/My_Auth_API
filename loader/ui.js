@@ -96,27 +96,41 @@ async function startSpoofing() {
 // 4. HWID Reset Logic (API Interaction)
 async function requestHWIDReset() {
     const key = localStorage.getItem('license_key');
-    if (!confirm("Are you sure you want to reset your HWID?")) return;
+    
+    // 1. Ask for Password first
+    const adminPass = prompt("Enter Admin Password to confirm reset:"); 
+    if (!adminPass) return;
+
+    // 2. Final confirmation
+    if (!confirm("Are you sure you want to reset your HWID? This will unlock the key for a new PC.")) return;
 
     try {
+        // 3. Send to the CORRECT endpoint (/reset-hwid)
         const response = await fetch('https://sk-auth-api.up.railway.app', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ license_key: key })
+            body: JSON.stringify({ 
+                license_key: key,
+                admin_password: adminPass 
+            })
         });
 
         const data = await response.json();
 
         if (data.success) {
             alert("HWID Reset! You can now login from a new PC.");
-            location.reload(); // Go back to login
+            // Clear local session and go back to login screen
+            localStorage.removeItem('auth_token');
+            location.reload(); 
         } else {
-            alert("Reset Failed: " + data.error);
+            // This will show "Unauthorized" or "Key not found" from your API
+            alert("Reset Failed: " + (data.error || "Unknown Error"));
         }
     } catch (err) {
-        alert("API Error: " + err.message);
+        alert("API Connection Error: " + err.message);
     }
 }
+
 
 // 5. Game Launch Logic
 function launchGame(gameName) {
