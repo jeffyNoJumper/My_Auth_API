@@ -51,6 +51,52 @@ app.post('/login', async (req, res) => {
   }
 });
 
+// --- HWID RESET ROUTE ---
+app.post('/reset-hwid', async (req, res) => {
+    try {
+        const { license_key, admin_password } = req.body;
+
+        // 1. Check if key was provided
+        if (!license_key) {
+            return res.status(400).json({ error: "License key is required" });
+        }
+
+        // 2. Validate Admin Secret from Railway Environment Variables
+        if (admin_password !== process.env.ADMIN_SECRET) {
+            return res.status(401).json({ error: "Unauthorized: Invalid Admin Password" });
+        }
+
+        const user = await User.findOne({ license_key });
+
+        // 3. Verify user exists
+        if (!user) {
+            return res.status(404).json({ error: "License key not found" });
+        }
+
+        // 4. Check Expiry
+        if (new Date() > user.expiry_date) {
+            return res.status(403).json({ error: "Cannot reset HWID on an expired license" });
+        }
+
+        // 5. THE FIX: Actually reset the HWID
+        user.hwid = null; 
+        await user.save();
+
+        console.log(`[ADMIN] HWID Reset successful for key: ${license_key}`);
+        
+        res.json({ 
+            success: true, 
+            message: "HWID reset successfully. The key is now unlocked." 
+        });
+
+    } catch (error) {
+        console.error("Reset Error:", error);
+        res.status(500).json({ error: "Internal Server Error" });
+    }
+});
+
+
+
 app.post('/admin/create-key', async (req, res) => {
     const { admin_password, days, games } = req.body;
 
