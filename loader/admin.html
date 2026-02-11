@@ -1,0 +1,251 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <title>SK-AUTH | Admin</title>
+    <style>
+        body {
+            background: transparent; /* Makes the electron window invisible */
+            font-family: 'Segoe UI', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+            /* REMOVED body border to stop the "floating box" effect */
+        }
+
+        .panel {
+            background: #151515;
+            padding: 40px 30px 30px 30px; /* Added top padding for the buttons */
+            border-radius: 12px;
+            width: 310px;
+            text-align: center;
+            position: relative; /* Crucial for nesting the titlebar */
+            border: 1px solid #00ff88;
+            color: white;
+            box-shadow: 0 0 15px rgba(0, 255, 136, 0.2);
+            animation: glow-pulse 3s infinite ease-in-out;
+        }
+
+        /* Drag Region - Now INSIDE the panel */
+        .titlebar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 40px;
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            -webkit-app-region: drag; /* Drag the panel from here */
+            z-index: 9999;
+        }
+
+        .window-controls {
+            display: flex;
+            -webkit-app-region: no-drag; /* Makes buttons clickable */
+            padding-right: 5px;
+        }
+
+        .control-btn {
+            padding: 5px 12px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: 0.2s;
+            color: #555;
+        }
+
+            .control-btn:hover {
+                color: #00ff88;
+            }
+
+        .close-btn:hover {
+            color: #ff3e3e;
+        }
+
+        @keyframes glow-pulse {
+            0% {
+                box-shadow: 0 0 10px rgba(0, 255, 136, 0.2);
+                border-color: #00ff88;
+            }
+
+            50% {
+                box-shadow: 0 0 25px rgba(0, 255, 136, 0.4);
+                border-color: #00ffaa;
+            }
+
+            100% {
+                box-shadow: 0 0 10px rgba(0, 255, 136, 0.2);
+                border-color: #00ff88;
+            }
+        }
+
+        h2 {
+            color: #00ff88;
+            letter-spacing: 2px;
+            margin-top: 10px;
+            margin-bottom: 20px;
+            font-size: 1.2rem;
+            text-transform: uppercase;
+        }
+
+        input, select {
+            width: 100%;
+            padding: 12px;
+            margin: 10px 0;
+            background: #222;
+            border: 1px solid #444;
+            color: white;
+            border-radius: 4px;
+            box-sizing: border-box;
+            outline: none;
+        }
+
+            input:focus {
+                border-color: #00ff88;
+            }
+
+        button {
+            width: 100%;
+            padding: 12px;
+            background: #00ff88;
+            border: none;
+            color: black;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: 0.3s;
+            margin-top: 10px;
+        }
+
+            button:hover {
+                background: #00cc6e;
+                transform: translateY(-1px);
+            }
+
+        #key-display {
+            margin-top: 20px;
+            padding: 15px;
+            background: #000;
+            border: 1px dashed #00ff88;
+            color: #00ff88;
+            display: none;
+        }
+
+        .loader {
+            border: 2px solid #000;
+            border-top: 2px solid #000;
+            border-radius: 50%;
+            width: 14px;
+            height: 14px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="panel">
+        <!-- Titlebar is now part of the panel -->
+        <div class="titlebar">
+            <div class="window-controls">
+                <div class="control-btn" onclick="minWin()">—</div>
+                <div class="control-btn close-btn" onclick="closeWin()">✕</div>
+            </div>
+        </div>
+
+        <h2>SK ADMIN GEN</h2>
+
+        <input type="password" id="admin-pass" placeholder="Admin Password">
+
+        <select id="key-days">
+            <option value="1">1 Day</option>
+            <option value="7">7 Days</option>
+            <option value="30" selected>30 Days</option>
+            <option value="999">Lifetime</option>
+        </select>
+
+        <button id="gen-btn" onclick="generateKey()">GENERATE KEY</button>
+
+        <div id="key-display">
+            <small style="color: #888;">KEY GENERATED:</small><br>
+            <span id="key-text" style="font-size: 1.1em; font-weight: bold;"></span>
+        </div>
+    </div>
+
+    <script>
+        const { ipcRenderer, clipboard } = require('electron');
+
+        function closeWin() { ipcRenderer.send('admin-close'); }
+        function minWin() { ipcRenderer.send('admin-min'); }
+
+        async function generateKey() {
+            const btn = document.getElementById('gen-btn');
+            const pass = document.getElementById('admin-pass').value;
+            const days = document.getElementById('key-days').value;
+            const display = document.getElementById('key-display');
+            const keyText = document.getElementById('key-text');
+
+            if (!pass) return alert("Enter Admin Secret!");
+
+            // UI Loading State
+            btn.disabled = true;
+            btn.innerHTML = '<div class="loader"></div>';
+            display.style.display = 'none';
+
+            // admin.html
+            try { // Added the missing opening brace here
+                const response = await fetch('https://sk-auth-api.up.railway.app', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        admin_password: pass,
+                        days: parseInt(days),
+                        games: ["FiveM", "GTAV", "Warzone", "CS2"]
+                    })
+                });
+
+
+                // Check if server is actually online (Railway sleep mode check)
+                if (!response.ok && response.status !== 401) {
+                    throw new Error(`Server returned ${response.status}`);
+                }
+
+                const data = await response.json();
+
+                if (data.success) {
+                    display.style.display = 'block';
+                    keyText.innerText = data.key;
+
+                    // Auto-copy the key to your clipboard
+                    if (clipboard) {
+                        clipboard.writeText(data.key);
+                        console.log("Key copied to clipboard automatically.");
+                    }
+                } else {
+                    // Shows "Unauthorized" or "Internal Server Error" from your API
+                    alert("API Error: " + (data.error || "Access Denied"));
+                }
+            } catch (err) {
+                console.error("FULL ERROR:", err);
+                // If this triggers, your Railway API is likely offline or CORS is missing
+                alert("CONNECTION FAILED!\n1. Ensure Railway API is 'Active'\n2. Check if app.use(cors()) is in index.js\n3. Check your internet.");
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = 'GENERATE KEY';
+            }
+        }
+    </script>
+</body>
+</html>
