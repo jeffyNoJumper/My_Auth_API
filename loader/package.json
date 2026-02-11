@@ -11,7 +11,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/jeffyNoJumper/My_Auth_API"
+    "url": "https://github.com"
   },
   "dependencies": {
     "electron-updater": "^6.1.7",
@@ -22,8 +22,12 @@
     "electron-builder": "^24.9.1"
   },
   "build": {
-    "appId": "com.sk.loader",
+    "appId": "com.sk.allinone",
     "productName": "SK ALL-IN-ONE",
+    "copyright": "Copyright © 2026 SK-Development",
+    "directories": {
+      "output": "dist"
+    },
     "publish": [
       {
         "provider": "github",
@@ -33,12 +37,14 @@
     ],
     "win": {
       "target": "nsis",
+      "icon": "icon.ico",
       "requestedExecutionLevel": "requireAdministrator"
     },
     "nsis": {
       "oneClick": true,
       "perMachine": true,
-      "allowToChangeInstallationDirectory": false
+      "allowToChangeInstallationDirectory": false,
+      "createDesktopShortcut": true
     }
   }
 }
