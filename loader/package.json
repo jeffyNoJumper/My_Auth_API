@@ -1,8 +1,44 @@
 {
-  "name": "SK ALL IN-ONE Loader",
+  "name": "sk-all-in-one-loader",
   "version": "1.0.0",
+  "description": "Premium All-In-One Cheat Loader",
+  "main": "main.js",
+  "author": "SK-Development",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder",
+    "publish": "electron-builder --publish always"
+  },
   "repository": {
     "type": "git",
-    "url": "https://github.com/jeffyNoJumper/My_Auth_API"
+    "url": "https://github.com"
+  },
+  "dependencies": {
+    "electron-updater": "^6.1.7",
+    "node-addon-api": "^7.1.0"
+  },
+  "devDependencies": {
+    "electron": "^28.2.0",
+    "electron-builder": "^24.9.1"
+  },
+  "build": {
+    "appId": "com.sk.loader",
+    "productName": "SK ALL-IN-ONE",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "jeffyNoJumper",
+        "repo": "My_Auth_API"
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "requestedExecutionLevel": "requireAdministrator"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": true,
+      "allowToChangeInstallationDirectory": false
+    }
   }
 }
