@@ -176,3 +176,135 @@ body {
 }
 
 @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+/* --- TERMINAL NEWS BOX --- */
+.terminal-box {
+    background: #000;
+    border: 1px solid #111;
+    padding: 15px;
+    border-radius: 4px;
+    height: 180px;
+    overflow-y: auto;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 13px;
+    color: var(--green);
+    box-shadow: inset 0 0 10px rgba(0, 255, 136, 0.05);
+    margin-top: 10px;
+    line-height: 1.5;
+}
+
+.typewriter::after {
+    content: "█";
+    animation: blink 1s step-end infinite;
+    margin-left: 5px;
+    color: var(--green);
+}
+
+@keyframes blink {
+    from, to { opacity: 1; }
+    50% { opacity: 0; }
+}
+
+/* --- AUTO-UPDATER OVERLAY --- */
+.overlay {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100vw; height: 100vh;
+    background: rgba(0, 0, 0, 0.9);
+    z-index: 10000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    backdrop-filter: blur(8px);
+}
+
+.update-card {
+    background: #0a0a0a;
+    border: 1px solid var(--cyan);
+    padding: 30px;
+    width: 400px;
+    text-align: center;
+    border-radius: 8px;
+    box-shadow: 0 0 40px rgba(0, 242, 255, 0.2);
+}
+
+.news-preview {
+    font-size: 12px;
+    color: #888;
+    margin: 15px 0;
+    text-align: left;
+    max-height: 60px;
+    overflow-y: auto;
+    border-left: 2px solid var(--cyan);
+    padding-left: 10px;
+}
+
+.update-confirm {
+    margin-top: 20px;
+    width: 100%;
+}
+
+/* --- SETTINGS TAB LAYOUT --- */
+.settings-layout {
+    display: grid;
+    grid-template-columns: 1.5fr 1fr;
+    gap: 30px;
+    padding: 40px;
+    margin-top: 60px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.settings-panel {
+    background: rgba(255, 255, 255, 0.02);
+    padding: 20px;
+    border-radius: 4px;
+    border: 1px solid var(--border-color);
+}
+
+.desc { font-size: 12px; color: #666; margin-bottom: 20px; }
+
+/* --- BUTTONS & CONTROLS --- */
+.action-btn {
+    background: transparent;
+    border: 1px solid #333;
+    color: #fff;
+    padding: 10px 20px;
+    font-size: 11px;
+    font-weight: bold;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: 0.2s;
+    text-transform: uppercase;
+}
+
+.spoof-btn:hover { border-color: var(--green); color: var(--green); box-shadow: 0 0 15px rgba(0, 255, 136, 0.2); }
+.reset-btn:hover { border-color: var(--red); color: var(--red); box-shadow: 0 0 15px rgba(255, 62, 62, 0.2); }
+.update-confirm:hover { background: var(--cyan); color: #000; box-shadow: 0 0 20px var(--cyan); }
+
+/* --- SPOOFER UI --- */
+.spoofer-panel {
+    margin-top: 80px;
+    text-align: center;
+    max-width: 500px;
+}
+
+.spoofer-status-box {
+    background: #000;
+    border: 1px solid #111;
+    padding: 20px;
+    margin: 20px 0;
+}
+
+.status-row { font-size: 14px; letter-spacing: 2px; }
+#status-text.inactive { color: var(--red); text-shadow: 0 0 10px var(--red); }
+#status-text.processing { color: var(--gold); text-shadow: 0 0 10px var(--gold); }
+#status-text.active-status { color: var(--green); text-shadow: 0 0 10px var(--green); }
+
+.spoofer-controls { display: flex; gap: 15px; justify-content: center; }
+
+/* --- SCROLLBAR --- */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: #000; }
+::-webkit-scrollbar-thumb { background: #222; border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: var(--cyan); }
