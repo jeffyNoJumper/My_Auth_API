@@ -97,7 +97,15 @@ app.post('/reset-hwid', async (req, res) => {
     }
 });
 
-app.get('/', (req, res) => res.send('API Online.'));
+app.get('/', (req, res) => res.send('API Online & Connected.'));
 
 const PORT = process.env.PORT || 8080;
-app.listen(PORT, '0.0.0.0', () => console.log(`Server listening on port ${PORT}`));
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Health Check Active: Listening on port ${PORT}`);
+});
+
+// DB connection stays at the bottom or top, but doesn't block the listener
+mongoose.connect(process.env.MONGO_URL)
+    .then(() => console.log("✅ Connected to MongoDB"))
+    .catch(err => console.error("❌ MongoDB Error:", err));
+
