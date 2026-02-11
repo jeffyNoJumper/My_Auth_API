@@ -1,16 +1,21 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-// This exposes 'window.api' to ui.js
 contextBridge.exposeInMainWorld('api', {
-    // 1. Get the HWID from C++
+
     getMachineIdentifier: () => ipcRenderer.invoke('get-hwid'),
-
-    // 2. Trigger the C++ Spoofer
     startSpoof: () => ipcRenderer.invoke('start-spoof'),
+    launchCheat: (gameName) => ipcRenderer.invoke('launch-game', gameName),
 
-    // 3. Launch the game/cheat
-    launchCheat: (gameName) => ipcRenderer.send('launch-game', gameName),
+    close: () => ipcRenderer.send('window-close'),
+    minimize: () => ipcRenderer.send('window-minimize'),
 
-    // 4. Update Check (for the Auto-Updater)
-    checkUpdates: () => ipcRenderer.invoke('check-for-updates')
+    // --- Auto-Updater Listeners (Main.js -> UI.js) ---
+    onUpdateAvailable: (callback) => 
+        ipcRenderer.on('update-available', (event, version) => callback(version)),
+        
+    onDownloadProgress: (callback) => 
+        ipcRenderer.on('download-progress', (event, percent) => callback(percent)),
+        
+    onUpdateReady: (callback) => 
+        ipcRenderer.on('update-ready', (event) => callback())
 });
