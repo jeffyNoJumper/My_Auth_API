@@ -87,5 +87,10 @@ app.post('/admin/create-key', async (req, res) => {
     }
 });
 
+app.get('/', (req, res) => {
+  res.send('API is Online and Secure.');
+});
+
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
