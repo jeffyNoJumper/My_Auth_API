@@ -14,12 +14,12 @@ contextBridge.exposeInMainWorld('api', {
 
     // --- Auto-Updater Listeners (Main.js -> UI.js) ---
     // Updated to receive version AND news/release notes from GitHub
-    onUpdateAvailable: (callback) => 
+    onUpdateAvailable: (callback) =>
         ipcRenderer.on('update-available', (event, data) => callback(data)),
-        
-    onDownloadProgress: (callback) => 
+
+    onDownloadProgress: (callback) =>
         ipcRenderer.on('download-progress', (event, percent) => callback(percent)),
-        
-    onUpdateReady: (callback) => 
+
+    onUpdateReady: (callback) =>
         ipcRenderer.on('update-ready', (event) => callback())
 });
