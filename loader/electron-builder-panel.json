@@ -1,0 +1,21 @@
+{
+  "appId": "com.sk.adminpanel",
+  "productName": "SK-ADMIN-PANEL",
+  "extraMetadata": {
+    "main": "panel-main.js"
+  },
+  "directories": {
+    "output": "SK ADMIN PANEL"
+  },
+  "win": {
+    "target": "portable",
+    "icon": "SK.ico",
+    "requestedExecutionLevel": "requireAdministrator"
+  },
+  "files": [
+    "panel-main.js",
+    "admin.html",
+    "imgs/SK.png",
+    "SK.ico"
+  ]
+}
