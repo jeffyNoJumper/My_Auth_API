@@ -60,27 +60,46 @@ ipcMain.handle('launch-game', async (event, gameName) => {
     }
 });
 
-// --- 3. AUTO-UPDATER LOGIC ---
+const { autoUpdater } = require('electron-updater');
 
-// When a new version is found on GitHub
+// --- 3. AUTO-UPDATER & NEWS LOGIC ---
+
+// 3a. Checking for Updates
+autoUpdater.autoDownload = false; // We want to show a "Update Available" message first
+
 autoUpdater.on('update-available', (info) => {
-    mainWindow.webContents.send('update-available', info.version);
+    // This sends the version AND the Release Notes (News) to your UI
+    mainWindow.webContents.send('update-available', {
+        version: info.version,
+        news: info.releaseNotes // This pulls the text you type on GitHub!
+    });
 });
 
-// Track download progress to show on your HTML UI
+// 3b. Trigger Download (When user clicks 'Update' in your UI)
+ipcMain.handle('start-update-download', () => {
+    autoUpdater.downloadUpdate();
+});
+
+// 3c. Track Progress
 autoUpdater.on('download-progress', (progressObj) => {
     mainWindow.webContents.send('download-progress', progressObj.percent);
 });
 
-// When update is ready, it swaps the old EXE for the new one
+// 3d. Finalize & Relaunch
 autoUpdater.on('update-downloaded', () => {
-    // Optional: Send one last message to UI
     mainWindow.webContents.send('update-ready');
-    // Quits app and runs the new installer automatically
+    // Give the user 3 seconds to see the "Success" message before restart
     setTimeout(() => {
         autoUpdater.quitAndInstall();
-    }, 2000);
+    }, 3000);
 });
+
+// 3e. Fetch General News (Optional: Fetch even if no update)
+ipcMain.handle('get-news', async () => {
+    // This allows your UI to pull the latest GitHub Release description as a 'News Feed'
+    return await autoUpdater.getCachedUpdateInfo();
+});
+
 
 app.whenReady().then(createWindow);
 
