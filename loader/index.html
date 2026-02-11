@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SK ALL IN-ONE Loader</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- 1. BOOT SCREEN -->
+    <div id="boot-screen" class="screen active">
+        <div class="logo-container">
+            <h1 class="glow-text">SYSTEM_INITIALIZING</h1>
+            <div class="progress-container">
+                <div id="boot-progress" class="progress-bar"></div>
+            </div>
+            <p id="boot-status">Checking for updates...</p>
+        </div>
+    </div>
+
+    <!-- 2. LOGIN SCREEN -->
+    <div id="login-screen" class="screen">
+        <div class="login-card">
+            <h2 class="glow-text-cyan">AUTHENTICATION</h2>
+            <input type="text" id="license-key" placeholder="XXXX-XXXX-XXXX-XXXX">
+            <button onclick="handleLogin()" id="login-btn">VALIDATE LICENSE</button>
+            <div id="login-loader" class="spinner hidden"></div>
+        </div>
+    </div>
+
+    <!-- 3. MAIN DASHBOARD -->
+    <div id="main-dashboard" class="screen">
+        <!-- Top Bar -->
+        <nav class="top-nav">
+            <div class="nav-left">
+                <button onclick="showTab('games')" class="nav-btn active">GAMES</button>
+                <button onclick="showTab('spoofer')" class="nav-btn">SPOOFER</button>
+                <button onclick="showTab('settings')" class="nav-btn">SETTINGS</button>
+            </div>
+            <div class="nav-right user-box">
+                <img src="" id="user-pic" class="glow-border">
+                <div class="user-meta">
+                    <span id="user-expiry">EXP: 30D</span>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Tab: Games (Steam Grid) -->
+        <div id="games-tab" class="tab-content active">
+            <div class="steam-grid">
+                <div class="game-card" data-color="green" onclick="launchGame('FiveM')">
+                    <img src="fivem.png">
+                    <div class="card-overlay"><span>Launch FiveM</span></div>
+                </div>
+                <div class="game-card" data-color="gold" onclick="launchGame('GTA V')">
+                    <img src="gta.png">
+                    <div class="card-overlay"><span>Launch GTA V</span></div>
+                </div>
+                <div class="game-card" data-color="red" onclick="launchGame('Warzone')">
+                    <img src="cod.png">
+                    <div class="card-overlay"><span>Launch Warzone</span></div>
+                </div>
+                <div class="game-card" data-color="blue" onclick="launchGame('CS2')">
+                    <img src="cs2.png">
+                    <div class="card-overlay"><span>Launch CS2</span></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: Spoofer -->
+        <div id="spoofer-tab" class="tab-content">
+            <div class="spoofer-container">
+                <h3 class="glow-text-red">HWID MASKING SYSTEM</h3>
+                <div class="spoofer-controls">
+                    <button class="action-btn" onclick="startSpoofing()">SPOOF HWID</button>
+                    <button class="action-btn" onclick="requestHWIDReset()">REQUEST HWID RESET</button>
+                </div>
+                <div id="spoof-status-box">
+                    <p>Status: <span id="status-text">NOT ACTIVE</span></p>
+                    <div id="spoof-progress" class="hidden">
+                        <div class="spinner"></div>
+                        <p>Cleaning registry traces...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="ui.js"></script>
+</body>
+</html>
