@@ -3,6 +3,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const User = require('../src/user');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 
 const app = express();
 app.use(express.json());
@@ -48,6 +49,42 @@ app.post('/login', async (req, res) => {
     console.error(error);
     res.status(500).json({ error: "Internal Server Error" });
   }
+});
+
+app.post('/admin/create-key', async (req, res) => {
+    const { admin_password, days, games } = req.body;
+
+    // Use the variable you set in Railway
+    if (admin_password !== process.env.ADMIN_SECRET) {
+        return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    try {
+        // Generates a key like: A1B2-C3D4-E5F6
+        const newKey = crypto.randomBytes(6).toString('hex').toUpperCase().match(/.{4}/g).join('-');
+        
+        const expiry = new Date();
+        expiry.setDate(expiry.getDate() + (days || 30));
+
+        const newUser = new User({
+            license_key: newKey,
+            hwid: null, // Empty so the first person to use it gets locked
+            expiry_date: expiry,
+            games: games || ["FiveM", "GTAV", "Warzone", "CS2"],
+            profile_pic: "https://i.imgur.com"
+        });
+
+        await newUser.save();
+        res.json({ 
+            success: true, 
+            key: newKey, 
+            expires: expiry,
+            note: "Key is now active in MongoDB" 
+        });
+
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 const PORT = process.env.PORT || 3000;
