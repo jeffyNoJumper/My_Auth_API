@@ -30,6 +30,24 @@ function createWindow() {
 
 // --- 2. IPC HANDLERS (Real C++ Logic) ---
 
+ipcMain.on('window-close', () => {
+    app.quit();
+});
+
+ipcMain.on('window-minimize', () => {
+    if (BrowserWindow) BrowserWindow.minimize();
+});
+
+// Get HWID from C++ Bridge
+ipcMain.handle('get-hwid', async () => {
+    try {
+        return spoofer.getMachineID();
+    } catch (err) {
+        console.error("C++ HWID Error:", err);
+        return "UNKNOWN_ID";
+    }
+});
+
 // Get HWID from C++ Bridge
 ipcMain.handle('get-hwid', async () => {
     try {
