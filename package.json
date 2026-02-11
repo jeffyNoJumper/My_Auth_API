@@ -1,5 +1,5 @@
 {
-  "name": "My_AUTH_API",
+  "name": "My_Auth_API",
   "version": "1.0.0",
   "main": "core/index.js",
   "scripts": {
