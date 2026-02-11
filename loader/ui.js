@@ -3,15 +3,15 @@ window.onload = () => {
     let progress = 0;
     const bar = document.getElementById('boot-progress');
     const status = document.getElementById('boot-status');
-    
+
     const interval = setInterval(() => {
         progress += Math.random() * 12;
         if (progress > 100) progress = 100;
         bar.style.width = progress + '%';
-        
-        if (progress > 30) status.innerText = "Establishing secure connection...";
+
+        if (progress > 30) status.innerText = "Establishing secure API connection...";
         if (progress > 60) status.innerText = "Verifying system integrity...";
-        if (progress > 90) status.innerText = "Bypassing anti-cheat hooks...";
+        if (progress > 90) status.innerText = "Bypassing Anti-Cheat Hooks...";
 
         if (progress >= 100) {
             clearInterval(interval);
@@ -20,7 +20,7 @@ window.onload = () => {
                 loadGlobalNews(); // Pre-fetch news while at login
             }, 500);
         }
-    }, 150);
+    }, 300);
 };
 
 // 2. Navigation & News Feed Logic
@@ -33,7 +33,7 @@ function switchScreen(oldId, newId) {
 function typeNews(text) {
     const newsContainer = document.getElementById('news-feed-text');
     if (!newsContainer) return;
-    
+
     newsContainer.innerHTML = "";
     let i = 0;
     const speed = 30; // ms per character
@@ -58,7 +58,7 @@ async function loadGlobalNews() {
             typeNews("> SYSTEM ONLINE: No new announcements at this time.");
         }
     } catch (err) {
-        typeNews("> ERROR: Could not reach GitHub News Server.");
+        typeNews("> ERROR: Could not reach News Server.");
     }
 }
 
@@ -68,23 +68,23 @@ function showTab(tabName) {
 
     document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
     document.getElementById(tabName + '-tab').classList.add('active');
-    
+
     // Refresh news if clicking back to dashboard/settings where news is shown
-    if(tabName === 'settings') loadGlobalNews(); 
+    if (tabName === 'settings') loadGlobalNews();
 }
 
 // 3. Authentication
 async function handleLogin() {
     const key = document.getElementById('license-key').value;
     const btn = document.getElementById('login-btn');
-    
-    if(!key) return alert("Please enter a license key.");
-    
+
+    if (!key) return alert("Please enter a license key.");
+
     btn.innerHTML = `<div class="spinner"></div> VALIDATING...`;
     btn.disabled = true;
 
     try {
-        const realHWID = await window.api.getMachineIdentifier(); 
+        const realHWID = await window.api.getMachineIdentifier();
 
         const response = await fetch('https://sk-auth-api.up.railway.app', {
             method: 'POST',
@@ -105,7 +105,7 @@ async function handleLogin() {
             btn.disabled = false;
         }
     } catch (err) {
-        alert("API Connection Error. Ensure your Railway server is live.");
+        alert("API Connection Error. Ensure your Loader is connected to a server & is live.");
         btn.innerHTML = "VALIDATE LICENSE";
         btn.disabled = false;
     }
@@ -136,7 +136,7 @@ async function startSpoofing() {
 
 async function requestHWIDReset() {
     const key = localStorage.getItem('license_key');
-    const adminPass = prompt("Enter Admin Secret to unlock HWID:"); 
+    const adminPass = prompt("Enter Admin Secret to unlock HWID:");
     if (!adminPass) return;
 
     try {
@@ -149,7 +149,7 @@ async function requestHWIDReset() {
         const data = await response.json();
         if (data.success) {
             alert("HWID Cleared Successfully.");
-            location.reload(); 
+            location.reload();
         } else {
             alert("Error: " + data.error);
         }
@@ -163,7 +163,7 @@ window.api.onUpdateAvailable((data) => {
     // Show the update overlay
     document.getElementById('update-overlay').classList.remove('hidden');
     document.getElementById('update-version').innerText = `Update Found: v${data.version}`;
-    
+
     // Add the release notes to the update description
     if (data.news) {
         document.getElementById('update-status').innerText = data.news;
