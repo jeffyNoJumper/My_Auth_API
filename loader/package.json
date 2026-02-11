@@ -11,7 +11,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com"
+    "url": "https://github.com/jeffyNoJumper/My_Auth_API"
   },
   "dependencies": {
     "electron-updater": "^6.1.7",
@@ -28,6 +28,10 @@
     "directories": {
       "output": "dist"
     },
+    "files": [
+      "**/*",
+      "build/Release/spoofer.node"
+    ],
     "publish": [
       {
         "provider": "github",
