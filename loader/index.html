@@ -67,7 +67,7 @@
                 <button onclick="showTab('spoofer')" id="btn-spoofer" class="nav-btn">SPOOFER</button>
                 <button onclick="showTab('settings')" id="btn-settings" class="nav-btn">NEWS & SETTINGS</button>
             </div>
-            
+
             <div class="nav-right user-box">
                 <div class="user-meta">
                     <span id="user-expiry">EXP: --</span>
@@ -78,24 +78,24 @@
         </nav>
 
         <div class="content-area">
-            
+
             <!-- Tab: Games (Steam Grid) -->
             <div id="games-tab" class="tab-content active">
                 <div class="steam-grid">
                     <div class="game-card card-green" onclick="launchGame('FiveM')">
-                        <img src="fivem.png" onerror="this.src='https://placehold.co'">
+                        <img src="./imgs/fivem.png" onerror="this.src='https://placehold.co'">
                         <div class="card-overlay"><span>Launch FiveM</span></div>
                     </div>
                     <div class="game-card card-gold" onclick="launchGame('GTA V')">
-                        <img src="gta.png" onerror="this.src='https://placehold.co'">
+                        <img src="./imgs/gtav.png" onerror="this.src='https://placehold.co'">
                         <div class="card-overlay"><span>Launch GTA V</span></div>
                     </div>
                     <div class="game-card card-red" onclick="launchGame('Warzone')">
-                        <img src="cod.png" onerror="this.src='https://placehold.co'">
+                        <img src="./imgs/cod.png" onerror="this.src='https://placehold.co'">
                         <div class="card-overlay"><span>Launch Warzone</span></div>
                     </div>
                     <div class="game-card card-blue" onclick="launchGame('CS2')">
-                        <img src="cs2.png" onerror="this.src='https://placehold.co'">
+                        <img src="./imgs/cs2.png" onerror="this.src='https://placehold.co'">
                         <div class="card-overlay"><span>Launch CS2</span></div>
                     </div>
                 </div>
@@ -108,7 +108,7 @@
                         <h3 class="glow-text-red">HARDWARE MASKING</h3>
                         <p>Protect your identity before launching any games.</p>
                     </div>
-                    
+
                     <div class="spoofer-status-box">
                         <div class="status-row">
                             <span>Status:</span>
@@ -137,7 +137,160 @@
                             <div id="news-feed-text" class="typewriter">> Fetching latest updates...</div>
                         </div>
                     </div>
-                    
+
+                    <div class="settings-panel">
+                        <h3 class="glow-text-cyan">CLIENT_SETTINGS</h3>
+                        <p class="desc">Version: 1.0.0 (Latest)</p>
+                        <button class="action-btn reset-btn" onclick="requestHWIDReset()">MANUAL HWID RESET</button>
+                    </div>
+                </div>
+            </div>
+
+        </div> <!-- End Content Area -->
+    </div>
+
+    <script src="ui.js"></script>
+</body>
+</html><!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SK ALL IN-ONE Loader</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- CUSTOM TITLE BAR -->
+    <div class="title-bar">
+        <div class="drag-region">
+            <span class="brand">SK</span> ALL-IN-ONE
+        </div>
+        <div class="window-controls">
+            <button onclick="window.api.minimize()" class="control-btn">—</button>
+            <button onclick="window.api.close()" class="control-btn close-btn">×</button>
+        </div>
+    </div>
+
+    <!-- AUTO-UPDATER OVERLAY -->
+    <div id="update-overlay" class="overlay hidden">
+        <div class="update-card">
+            <h2 class="glow-text-cyan">SYSTEM UPDATE</h2>
+            <p id="update-version">New version detected</p>
+            <div id="update-news-prev" class="news-preview"></div>
+            <div class="progress-container">
+                <div id="update-progress" class="progress-bar"></div>
+            </div>
+            <p id="update-status">Click below to begin download</p>
+            <button id="update-btn" class="action-btn update-confirm" onclick="startUpdateDownload()">DOWNLOAD & INSTALL</button>
+        </div>
+    </div>
+
+    <!-- 1. BOOT SCREEN -->
+    <div id="boot-screen" class="screen active">
+        <div class="logo-container">
+            <h1 class="glow-text">SYSTEM_INITIALIZING</h1>
+            <div class="progress-container">
+                <div id="boot-progress" class="progress-bar"></div>
+            </div>
+            <p id="boot-status">Loading secure environment...</p>
+        </div>
+    </div>
+
+    <!-- 2. LOGIN SCREEN -->
+    <div id="login-screen" class="screen">
+        <div class="login-card">
+            <div class="card-header">
+                <h2 class="glow-text-cyan">AUTHENTICATION</h2>
+                <p>Enter your license key below</p>
+            </div>
+            <div class="input-group">
+                <input type="text" id="license-key" placeholder="XXXX-XXXX-XXXX-XXXX">
+            </div>
+            <button onclick="handleLogin()" id="login-btn">VALIDATE LICENSE</button>
+            <div id="login-loader" class="spinner hidden"></div>
+        </div>
+    </div>
+
+    <!-- 3. MAIN DASHBOARD -->
+    <div id="main-dashboard" class="screen">
+        <nav class="top-nav">
+            <div class="nav-left">
+                <button onclick="showTab('games')" id="btn-games" class="nav-btn active">GAMES</button>
+                <button onclick="showTab('spoofer')" id="btn-spoofer" class="nav-btn">SPOOFER</button>
+                <button onclick="showTab('settings')" id="btn-settings" class="nav-btn">NEWS & SETTINGS</button>
+            </div>
+
+            <div class="nav-right user-box">
+                <div class="user-meta">
+                    <span id="user-expiry">EXP: --</span>
+                    <span class="status-dot"></span>
+                </div>
+                <img src="https://i.imgur.com" id="user-pic" class="glow-border">
+            </div>
+        </nav>
+
+        <div class="content-area">
+
+            <!-- Tab: Games (Steam Grid) -->
+            <div id="games-tab" class="tab-content active">
+                <div class="steam-grid">
+                    <div class="game-card card-green" onclick="launchGame('FiveM')">
+                        <img src="./imgs/fivem.png" onerror="this.src='https://placehold.co'">
+                        <div class="card-overlay"><span>Launch FiveM</span></div>
+                    </div>
+                    <div class="game-card card-gold" onclick="launchGame('GTA V')">
+                        <img src="./imgs/gtav.png" onerror="this.src='https://placehold.co'">
+                        <div class="card-overlay"><span>Launch GTA V</span></div>
+                    </div>
+                    <div class="game-card card-red" onclick="launchGame('Warzone')">
+                        <img src="./imgs/cod.png" onerror="this.src='https://placehold.co'">
+                        <div class="card-overlay"><span>Launch Warzone</span></div>
+                    </div>
+                    <div class="game-card card-blue" onclick="launchGame('CS2')">
+                        <img src="./imgs/cs2.png" onerror="this.src='https://placehold.co'">
+                        <div class="card-overlay"><span>Launch CS2</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab: Spoofer -->
+            <div id="spoofer-tab" class="tab-content">
+                <div class="spoofer-panel">
+                    <div class="panel-header">
+                        <h3 class="glow-text-red">HARDWARE MASKING</h3>
+                        <p>Protect your identity before launching any games.</p>
+                    </div>
+
+                    <div class="spoofer-status-box">
+                        <div class="status-row">
+                            <span>Status:</span>
+                            <span id="status-text" class="inactive">NOT ACTIVE</span>
+                        </div>
+                    </div>
+
+                    <div class="spoofer-controls">
+                        <button class="action-btn spoof-btn" onclick="startSpoofing()">SPOOF HWID</button>
+                        <button class="action-btn reset-btn" onclick="requestHWIDReset()">HWID RESET</button>
+                    </div>
+
+                    <div id="spoof-progress" class="hidden">
+                        <div class="mini-spinner"></div>
+                        <p>Patching registry values...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab: Settings & News -->
+            <div id="settings-tab" class="tab-content">
+                <div class="settings-layout">
+                    <div class="news-section">
+                        <h3 class="glow-text-cyan">GLOBAL_NEWS</h3>
+                        <div class="terminal-box">
+                            <div id="news-feed-text" class="typewriter">> Fetching latest updates...</div>
+                        </div>
+                    </div>
+
                     <div class="settings-panel">
                         <h3 class="glow-text-cyan">CLIENT_SETTINGS</h3>
                         <p class="desc">Version: 1.0.0 (Latest)</p>
