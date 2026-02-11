@@ -1,8 +1,8 @@
-name: Build and Release Loader
+name: Build and Release SK Loader & Panel
 on:
   push:
     tags:
-      - 'v*' # Triggers whenever you push a tag like v1.0.1
+      - 'v*' 
 
 jobs:
   release:
@@ -18,9 +18,17 @@ jobs:
           cache: 'npm'
 
       - name: Install Dependencies
+        # We use --include=dev to ensure electron-builder is available
         run: npm install
 
-      - name: Build and Publish
+      - name: Build and Publish Loader
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }} # Uses the token you will set in Step 2
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        # This builds main loader using the config in package.json
         run: npm run publish
+
+      - name: Build and Publish Admin Panel
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        # This builds standalone Admin Panel using your custom config
+        run: npx electron-builder --config electron-builder-panel.json --publish always
