@@ -80,8 +80,20 @@ body {
     height: calc(100vh - 30px);
     width: 100vw;
     flex-direction: column;
-    justify-content: center;
+    justify-content: flex-start;
     align-items: center;
+}
+
+.content-area {
+    width: 100%;
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    justify-content: center;
+}
+
+.tab-content.active {
+    display: flex;
 }
 
     .screen.active {
@@ -90,8 +102,8 @@ body {
 
 /* TOP NAV */
 .top-nav {
-    position: absolute;
-    top: 30px;
+    position: relative;
+    top: 0px;
     width: 100%;
     height: 60px;
     display: flex;
@@ -101,6 +113,17 @@ body {
     box-sizing: border-box;
     background: rgba(0,0,0,0.3);
     border-bottom: 1px solid var(--border-color);
+}
+
+..welcome-panel {
+    text-align: center;
+    margin-top: 50px;
+}
+
+.welcome-panel h2 {
+    font-size: 18px;
+    letter-spacing: 3px;
+    margin-bottom: 10px;
 }
 
 .nav-btn {
@@ -139,7 +162,7 @@ body {
     display: grid;
     grid-template-columns: repeat(4, 190px);
     gap: 15px;
-    margin-top: 60px;
+    margin-top: 30px;
 }
 
 .game-card {
@@ -310,7 +333,7 @@ body {
     grid-template-columns: 1.5fr 1fr;
     gap: 30px;
     padding: 40px;
-    margin-top: 60px;
+    margin-top: 0px;
     width: 100%;
     box-sizing: border-box;
 }
@@ -362,7 +385,7 @@ body {
 
 /* --- SPOOFER UI --- */
 .spoofer-panel {
-    margin-top: 80px;
+    margin-top: 30px;
     text-align: center;
     max-width: 500px;
 }
