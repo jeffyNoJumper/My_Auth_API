@@ -5,6 +5,8 @@ const spoofer = require('./build/Release/spoofer.node');
 
 let mainWindow;
 
+app.setAppUserModelId("com.sk.allinone");
+
 // --- 1. WINDOW SETUP ---
 function createWindow() {
     mainWindow = new BrowserWindow({
