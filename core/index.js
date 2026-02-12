@@ -1,7 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
-const User = require('../src/user'); // Ensure this path is correct on Railway!
+const User = require('./user');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const cors = require('cors');
