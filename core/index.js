@@ -17,7 +17,6 @@ mongoose.connect(process.env.MONGO_URL)
     .then(() => console.log("✅ Connected to MongoDB"))
     .catch(err => console.error("MongoDB Connection Error:", err));
 
-// --- ADMIN: CREATE KEY ---
 app.post('/admin/create-key', async (req, res) => {
     try {
         const { admin_password, days, games } = req.body;
@@ -27,7 +26,23 @@ app.post('/admin/create-key', async (req, res) => {
             return res.status(401).json({ error: "Unauthorized" });
         }
 
-        const newKey = crypto.randomBytes(6).toString('hex').toUpperCase().match(/.{4}/g).join('-');
+        // Pick first game for prefix
+        const gamePrefixMap = {
+            "FiveM": "FIVM",
+            "GTAV": "GTAV",
+            "Warzone": "WARZ",
+            "CS2": "CS2X"
+        };
+
+        const firstGame = (games && games.length > 0) ? games[0] : "FiveM";
+        const prefix = gamePrefixMap[firstGame] || "GENR"; // fallback
+
+        // Generate random rest of key
+        const randomPart = crypto.randomBytes(6).toString('hex').toUpperCase().match(/.{4}/g).join('-');
+
+        const newKey = `${prefix}-${randomPart}`;
+
+        // Set expiry
         const expiry = new Date();
         expiry.setDate(expiry.getDate() + (parseInt(days) || 30));
 
@@ -41,13 +56,14 @@ app.post('/admin/create-key', async (req, res) => {
 
         await newUser.save();
         console.log(`[ADMIN] Created Key: ${newKey}`);
-        res.json({ success: true, key: newKey, expires: expiry });
+        res.json({ success: true, key: newKey, expires: expiry, games: newUser.games });
 
     } catch (err) {
         console.error("Create Key Error:", err);
         res.status(500).json({ error: err.message });
     }
 });
+
 
 // --- USER: LOGIN ---
 app.post('/login', async (req, res) => {
