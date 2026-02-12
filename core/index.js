@@ -22,7 +22,6 @@ app.post('/admin/create-key', async (req, res) => {
     try {
         const { admin_password, days, games } = req.body;
 
-        // Matches 'FamilyFirst1!' set in Railway Variables
         if (admin_password !== process.env.ADMIN_SECRET) {
             console.log("Admin login attempt failed: Wrong Password");
             return res.status(401).json({ error: "Unauthorized" });
@@ -54,25 +53,39 @@ app.post('/admin/create-key', async (req, res) => {
 app.post('/login', async (req, res) => {
     try {
         const { license_key, hwid } = req.body;
-        if (!license_key || !hwid) return res.status(400).json({ error: "Missing data" });
 
-        const user = await User.findOne({ license_key });
-        if (!user) return res.status(404).json({ error: "Invalid Key" });
-        if (user.is_banned) return res.status(403).json({ error: "Banned" });
-        if (new Date() > user.expiry_date) return res.status(403).json({ error: "Expired" });
+        const user = await User.findOne({
+            license_key: license_key.toUpperCase()
+        });
+
+        if (!user)
+            return res.json({ error: "Invalid Key" });
+
+        if (user.is_banned)
+            return res.json({ error: "Key Banned" });
+
+        if (user.is_paused)
+            return res.json({ error: "Key Paused" });
+
+        if (new Date() > user.expiry_date)
+            return res.json({ error: "Key Expired" });
 
         if (!user.hwid) {
             user.hwid = hwid;
-            await user.save();
         } else if (user.hwid !== hwid) {
-            return res.status(403).json({ error: "HWID Mismatch" });
+            return res.json({ error: "HWID Mismatch" });
         }
 
-        const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '24h' });
-        res.json({ token, expiry: user.expiry_date, profile_pic: user.profile_pic, games: user.games });
-    } catch (error) {
-        console.error("Login Error:", error);
-        res.status(500).json({ error: "Server Error" });
+        await user.save();
+
+        res.json({
+            token: "VALID",
+            profile_pic: user.profile_pic,
+            expiry: user.expiry_date
+        });
+
+    } catch (err) {
+        res.status(500).json({ error: err.message });
     }
 });
 
