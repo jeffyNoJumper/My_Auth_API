@@ -153,6 +153,27 @@ app.post('/admin/delete-key', verifyAdmin, async (req, res) => {
     res.json({ success: true });
 });
 
+app.post('/admin/get-key', verifyAdmin, async (req, res) => {
+    try {
+        const { license_key } = req.body;
+        const user = await User.findOne({ license_key: license_key.toUpperCase() });
+        if (!user) return res.status(404).json({ error: "Key not found" });
+
+        res.json({
+            success: true,
+            key: user.license_key,
+            is_banned: user.is_banned,
+            is_paused: user.is_paused || false,
+            hwid: user.hwid,
+            expiry: user.expiry_date,
+            games: user.games,
+        });
+    } catch (err) {
+        console.error("Get Key Error:", err);
+        res.status(500).json({ error: "Internal Server Error" });
+    }
+});
+
 
 app.get('/', (req, res) => res.send('API Online & Connected.'));
 
