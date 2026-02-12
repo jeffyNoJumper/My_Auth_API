@@ -4,6 +4,8 @@ const { autoUpdater } = require('electron-updater');
 const spoofer = require('./build/Release/spoofer.node');
 
 let mainWindow;
+let latestNews = null;
+let isAuthorized = false;
 
 app.setAppUserModelId("com.sk.allinone");
 
@@ -39,8 +41,7 @@ ipcMain.on('window-close', () => {
 });
 
 ipcMain.on('window-minimize', () => {
-    const win = win.getFocusedWindow();
-    if (win) win.minimize();
+    if (mainWindow) mainWindow.minimize();
 });
 
 // Get HWID from C++ Bridge
@@ -80,12 +81,23 @@ ipcMain.handle('launch-game', async (event, gameName) => {
 autoUpdater.autoDownload = false; // We want to show a "Update Available" message first
 
 autoUpdater.on('update-available', (info) => {
-    // This sends the version AND the Release Notes (News) to UI
+    latestNews = info.releaseNotes;
+
     mainWindow.webContents.send('update-available', {
         version: info.version,
-        news: info.releaseNotes // This pulls the text you type on GitHub!
+        news: info.releaseNotes
     });
 });
+
+ipcMain.handle('get-news', async () => {
+    try {
+        return await autoUpdater.getCachedUpdateInfo();
+    } catch (err) {
+        console.error("Failed to get news:", err);
+        return { news: "No updates available" };
+    }
+});
+
 
 // 3b. Trigger Download (When user clicks 'Update' in UI)
 ipcMain.handle('start-update-download', () => {
@@ -106,11 +118,21 @@ autoUpdater.on('update-downloaded', () => {
     }, 6000);
 });
 
-// 3e. Fetch General News (Optional: Fetch even if no update)
-ipcMain.handle('get-news', async () => {
-    // This allows your UI to pull the latest GitHub Release description as a 'News Feed'
-    return await autoUpdater.getCachedUpdateInfo();
-});
+async function checkLogin(key) {
+    const hwid = await window.api.getMachineIdentifier();
+    const res = await window.api.login(key, hwid);
+    if (res.token === "VALID") isAuthorized = true;
+    return res;
+}
+
+function launchGame(name) {
+    if (!isAuthorized) return alert("Invalid key! Login first.");
+    window.api.launchCheat(name);
+}
+
+
+
+
 
 app.disableHardwareAcceleration();
 
