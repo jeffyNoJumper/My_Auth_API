@@ -17,6 +17,8 @@ function createWindow() {
         backgroundColor: '#050505',
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
+            backgroundThrottling: true,
+            offscreen: false,
             nodeIntegration: false,
             contextIsolation: true
         }
@@ -110,8 +112,10 @@ ipcMain.handle('get-news', async () => {
     return await autoUpdater.getCachedUpdateInfo();
 });
 
+app.disableHardwareAcceleration();
 
-app.whenReady().then(createWindow);
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
+app.commandLine.appendSwitch('disable-background-timer-throttling');
 
 app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();
