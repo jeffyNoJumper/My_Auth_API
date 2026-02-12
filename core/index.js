@@ -64,6 +64,50 @@ app.post('/admin/create-key', async (req, res) => {
     }
 });
 
+// --- ADMIN: MANAGE KEYS (Pause, Unpause, Ban, Delete) ---
+app.post('/admin/:action-key', async (req, res) => {
+    try {
+        const { license_key, admin_password } = req.body;
+        const { action } = req.params;
+
+        // 1. Security Check
+        if (admin_password !== process.env.ADMIN_SECRET) {
+            return res.status(401).json({ error: "Unauthorized" });
+        }
+
+        // 2. Find the User
+        const user = await User.findOne({ license_key: license_key.toUpperCase() });
+        if (!user && action !== 'delete') {
+            return res.status(404).json({ error: "Key not found" });
+        }
+
+        // 3. Perform Action
+        switch (action) {
+            case 'pause':
+                user.is_paused = true;
+                break;
+            case 'unpause':
+                user.is_paused = false;
+                break;
+            case 'ban':
+                user.is_banned = true;
+                break;
+            case 'delete':
+                await User.deleteOne({ license_key: license_key.toUpperCase() });
+                return res.json({ success: true, message: "Key deleted" });
+            default:
+                return res.status(400).json({ error: "Invalid action" });
+        }
+
+        await user.save();
+        res.json({ success: true, message: `Key ${action}ed successfully` });
+
+    } catch (err) {
+        console.error(`Error during ${req.params.action}:`, err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 
 // --- USER: LOGIN ---
 app.post('/login', async (req, res) => {
@@ -104,6 +148,32 @@ app.post('/login', async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
+
+async function loginUser() {
+    const key = document.getElementById('key-input').value; // user-entered key
+    const hwid = getHWID(); // your HWID function
+
+    if (!key) return alert("Enter your license key!");
+
+    try {
+        const res = await fetch('https://sk-auth-api.up.railway.app/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ license_key: key, hwid })
+        });
+        const data = await res.json();
+
+        if (data.token === "VALID") {
+            alert("Login Successful!");
+            // continue to load your app/game
+        } else {
+            alert("Login Failed: " + data.error);
+        }
+    } catch (err) {
+        console.error(err);
+        alert("Connection to server failed!");
+    }
+}
 
 // --- ADMIN: HWID RESET ---
 app.post('/reset-hwid', async (req, res) => {
