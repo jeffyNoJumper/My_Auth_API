@@ -210,7 +210,7 @@ body {
     display: none !important;
 }
 
-.spinner {
+.screen.active .spinner {
     width: 20px;
     height: 20px;
     border: 2px solid rgba(0, 242, 255, 0.1);
@@ -246,7 +246,7 @@ body {
     line-height: 1.5;
 }
 
-.typewriter::after {
+.screen.active .typewriter::after {
     content: "█";
     animation: blink 1s step-end infinite;
     margin-left: 5px;
