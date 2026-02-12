@@ -86,7 +86,7 @@ async function handleLogin() {
     try {
         const realHWID = await window.api.getMachineIdentifier();
 
-        const response = await fetch('https://sk-auth-api.up.railway.app', {
+        const response = await fetch('https://sk-auth-api.up.railway.app/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ license_key: key, hwid: realHWID })
