@@ -189,7 +189,15 @@ app.post('/admin/get-key', verifyAdmin, async (req, res) => {
         res.status(500).json({ error: "Internal Server Error" });
     }
 });
+function verifyAdmin(req, res, next) {
+    const { admin_password } = req.body;
 
+    if (admin_password !== process.env.ADMIN_SECRET) {
+        return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    next();
+}
 
 app.get('/', (req, res) => res.send('API Online & Connected.'));
 
