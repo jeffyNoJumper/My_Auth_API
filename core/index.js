@@ -110,6 +110,50 @@ app.post('/reset-hwid', async (req, res) => {
     }
 });
 
+app.post('/admin/pause-key', verifyAdmin, async (req, res) => {
+    const { license_key } = req.body;
+
+    await User.updateOne(
+        { license_key: license_key.toUpperCase() },
+        { is_paused: true }
+    );
+
+    res.json({ success: true });
+});
+
+app.post('/admin/unpause-key', verifyAdmin, async (req, res) => {
+    const { license_key } = req.body;
+
+    await User.updateOne(
+        { license_key: license_key.toUpperCase() },
+        { is_paused: false }
+    );
+
+    res.json({ success: true });
+});
+
+app.post('/admin/ban-key', verifyAdmin, async (req, res) => {
+    const { license_key } = req.body;
+
+    await User.updateOne(
+        { license_key: license_key.toUpperCase() },
+        { is_banned: true }
+    );
+
+    res.json({ success: true });
+});
+
+app.post('/admin/delete-key', verifyAdmin, async (req, res) => {
+    const { license_key } = req.body;
+
+    await User.deleteOne({
+        license_key: license_key.toUpperCase()
+    });
+
+    res.json({ success: true });
+});
+
+
 app.get('/', (req, res) => res.send('API Online & Connected.'));
 
 const PORT = process.env.PORT || 8080;
