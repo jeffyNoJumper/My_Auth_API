@@ -62,15 +62,51 @@ async function loadGlobalNews() {
     }
 }
 
+// Updated Navigation Logic for 5 Tabs
 function showTab(tabName) {
+    // 1. Reset all buttons
     document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
-    document.getElementById('btn-' + tabName).classList.add('active');
+    // 2. Hide all content areas
+    document.querySelectorAll('.tab-content').forEach(tab => {
+        tab.classList.remove('active');
+        // Ensure display is toggled if your CSS doesn't handle .active visibility
+        tab.style.display = 'none';
+    });
 
-    document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
-    document.getElementById(tabName + '-tab').classList.add('active');
+    // 3. Activate the chosen button and tab
+    const selectedBtn = document.getElementById('btn-' + tabName);
+    const selectedTab = document.getElementById(tabName + '-tab');
 
-    // Refresh news if clicking back to dashboard/settings where news is shown
+    if (selectedBtn && selectedTab) {
+        selectedBtn.classList.add('active');
+        selectedTab.classList.add('active');
+        selectedTab.style.display = 'block';
+    }
+
+    // 4. Tab-Specific Logic
     if (tabName === 'settings') loadGlobalNews();
+    if (tabName === 'hwid') refreshHWIDDisplay();
+}
+
+// New helper for the HWID tab
+async function refreshHWIDDisplay() {
+    try {
+        const hwid = await window.api.getMachineIdentifier();
+        // Assuming your HTML spans have these IDs
+        if (document.getElementById('disk-id')) {
+            document.getElementById('disk-id').innerText = hwid.substring(0, 15) + "...";
+        }
+    } catch (err) {
+        console.error("Could not fetch HWID for display");
+    }
+}
+
+// 6. Injection (Updated for alert styling)
+async function launchGame(gameName) {
+    // Optional: Add a loading state to the card here
+    const res = await window.api.launchCheat(gameName);
+    // Use a clean console log or a custom toast instead of alert for "game-like" feel
+    console.log(`[SYSTEM] ${res.message}`);
 }
 
 // 3. Authentication
