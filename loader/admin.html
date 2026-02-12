@@ -303,30 +303,13 @@
 
                 if (data.success) {
                     display.style.display = 'block';
-
-                    const expiryDate = new Date(data.expires);
-                    const readableExpiry = expiryDate.toLocaleString();
-
                     keyText.innerText = data.key;
+                    document.getElementById('key-days-display').innerText = days == 999 ? "Lifetime" : days + " Day(s)";
+                    document.getElementById('key-expiry').innerText = new Date(data.expires).toLocaleString();
+                    document.getElementById('key-games').innerText = data.games.join(", ");
 
-                    const daysDisplay = document.getElementById('key-days-display');
-                    const expiryDisplay = document.getElementById('key-expiry');
-                    const gamesDisplay = document.getElementById('key-games');
-
-                    if (daysDisplay)
-                        daysDisplay.innerText = days == 999 ? "Lifetime" : days + " Day(s)";
-
-                    if (expiryDisplay)
-                        expiryDisplay.innerText = readableExpiry;
-
-                    if (gamesDisplay)
-                        gamesDisplay.innerText =
-                            (data.games || ["FiveM", "GTAV", "Warzone", "CS2"]).join(", ");
-
-                    if (clipboard) {
-                        clipboard.writeText(data.key);
-                        console.log("Key copied to clipboard automatically.");
-                    }
+                    if (clipboard) clipboard.writeText(data.key);
+                }
 
                 } else {
                     alert("API Error: " + (data.error || "Access Denied"));
