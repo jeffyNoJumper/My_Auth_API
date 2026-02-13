@@ -17,14 +17,18 @@ body {
     padding: 0;
     overflow: hidden;
     height: 100vh;
-    border: 1px solid var(--border-color); /* Subtle outer border for the loader */
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border-color);
     box-sizing: border-box;
 }
 
+
 /* CUSTOM TITLE BAR */
 .title-bar {
-    height: 30px;
+    height: 60px;
     display: flex;
+    flex-shrink: 2;
     justify-content: space-between;
     align-items: center;
     background: #000;
@@ -35,7 +39,7 @@ body {
 .drag-region {
     flex: 1;
     height: 100%;
-    -webkit-app-region: drag; /* THE MAGIC PART */
+    -webkit-app-region: drag;
     display: flex;
     align-items: center;
     padding-left: 12px;
@@ -65,66 +69,204 @@ body {
     cursor: pointer;
 }
 
-    .control-btn:hover {
-        color: #fff;
-        background: rgba(255,255,255,0.05);
-    }
+.control-btn:hover {
+    color: #fff;
+    background: rgba(255,255,255,0.05);
+}
 
 .close-btn:hover {
     background: var(--red) !important;
 }
 
+/* --- UPGRADED BOOT SCREEN LAYOUT --- */
+#boot-screen {
+    justify-content: center;
+    padding-top: 0;
+    background: radial-gradient(circle at center, #0a0a0a 0%, #000 100%);
+}
+
+#boot-status {
+    text-align: center;
+    font-family: 'Consolas', monospace;
+    font-size: 24px;
+    letter-spacing: 2px;
+    color: var(--cyan);
+    margin-bottom: 30px;
+    text-shadow: 0 0 10px rgba(0, 242, 255, 0.5);
+}
+
+/* --- NEW TECH SPINNER --- */
+.boot-loader {
+    width: 50px;
+    height: 50px;
+    border: 3px solid rgba(0, 242, 255, 0.1);
+    border-radius: 50%;
+    border-top-color: var(--cyan);
+    border-bottom-color: var(--cyan);
+    animation: tech-spin 1.2s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+    margin-bottom: 40px;
+}
+
+@keyframes tech-spin {
+    0% {
+        transform: rotate(0deg);
+        border-width: 3px;
+    }
+
+    50% {
+        transform: rotate(180deg);
+        border-width: 1px;
+    }
+
+    100% {
+        transform: rotate(360deg);
+        border-width: 3px;
+    }
+}
+
+/* Ensure progress bar wrapper is visible below spinner */
+.progress-wrapper {
+    width: 250px;
+    height: 2px;
+    background: rgba(255, 255, 255, 0.05);
+    position: relative;
+    overflow: hidden;
+    margin-top: 20px; /* Space between spinner and bar */
+}
+
+#boot-progress {
+    height: 100%;
+    background: var(--cyan);
+    box-shadow: 0 0 15px var(--cyan);
+    transition: width 0.4s ease-out;
+}
+
+/* LOGIN SCREEN ANNIMATION */
+#login-screen::before {
+    content: " ";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+    background-size: 100% 2px, 3px 100%;
+    pointer-events: none;
+    z-index: 1;
+}
+
+/* Rolling scan bar */
+#login-screen::after {
+    content: "";
+    position: absolute;
+    top: -100%;
+    left: 0;
+    width: 100%;
+    height: 100px;
+    background: linear-gradient(to bottom, transparent, rgba(0, 242, 255, 0.03), transparent);
+    animation: scanline-roll 8s linear infinite;
+    pointer-events: none;
+}
+
+@keyframes scanline-roll {
+    0% {
+        top: -100px;
+    }
+
+    100% {
+        top: 100%;
+    }
+}
+
+.login-card {
+    background: rgba(10, 10, 10, 0.8);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(0, 242, 255, 0.2);
+    box-shadow: 0 0 30px rgba(0, 0, 0, 0.5), inset 0 0 10px rgba(0, 242, 255, 0.05);
+    padding: 40px;
+    border-radius: 12px;
+    z-index: 2;
+    margin-top: -120px;
+}
+
+#login-screen {
+    background: radial-gradient(circle at center, rgba(0, 242, 255, 0.05) 0%, transparent 70%), radial-gradient(circle at center, #0a0a0a 0%, #000 100%);
+    position: relative;
+    overflow: hidden;
+}
+
 /* SCREENS */
 .screen {
     display: none;
-    height: calc(100vh - 30px);
     width: 100vw;
+    flex: 1;
     flex-direction: column;
-    justify-content: flex-start;
+    justify-content: center;
     align-items: center;
+    transition: opacity 0.5s ease;
+    overflow: hidden;
 }
 
+
 .content-area {
-    width: 100%;
+    width: 108%;
     flex: 1;
     overflow-y: auto;
     display: flex;
     justify-content: center;
+    overflow-x: hidden;
+    overflow-y: auto;
 }
 
-.tab-content.active {
+.tab-content {
+    display: none !important;
+    width: 100%;
+    flex-direction: column;
+    align-items: center;
+}
+
+    .tab-content.active {
+        display: flex !important;
+    }
+
+.screen.active {
     display: flex;
 }
 
-    .screen.active {
-        display: flex;
-    }
-
-/* TOP NAV */
 .top-nav {
     position: relative;
-    top: 0px;
+    z-index: 10001; /* Higher than Title Bar (9999) */
     width: 100%;
     height: 60px;
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding: 0 30px;
-    box-sizing: border-box;
-    background: rgba(0,0,0,0.3);
+    /* Use a SOLID color here to block out any ghost bars */
+    background: #060606 !important;
     border-bottom: 1px solid var(--border-color);
+    margin: 0;
 }
 
-..welcome-panel {
+#main-dashboard.screen {
+    justify-content: flex-start !important;
+    padding-top: 0 !important;
+    /* Ensure the dashboard itself is above the dead boot-screen */
+    z-index: 5;
+}
+
+
+
+.welcome-panel {
     text-align: center;
     margin-top: 50px;
 }
 
-.welcome-panel h2 {
-    font-size: 18px;
-    letter-spacing: 3px;
-    margin-bottom: 10px;
-}
+    .welcome-panel h2 {
+        font-size: 18px;
+        letter-spacing: 3px;
+        margin-bottom: 10px;
+    }
 
 .nav-btn {
     background: none;
@@ -155,54 +297,60 @@ body {
     border-radius: 5px;
     border: 1px solid var(--cyan);
     box-shadow: 0 0 10px rgba(0, 242, 255, 0.2);
+    cursor: pointer;
+    object-fit: cover;
+    background-color: #111;
+    display: inline-block;
+    flex-shrink: 0;
 }
 
 /* STEAM GRID CARDS */
 .steam-grid {
     display: grid;
-    grid-template-columns: repeat(4, 190px);
-    gap: 15px;
-    margin-top: 30px;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 20px;
+    width: 90%;
+    margin: 30px auto 40px auto;
 }
 
 .game-card {
-    height: 270px;
+    height: 230px;
     background: #000;
     border: 1px solid #111;
-    border-radius: 4px;
+    border-radius: 10px;
     position: relative;
     cursor: pointer;
     transition: all 0.3s cubic-bezier(0.23, 1, 0.32, 1);
     overflow: hidden;
 }
 
-    .game-card img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        opacity: 0.5;
-        transition: 0.3s;
-    }
+.game-card img {
+    width: 110%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0.5;
+    transition: all 0.3s ease;
+}
 
 /* Glowing Border Logic */
 .card-green:hover {
     border-color: var(--green);
-    box-shadow: 0 0 20px rgba(0, 255, 136, 0.3);
+    box-shadow: 0 0 25px rgba(0, 255, 136, 0.4);
 }
 
 .card-gold:hover {
     border-color: var(--gold);
-    box-shadow: 0 0 20px rgba(255, 204, 0, 0.3);
+    box-shadow: 0 0 25px rgba(255, 204, 0, 0.4);
 }
 
 .card-red:hover {
     border-color: var(--red);
-    box-shadow: 0 0 20px rgba(255, 62, 62, 0.3);
+    box-shadow: 0 0 25px rgba(255, 62, 62, 0.4);
 }
 
 .card-blue:hover {
     border-color: var(--cyan);
-    box-shadow: 0 0 20px rgba(0, 242, 255, 0.3);
+    box-shadow: 0 0 25px rgba(0, 242, 255, 0.4);
 }
 
 .game-card:hover img {
@@ -213,44 +361,45 @@ body {
 .card-overlay {
     position: absolute;
     bottom: 0;
-    width: 100%;
+    width: 120%;
     padding: 15px;
-    background: linear-gradient(transparent, rgba(0,0,0,0.9));
+    background: linear-gradient(transparent, rgba(0,0,0,0.95));
     font-size: 11px;
     font-weight: bold;
     text-transform: uppercase;
     letter-spacing: 1px;
     opacity: 0;
-    transition: 0.3s;
+    transition: opacity 0.3s ease;
 }
 
 .game-card:hover .card-overlay {
     opacity: 1;
 }
 
+/* GAME INFO PANELS */
+.game-info-panels {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    width: 90%;
+    margin: 0 auto 40px auto;
+}
+
+.game-news, .game-stats, .game-activity {
+    background: #12121a;
+    border: 1px solid #222;
+    border-radius: 10px;
+    padding: 15px;
+    flex: 1 1 250px;
+    min-height: 180px;
+    color: #fff;
+    font-family: 'Roboto', sans-serif;
+    box-shadow: 0 0 10px rgba(0,0,0,0.5);
+}
+
 /* UTILS */
 .hidden {
     display: none !important;
-}
-
-.screen.active .spinner {
-    width: 20px;
-    height: 20px;
-    border: 2px solid rgba(0, 242, 255, 0.1);
-    border-top: 2px solid var(--cyan);
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-    margin: 10px auto;
-}
-
-@keyframes spin {
-    0% {
-        transform: rotate(0deg);
-    }
-
-    100% {
-        transform: rotate(360deg);
-    }
 }
 
 /* --- TERMINAL NEWS BOX --- */
@@ -437,6 +586,6 @@ body {
     border-radius: 10px;
 }
 
-    ::-webkit-scrollbar-thumb:hover {
-        background: var(--cyan);
-    }
+::-webkit-scrollbar-thumb:hover {
+    background: var(--cyan);
+}
