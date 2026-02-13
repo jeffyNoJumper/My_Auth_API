@@ -9,19 +9,26 @@ window.onload = () => {
         if (progress > 100) progress = 100;
         bar.style.width = progress + '%';
 
-        if (progress > 30) status.innerText = "Establishing secure API connection...";
-        if (progress > 60) status.innerText = "Verifying system integrity...";
-        if (progress > 90) status.innerText = "Bypassing Anti-Cheat Hooks...";
+        // staged status updates
+        if (progress <= 20) {
+            status.innerText = "Loading secure environment...";
+        } else if (progress <= 60) {
+            status.innerText = "Establishing secure API connection...";
+        } else if (progress <= 90) {
+            status.innerText = "Verifying system integrity...";
+        } else {
+            status.innerText = "Bypassing Anti-Cheat Hooks...";
+        }
 
         if (progress >= 100) {
             clearInterval(interval);
             setTimeout(() => {
                 switchScreen('boot-screen', 'login-screen');
-                loadGlobalNews(); // Pre-fetch news while at login
+                loadGlobalNews(); // pre-fetch news while at login
             }, 500);
         }
-    }, 300);
-};
+    }, 600);
+}
 
 // 2. Navigation & News Feed Logic
 function switchScreen(oldId, newId) {
@@ -50,7 +57,6 @@ function typeNews(text) {
 
 async function loadGlobalNews() {
     try {
-        // Fetches from the GitHub Release notes via Electron Main
         const updateInfo = await window.api.getNews();
         if (updateInfo && updateInfo.releaseNotes) {
             typeNews(updateInfo.releaseNotes);
@@ -62,18 +68,53 @@ async function loadGlobalNews() {
     }
 }
 
-// Updated Navigation Logic for 5 Tabs
+
+window.addEventListener('DOMContentLoaded', () => {
+    const userPic = document.getElementById('user-pic');
+    const profileUpload = document.getElementById('profile-upload');
+
+    const savedPic = localStorage.getItem('saved_profile_pic');
+    if (savedPic && userPic) userPic.src = savedPic;
+
+    if (userPic && profileUpload) {
+        userPic.addEventListener('click', () => profileUpload.click());
+
+        profileUpload.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = async (event) => {
+                const base64Image = event.target.result;
+
+                userPic.src = base64Image;
+                localStorage.setItem('saved_profile_pic', base64Image);
+
+                // 2. Sync to MongoDB via API
+                try {
+                    const key = localStorage.getItem('license_key');
+                    await fetch('https://sk-auth-api.up.railway.app', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ license_key: key, profile_pic: base64Image })
+                    });
+                } catch (err) {
+                    console.error("Failed to sync profile pic to DB");
+                }
+            };
+            reader.readAsDataURL(file);
+        });
+    }
+});
+
+
 function showTab(tabName) {
-    // 1. Reset all buttons
     document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
-    // 2. Hide all content areas
     document.querySelectorAll('.tab-content').forEach(tab => {
         tab.classList.remove('active');
-        // Ensure display is toggled if your CSS doesn't handle .active visibility
         tab.style.display = 'none';
     });
 
-    // 3. Activate the chosen button and tab
     const selectedBtn = document.getElementById('btn-' + tabName);
     const selectedTab = document.getElementById(tabName + '-tab');
 
@@ -83,30 +124,19 @@ function showTab(tabName) {
         selectedTab.style.display = 'block';
     }
 
-    // 4. Tab-Specific Logic
     if (tabName === 'settings') loadGlobalNews();
     if (tabName === 'hwid') refreshHWIDDisplay();
 }
 
-// New helper for the HWID tab
 async function refreshHWIDDisplay() {
     try {
         const hwid = await window.api.getMachineIdentifier();
-        // Assuming your HTML spans have these IDs
         if (document.getElementById('disk-id')) {
             document.getElementById('disk-id').innerText = hwid.substring(0, 15) + "...";
         }
     } catch (err) {
         console.error("Could not fetch HWID for display");
     }
-}
-
-// 6. Injection (Updated for alert styling)
-async function launchGame(gameName) {
-    // Optional: Add a loading state to the card here
-    const res = await window.api.launchCheat(gameName);
-    // Use a clean console log or a custom toast instead of alert for "game-like" feel
-    console.log(`[SYSTEM] ${res.message}`);
 }
 
 // 3. Authentication
@@ -132,8 +162,16 @@ async function handleLogin() {
 
         if (data.token) {
             localStorage.setItem('license_key', key);
-            document.getElementById('user-pic').src = data.profile_pic;
+            if (data.profile_pic) {
+                localStorage.setItem('saved_profile_pic', data.profile_pic);
+            }
+
+            // 2. Update UI
+            const userPic = document.getElementById('user-pic');
+            if (userPic) userPic.src = data.profile_pic || 'imgs/default-profil.png';
+            
             document.getElementById('user-expiry').innerText = "EXP: " + new Date(data.expiry).toLocaleDateString();
+            
             switchScreen('login-screen', 'main-dashboard');
         } else {
             alert("Login Failed: " + data.error);
@@ -146,6 +184,27 @@ async function handleLogin() {
         btn.disabled = false;
     }
 }
+
+window.addEventListener('DOMContentLoaded', async () => {
+    const licenseInput = document.getElementById('license-key');
+    const userPic = document.getElementById('user-pic');
+    
+    // Retrieve saved data
+    const savedKey = localStorage.getItem('license_key');
+    const savedPic = localStorage.getItem('saved_profile_pic');
+
+    // Auto-fill the license key if it exists
+    if (savedKey && licenseInput) {
+        licenseInput.value = savedKey;
+    }
+
+    if (savedPic && userPic) {
+        userPic.src = savedPic;
+    } else if (userPic) {
+        userPic.src = 'imgs/default-profil.png';
+    }
+});
+
 
 // 4. Spoofer & HWID Reset (Corrected Endpoints)
 async function startSpoofing() {
@@ -206,10 +265,36 @@ window.api.onUpdateAvailable((data) => {
     }
 });
 
+const status = document.getElementById("user-status");
+function setStatus(state) {
+    status.classList.remove(
+        "status-online",
+        "status-offline",
+        "status-expired"
+    );
+    status.classList.add(`status-${state}`);
+}
+
+async function checkServer() {
+    try {
+        const res = await fetch("/api/health");
+        if (res.ok) {
+            setStatus("online");
+        } else {
+            setStatus("offline");
+        }
+    } catch {
+        setStatus("offline");
+    }
+}
+
+checkServer();
+
+
+
 async function startUpdateDownload() {
     document.getElementById('update-btn').disabled = true;
     document.getElementById('update-status').innerText = "Starting download...";
-    // Trigger the actual download in Main.js
     await window.api.startUpdateDownload();
 }
 
@@ -222,6 +307,32 @@ window.api.onDownloadProgress((percent) => {
 window.api.onUpdateReady(() => {
     document.getElementById('update-status').innerText = "Success! Relaunching in 3 seconds...";
     document.getElementById('update-status').style.color = "#00ff88";
+});
+
+document.addEventListener("DOMContentLoaded", () => {
+    const cards = document.querySelectorAll(".game-card");
+
+    cards.forEach(card => {
+        const imgElement = card.querySelector(".card-img");
+        const images = card.dataset.images.split(",");
+        let index = 0;
+
+        // Set initial image
+        imgElement.src = images[index];
+
+        // Rotate every 3 seconds
+        setInterval(() => {
+            index = (index + 1) % images.length;
+
+            imgElement.style.opacity = 0;
+
+            setTimeout(() => {
+                imgElement.src = images[index];
+                imgElement.style.opacity = 1;
+            }, 200);
+
+        }, 3000);
+    });
 });
 
 // 6. Injection
