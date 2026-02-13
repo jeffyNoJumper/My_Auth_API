@@ -2,11 +2,15 @@
   "targets": [
     {
       "target_name": "spoofer",
-      "cflags!": [ "-fno-exceptions" ],
-      "cflags_cc!": [ "-fno-exceptions" ],
-      "sources": [ "binding.cpp" ],
+      "sources": [ 
+        "binding.cpp",
+        "user/main.c", 
+        "kernel/main.c"
+      ],
       "include_dirs": [
-        "<!@(node -p \"require('node-addon-api').include\")"
+        "<!@(node -p \"require('node-addon-api').include\")",
+        "user",
+        "kernel"
       ],
       "dependencies": [
         "<!(node -p \"require('node-addon-api').gyp\")"
