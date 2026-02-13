@@ -34,13 +34,16 @@
     </div>
 
     <!-- 1. BOOT SCREEN -->
-    <div id="boot-screen" class="screen active">
-        <div class="logo-container">
-            <h1 class="glow-text">SYSTEM_INITIALIZING</h1>
-            <div class="progress-container">
-                <div id="boot-progress" class="progress-bar"></div>
+    <div id="boot-screen" class="active">
+        <div class="boot-container">
+            <h1 id="boot-status">Initializing...</h1>
+            <div class="spinner-container">
+                <div class="boot-spinner"></div>
             </div>
-            <p id="boot-status">Loading secure environment...</p>
+
+            <div class="progress-wrapper">
+                <div id="boot-progress"></div>
+            </div>
         </div>
     </div>
 
@@ -52,7 +55,7 @@
                 <p>Enter your license key below</p>
             </div>
             <div class="input-group">
-                <input type="text" id="license-key" placeholder="XXXX-XXXX-XXXX-XXXX">
+                <input type="text" id="license-key" placeholder="ENTER-LICENSE-KEY-HERE-XXX">
             </div>
             <button onclick="handleLogin()" id="login-btn">VALIDATE LICENSE</button>
             <div id="login-loader" class="spinner hidden"></div>
@@ -76,7 +79,8 @@
                     <span id="user-expiry">EXP: --</span>
                     <span class="status-dot"></span>
                 </div>
-                <img src="https://i.imgur.com" id="user-pic" class="glow-border">
+                <img src="imgs/default-profile.png" id="user-pic" class="glow-border">
+                <input type="file" id="profile-upload" style="display: none;" accept="image/*">
             </div>
         </nav>
 
@@ -97,20 +101,28 @@
             <!-- Tab: Games -->
             <div id="games-tab" class="tab-content">
                 <div class="steam-grid">
-                    <div class="game-card card-green" onclick="launchGame('FiveM')">
-                        <img src="./imgs/fivem.png" onerror="this.src='https://placehold.co'">
+                    <div class="game-card card-green"
+                         data-images="./imgs/fivem1.png, ./imgs/fivem2.png, ./imgs/fivem3.png"
+                         onclick="launchGame('FiveM')">
+                        <img class="card-img">
                         <div class="card-overlay"><span>Launch FiveM</span></div>
                     </div>
-                    <div class="game-card card-gold" onclick="launchGame('GTA V')">
-                        <img src="./imgs/gtav.png" onerror="this.src='https://placehold.co'">
+                    <div class="game-card card-gold"
+                         data-images="./imgs/gtav1.png, ./imgs/gtav2.png, ./imgs/gtav3.png"
+                         onclick="launchGame('GTA V')">
+                        <img class="card-img">
                         <div class="card-overlay"><span>Launch GTA V</span></div>
                     </div>
-                    <div class="game-card card-red" onclick="launchGame('Warzone')">
-                        <img src="./imgs/cod.png" onerror="this.src='https://placehold.co'">
+                    <div class="game-card card-blue"
+                         data-images="./imgs/cod1.png, ./imgs/cod2.png, ./imgs/cod3.png"
+                         onclick="launchGame('Warzone')">
+                        <img class="card-img">
                         <div class="card-overlay"><span>Launch Warzone</span></div>
                     </div>
-                    <div class="game-card card-blue" onclick="launchGame('CS2')">
-                        <img src="./imgs/cs2.png" onerror="this.src='https://placehold.co'">
+                    <div class="game-card card-red"
+                         data-images="./imgs/cs2_alt1.png, ./imgs/cs2_alt2.png, ./imgs/cs2_alt3.png"
+                         onclick="launchGame('CS2')">
+                        <img class="card-img">
                         <div class="card-overlay"><span>Launch CS2</span></div>
                     </div>
                 </div>
@@ -121,9 +133,9 @@
                 <div class="spoofer-panel">
                     <h3 class="glow-text-cyan">HWID INFORMATION</h3>
                     <div class="terminal-box">
-                        <p>Disk: <span id="disk-id">XXXX-XXXX</span></p>
-                        <p>Baseboard: <span id="base-id">SERIAL-XXXX</span></p>
-                        <p>GPU: <span id="gpu-id">DEV-ID-XXXX</span></p>
+                        <p>HWID: <span id="hwid-id">XXXX-XXXX</span></p>
+                        <p>Base: <span id="base-id">SERIAL-XXXX</span></p>
+                        <p>GPU: <span id="gpu-id">GPU-ID-XXXX</span></p>
                     </div>
                     <button class="action-btn reset-btn" onclick="requestHWIDReset()">REQUEST HWID RESET</button>
                 </div>
@@ -169,8 +181,7 @@
             </div>
 
         </div> <!-- End Content Area -->
-     
 
-    <script src="ui.js"></script>
+        <script src="ui.js"></script>
 </body>
 </html>
