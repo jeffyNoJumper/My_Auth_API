@@ -1,34 +1,68 @@
 // 1. Boot Screen Logic
 window.onload = () => {
     let progress = 0;
+    const bootScreen = document.getElementById('boot-screen');
     const bar = document.getElementById('boot-progress');
     const status = document.getElementById('boot-status');
 
-    const interval = setInterval(() => {
-        progress += Math.random() * 12;
-        if (progress > 100) progress = 100;
-        bar.style.width = progress + '%';
+    // Ensure boot screen starts visible and centered
+    if (bootScreen) {
+        bootScreen.style.display = 'flex';
+        bootScreen.style.opacity = '1';
+        bootScreen.style.zIndex = '10002'; // Sit on top of everything while loading
+    } else {
+        // If there's no boot screen, just skip to login
+        switchScreen('boot-screen', 'login-screen');
+        return;
+    }
 
-        // staged status updates
-        if (progress <= 20) {
-            status.innerText = "Loading secure environment...";
-        } else if (progress <= 60) {
-            status.innerText = "Establishing secure API connection...";
-        } else if (progress <= 90) {
-            status.innerText = "Verifying system integrity...";
-        } else {
-            status.innerText = "Bypassing Anti-Cheat Hooks...";
+    const interval = setInterval(() => {
+        progress += Math.random() * 12; 
+        if (progress > 100) progress = 100;
+        if (bar) bar.style.width = progress + '%';
+
+        if (status) {
+            if (progress <= 20) status.innerText = "Loading secure environment...";
+            else if (progress <= 60) status.innerText = "Establishing secure API connection...";
+            else if (progress <= 90) status.innerText = "Verifying system integrity...";
+            else status.innerText = "Bypassing Anti-Cheat Hooks...";
         }
 
         if (progress >= 100) {
             clearInterval(interval);
+            
+            // 1. Start Fade Out
+            if (bootScreen) {
+                bootScreen.style.opacity = '0';
+                bootScreen.style.pointerEvents = 'none'; 
+                bootScreen.style.transition = 'opacity 0.5s ease, visibility 0.5s';
+            }
+
+            // 2. Wait for fade (500ms) then switch screens
             setTimeout(() => {
                 switchScreen('boot-screen', 'login-screen');
-                loadGlobalNews(); // pre-fetch news while at login
+                
+                // 3. COMPLETE REMOVAL
+                if (bootScreen) {
+                    bootScreen.style.display = 'none'; 
+                    bootScreen.style.visibility = 'hidden'; 
+                    bootScreen.style.zIndex = '-1'; 
+                    bootScreen.innerHTML = ''; 
+                }
+                
+                // 4. Force the Login/Main screens to be interactive and visible
+                const loginScreen = document.getElementById('login-screen');
+                if (loginScreen) {
+                    loginScreen.style.zIndex = '2';
+                    loginScreen.style.opacity = '1';
+                }
+                
+                loadGlobalNews(); 
             }, 500);
         }
     }, 600);
-}
+}; 
+
 
 // 2. Navigation & News Feed Logic
 function switchScreen(oldId, newId) {
@@ -57,6 +91,7 @@ function typeNews(text) {
 
 async function loadGlobalNews() {
     try {
+        // Fetches from the GitHub Release notes via Electron Main
         const updateInfo = await window.api.getNews();
         if (updateInfo && updateInfo.releaseNotes) {
             typeNews(updateInfo.releaseNotes);
@@ -73,6 +108,7 @@ window.addEventListener('DOMContentLoaded', () => {
     const userPic = document.getElementById('user-pic');
     const profileUpload = document.getElementById('profile-upload');
 
+    // On Load: Use the key from localStorage to "remember" them
     const savedPic = localStorage.getItem('saved_profile_pic');
     if (savedPic && userPic) userPic.src = savedPic;
 
@@ -86,11 +122,12 @@ window.addEventListener('DOMContentLoaded', () => {
             const reader = new FileReader();
             reader.onload = async (event) => {
                 const base64Image = event.target.result;
-
+                
+                // 1. Update UI immediately
                 userPic.src = base64Image;
                 localStorage.setItem('saved_profile_pic', base64Image);
 
-                // 2. Sync to MongoDB via API
+                // 2. Sync to MongoDB via your API
                 try {
                     const key = localStorage.getItem('license_key');
                     await fetch('https://sk-auth-api.up.railway.app', {
@@ -108,13 +145,20 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 
+
+
+// Updated Navigation Logic for 5 Tabs
 function showTab(tabName) {
+    // 1. Reset all buttons
     document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+    // 2. Hide all content areas
     document.querySelectorAll('.tab-content').forEach(tab => {
         tab.classList.remove('active');
+        // Ensure display is toggled if your CSS doesn't handle .active visibility
         tab.style.display = 'none';
     });
 
+    // 3. Activate the chosen button and tab
     const selectedBtn = document.getElementById('btn-' + tabName);
     const selectedTab = document.getElementById(tabName + '-tab');
 
@@ -124,13 +168,16 @@ function showTab(tabName) {
         selectedTab.style.display = 'block';
     }
 
+    // 4. Tab-Specific Logic
     if (tabName === 'settings') loadGlobalNews();
     if (tabName === 'hwid') refreshHWIDDisplay();
 }
 
+// New helper for the HWID tab
 async function refreshHWIDDisplay() {
     try {
         const hwid = await window.api.getMachineIdentifier();
+        // Assuming your HTML spans have these IDs
         if (document.getElementById('disk-id')) {
             document.getElementById('disk-id').innerText = hwid.substring(0, 15) + "...";
         }
@@ -161,6 +208,7 @@ async function handleLogin() {
         const data = await response.json();
 
         if (data.token) {
+            // 1. Save credentials and profile to LocalStorage
             localStorage.setItem('license_key', key);
             if (data.profile_pic) {
                 localStorage.setItem('saved_profile_pic', data.profile_pic);
@@ -168,7 +216,7 @@ async function handleLogin() {
 
             // 2. Update UI
             const userPic = document.getElementById('user-pic');
-            if (userPic) userPic.src = data.profile_pic || 'imgs/default-profil.png';
+            if (userPic) userPic.src = data.profile_pic || 'imgs/default-profile.png';
             
             document.getElementById('user-expiry').innerText = "EXP: " + new Date(data.expiry).toLocaleDateString();
             
@@ -185,6 +233,7 @@ async function handleLogin() {
     }
 }
 
+// 4. Persistence Logic (Runs on Startup)
 window.addEventListener('DOMContentLoaded', async () => {
     const licenseInput = document.getElementById('license-key');
     const userPic = document.getElementById('user-pic');
@@ -198,10 +247,11 @@ window.addEventListener('DOMContentLoaded', async () => {
         licenseInput.value = savedKey;
     }
 
+    // Pre-load the profile picture so it's not black
     if (savedPic && userPic) {
         userPic.src = savedPic;
     } else if (userPic) {
-        userPic.src = 'imgs/default-profil.png';
+        userPic.src = 'imgs/default-profile.png';
     }
 });
 
@@ -295,6 +345,7 @@ checkServer();
 async function startUpdateDownload() {
     document.getElementById('update-btn').disabled = true;
     document.getElementById('update-status').innerText = "Starting download...";
+    // Trigger the actual download in Main.js
     await window.api.startUpdateDownload();
 }
 
@@ -334,6 +385,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }, 3000);
     });
 });
+
 
 // 6. Injection
 async function launchGame(gameName) {
