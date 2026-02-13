@@ -12,7 +12,7 @@ app.setAppUserModelId("com.sk.allinone");
 // --- 1. WINDOW SETUP ---
 function createWindow() {
     mainWindow = new BrowserWindow({
-        width: 850,
+        width: 820,
         height: 700,
         frame: false,
         resizable: false,
@@ -35,7 +35,6 @@ function createWindow() {
 }
 
 // --- 2. IPC HANDLERS ---
-
 ipcMain.on('window-close', () => {
     app.quit();
 });
@@ -57,10 +56,9 @@ ipcMain.handle('get-hwid', async () => {
 // Run Spoofer logic
 ipcMain.handle('start-spoof', async () => {
     console.log("[MAIN] Calling C++ Spoofer...");
-    return spoofer.runSpoofer(); // Returns {disk: true, guid: true, mac: true}
+    return spoofer.runSpoofer();
 });
 
-// Launch/Injection Logic
 ipcMain.handle('launch-game', async (event, gameName) => {
     console.log(`[MAIN] Initializing Injection for: ${gameName}`);
 
@@ -77,7 +75,6 @@ ipcMain.handle('launch-game', async (event, gameName) => {
 
 // --- 3. AUTO-UPDATER & NEWS LOGIC ---
 
-// 3a. Checking for Updates
 autoUpdater.autoDownload = false; // We want to show a "Update Available" message first
 
 autoUpdater.on('update-available', (info) => {
