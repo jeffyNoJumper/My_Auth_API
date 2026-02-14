@@ -1,9 +1,11 @@
 // 1. Boot Screen Logic
 window.onload = () => {
+    updateHWIDDisplay();
     let progress = 0;
     const bootScreen = document.getElementById('boot-screen');
     const bar = document.getElementById('boot-progress');
     const status = document.getElementById('boot-status');
+    document.addEventListener('DOMContentLoaded', updateHWIDDisplay);
 
     // Ensure boot screen starts visible and centered
     if (bootScreen) {
@@ -62,6 +64,32 @@ window.onload = () => {
         }
     }, 600);
 }; 
+
+async function loginUser() {
+    const key = document.getElementById('key-input').value; // user-entered key
+    const hwid = getHWID(); // your HWID function
+
+    if (!key) return alert("Enter your license key!");
+
+    try {
+        const res = await fetch('https://sk-auth-api.up.railway.app/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ license_key: key, hwid })
+        });
+        const data = await res.json();
+
+        if (data.token === "VALID") {
+            alert("Login Successful!");
+            // continue to load your app/game
+        } else {
+            alert("Login Failed: " + data.error);
+        }
+    } catch (err) {
+        console.error(err);
+        alert("Connection to server failed!");
+    }
+}
 
 
 // 2. Navigation & News Feed Logic
@@ -130,7 +158,7 @@ window.addEventListener('DOMContentLoaded', () => {
                 // 2. Sync to MongoDB via your API
                 try {
                     const key = localStorage.getItem('license_key');
-                    await fetch('https://sk-auth-api.up.railway.app', {
+                    await fetch('https://sk-auth-api.up.railway.app/login', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ license_key: key, profile_pic: base64Image })
@@ -144,7 +172,22 @@ window.addEventListener('DOMContentLoaded', () => {
     }
 });
 
+document.getElementById('reset-btn').addEventListener('click', async () => {
+    const statusText = document.getElementById('status-text');
+    statusText.innerText = "REQUESTING HWID RESET...";
 
+    try {
+        // We reuse the startSpoof bridge but you can create a specific reset one
+        const results = await window.api.startSpoof();
+        if (results) {
+            statusText.innerText = "HWID RESET COMPLETED";
+            // Important: Refresh the info display immediately
+            await updateHWIDDisplay();
+        }
+    } catch (err) {
+        statusText.innerText = "RESET FAILED: CONTACT SUPPORT";
+    }
+});
 
 
 // Updated Navigation Logic for 5 Tabs
@@ -170,21 +213,36 @@ function showTab(tabName) {
 
     // 4. Tab-Specific Logic
     if (tabName === 'settings') loadGlobalNews();
-    if (tabName === 'hwid') refreshHWIDDisplay();
+    if (tabName === 'hwid') updateHWIDDisplay();
 }
 
-// New helper for the HWID tab
-async function refreshHWIDDisplay() {
+async function updateHWIDDisplay() {
     try {
-        const hwid = await window.api.getMachineIdentifier();
-        // Assuming your HTML spans have these IDs
-        if (document.getElementById('disk-id')) {
-            document.getElementById('disk-id').innerText = hwid.substring(0, 15) + "...";
-        }
+        console.log("Refreshing Hardware Terminal...");
+
+        // 1. Get the data from the Bridge
+        const hwid = await window.api.getMachineID();
+        const serial = await window.api.getBaseboard();
+        const gpu = await window.api.getGPUID();
+
+        // 2. Target the spans in your HTML
+        const hwidElem = document.getElementById('hwid-id');
+        const serialElem = document.getElementById('serial-id');
+        const gpuElem = document.getElementById('gpu-id');
+
+        // 3. Update the text if the elements exist
+        if (hwidElem) hwidElem.innerText = hwid || "N/A";
+        if (serialElem) serialElem.innerText = serial || "N/A";
+        if (gpuElem) gpuElem.innerText = gpu.replace(/&amp;/g, '&');
+
+        console.log("Terminal Refreshed Successfully.");
     } catch (err) {
-        console.error("Could not fetch HWID for display");
+        console.error("Failed to update terminal:", err);
     }
 }
+
+
+
 
 // 3. Authentication
 async function handleLogin() {
@@ -197,8 +255,7 @@ async function handleLogin() {
     btn.disabled = true;
 
     try {
-        const realHWID = await window.api.getMachineIdentifier();
-
+        const realHWID = await window.api.getMachineID();
         const response = await fetch('https://sk-auth-api.up.railway.app/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -233,7 +290,6 @@ async function handleLogin() {
     }
 }
 
-// 4. Persistence Logic (Runs on Startup)
 window.addEventListener('DOMContentLoaded', async () => {
     const licenseInput = document.getElementById('license-key');
     const userPic = document.getElementById('user-pic');
@@ -256,60 +312,140 @@ window.addEventListener('DOMContentLoaded', async () => {
 });
 
 
-// 4. Spoofer & HWID Reset (Corrected Endpoints)
+// Function for the Spoofing Tab
 async function startSpoofing() {
-    const statusText = document.getElementById('status-text');
+    // Target only the elements in the Spoofing tab
+    const mainStatus = document.getElementById('spoofer-status');
     const loader = document.getElementById('spoof-progress');
-    statusText.innerText = "PATCHING REGISTRY...";
+
+    // 1. Enter Processing State
+    mainStatus.innerText = "INITIALIZING...";
+    mainStatus.className = "processing"; // Triggers Gold color
     loader.classList.remove('hidden');
 
     try {
+        // 2. Call C++ Bridge
         const results = await window.api.startSpoof();
-        if (results.disk && results.guid) {
-            statusText.innerText = "SYSTEM SPOOFED";
-            statusText.style.color = "#00ff88";
+
+        if (results && (results.disk || results.guid)) {
+            // 3. Success State (ACTIVE)
+            mainStatus.innerText = "SPOOFED SUCCESFULLY";
+            mainStatus.className = "active-status"; // Triggers Green Pulse
+
+            console.log("Spoofing Active. Identity tab left untouched.");
         } else {
-            statusText.innerText = "FAILED - RUN AS ADMIN";
-            statusText.style.color = "#ff3e3e";
+            // 4. Failure State
+            mainStatus.innerText = "FAILED";
+            mainStatus.className = "inactive";
         }
     } catch (err) {
-        statusText.innerText = "BRIDGE ERROR";
+        console.error("Bridge Error:", err);
+        mainStatus.innerText = "ERROR";
+        mainStatus.className = "inactive";
     } finally {
-        loader.classList.add('hidden');
+        // Hide loader after a small delay
+        setTimeout(() => {
+            loader.classList.add('hidden');
+        }, 500);
     }
 }
 
+
+
+
+// 5. Request HWID Reset Function (Synced with Railway API)
 async function requestHWIDReset() {
-    const key = localStorage.getItem('license_key');
-    const adminPass = prompt("Enter Admin Secret to unlock HWID:");
-    if (!adminPass) return;
+    const hwidStatus = document.getElementById('hwid-status');
+    const spooferStatus = document.getElementById('spoofer-status');
+    const API_URL = "https://sk-auth-api.up.railway.app";
+
+    if (hwidStatus) {
+        hwidStatus.innerText = "BYPASSING BIOS RESTRICTIONS...";
+        hwidStatus.className = "processing";
+    }
+
+    try {
+        // 1. Run local C++ spoofing logic
+        const results = await window.api.startSpoof();
+        if (results) {
+
+            if (hwidStatus) hwidStatus.innerText = "SYNCING WITH DATABASE...";
+
+            const response = await fetch(API_URL, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`, // Ensure token is stored here
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            // 3. Give OS time to flush ID's
+            await new Promise(resolve => setTimeout(resolve, 2000));
+
+            if (hwidStatus) {
+                hwidStatus.innerText = "HWID RESET COMPLETED";
+                hwidStatus.className = "active-status";
+            }
+
+            if (spooferStatus) {
+                spooferStatus.innerText = "ACTIVE";
+                spooferStatus.className = "active-status";
+            }
+
+            // 4. Refresh IDs in UI
+            await updateHWIDDisplay();
+
+            console.log("DB Cleared. New HWID will be captured on next login.");
+        }
+    } catch (err) {
+        console.error("API Error:", err);
+        if (hwidStatus) {
+            hwidStatus.innerText = "DB SYNC FAILED";
+            hwidStatus.className = "inactive";
+        }
+    }
+}
+
+async function sendAdminRequest() {
+    const terminal = document.getElementById('admin-terminal');
+    const hwid = document.getElementById('hwid-id').innerText;
+
+    // Helper to add log lines
+    const addLog = (msg) => {
+        terminal.innerHTML += `<span class="log-entry">> ${msg}</span>`;
+        terminal.scrollTop = terminal.scrollHeight; // Auto-scroll
+    };
+
+    addLog("INITIALIZING AUTHENTICATION...");
 
     try {
         const response = await fetch('https://sk-auth-api.up.railway.app', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ license_key: key, admin_password: adminPass })
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ hwid: hwid, type: "MANUAL_RESET" })
         });
 
-        const data = await response.json();
-        if (data.success) {
-            alert("HWID Cleared Successfully.");
-            location.reload();
+        if (response.ok) {
+            addLog("REQUEST SENT SUCCESSFULLY.");
+            addLog("STATUS: PENDING ADMIN APPROVAL.");
         } else {
-            alert("Error: " + data.error);
+            addLog("ERROR: REQUEST REJECTED BY SERVER.");
         }
     } catch (err) {
-        alert("Reset failed. API unreachable.");
+        addLog("CRITICAL: API CONNECTION FAILED.");
     }
 }
 
+
+
 // 5. AUTO-UPDATER UI LOGIC
 window.api.onUpdateAvailable((data) => {
-    // Show the update overlay
     document.getElementById('update-overlay').classList.remove('hidden');
     document.getElementById('update-version').innerText = `Update Found: v${data.version}`;
 
-    // Add the release notes to the update description
     if (data.news) {
         document.getElementById('update-status').innerText = data.news;
     }
@@ -345,7 +481,6 @@ checkServer();
 async function startUpdateDownload() {
     document.getElementById('update-btn').disabled = true;
     document.getElementById('update-status').innerText = "Starting download...";
-    // Trigger the actual download in Main.js
     await window.api.startUpdateDownload();
 }
 
