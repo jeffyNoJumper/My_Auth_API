@@ -131,15 +131,33 @@
             <!-- Tab: HWID -->
             <div id="hwid-tab" class="tab-content">
                 <div class="spoofer-panel">
-                    <h3 class="glow-text-cyan">HWID INFORMATION</h3>
-                    <div class="terminal-box">
-                        <p>HWID: <span id="hwid-id">XXXX-XXXX</span></p>
-                        <p>Base: <span id="base-id">SERIAL-XXXX</span></p>
-                        <p>GPU: <span id="gpu-id">GPU-ID-XXXX</span></p>
+                    <h3 class="glow-text-cyan">Hardware Identity</h3>
+                    <div class="hwid-terminal-box">
+                        <p>HWID: <span id="hwid-id" class="code-text">3492387659</span></p>
+                        <p>SERIAL: <span id="serial-id" class="code-text">240639063603906</span></p>
+                        <p>GPU_ID: <span id="gpu-id" class="code-text">PCI\VEN_1002...</span></p>
                     </div>
-                    <button class="action-btn reset-btn" onclick="requestHWIDReset()">REQUEST HWID RESET</button>
+
+                    <button id="reset-btn" class="reset-btn" onclick="requestHWIDReset()">
+                        HWID RESET
+                    </button>
+
+                    <!-- New Admin Section -->
+                    <h3 class="glow-text-cyan" style="margin-top: 30px; color: var(--gold); text-shadow: 0 0 10px rgba(255, 204, 0, 0.4);">Admin Request Panel</h3>
+
+                    <div id="admin-terminal" class="admin-terminal-box">
+                        <span class="log-entry">> SYSTEM_IDLE: WAITING FOR REQUEST...</span>
+                    </div>
+
+                    <button id="admin-request-btn" class="admin-req-btn" onclick="sendAdminRequest()">
+                        REQUEST HWID RESET
+                    </button>
+
+                    <p id="hwid-status" style="font-size: 10px; margin-top: 15px; letter-spacing: 1px; color: #444;"></p>
                 </div>
             </div>
+
+
 
             <!-- Tab: Spoofing -->
             <div id="spoofing-tab" class="tab-content">
@@ -148,10 +166,17 @@
                         <h3 class="glow-text-red">HARDWARE MASKING</h3>
                         <p>Protect your identity before launching any games.</p>
                     </div>
+
+                    <!-- ADD THIS LOADER ELEMENT HERE -->
+                    <div id="spoof-progress" class="hidden">
+                        <div class="spinner"></div>
+                        <p>Processing...</p>
+                    </div>
+
                     <div class="spoofer-status-box">
                         <div class="status-row">
                             <span>Status:</span>
-                            <span id="status-text" class="inactive">NOT ACTIVE</span>
+                            <span id="spoofer-status" class="inactive">NOT ACTIVE</span>
                         </div>
                     </div>
                     <div class="spoofer-controls">
