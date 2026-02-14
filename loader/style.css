@@ -28,7 +28,7 @@ body {
 .title-bar {
     height: 60px;
     display: flex;
-    flex-shrink: 2;
+    flex-shrink: 1;
     justify-content: space-between;
     align-items: center;
     background: #000;
@@ -435,6 +435,138 @@ body {
     }
 }
 
+/* HWID TERMINAL */
+
+/* --- UPGRADED TERMINAL BOX --- */
+.hwid-terminal-box {
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid var(--border-color);
+    border-left: 3px solid var(--cyan); /* Accent bar on the left */
+    padding: 20px;
+    border-radius: 8px;
+    font-family: 'Consolas', monospace;
+    width: 90%;
+    max-width: 600px;
+    margin: 20px auto;
+    position: relative;
+    box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.5);
+    transition: border-color 0.3s ease;
+}
+
+    .terminal-box:hover {
+        border-color: rgba(0, 242, 255, 0.3);
+    }
+
+    .terminal-box p {
+        margin: 12px 0;
+        font-size: 13px;
+        color: #888; /* Dimmer labels */
+        letter-spacing: 1px;
+        display: flex;
+        justify-content: space-between;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+        padding-bottom: 5px;
+    }
+
+.code-text {
+    color: var(--cyan); /* Your specific Cyan variable */
+    text-shadow: 0 0 10px rgba(0, 242, 255, 0.3);
+    font-weight: bold;
+    user-select: all; /* Allows easy triple-click copying */
+}
+
+.spoofer-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    margin-top: 30px;
+}
+
+.glow-text-cyan {
+    color: var(--cyan);
+    font-size: 14px;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    margin-bottom: 20px;
+    text-shadow: 0 0 10px rgba(0, 242, 255, 0.4);
+}
+
+/* Matching your action buttons */
+.reset-btn {
+    margin-top: 10px;
+    background: transparent;
+    border: 1px solid var(--cyan);
+    color: var(--cyan);
+    padding: 12px 30px;
+    font-size: 11px;
+    letter-spacing: 2px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border-radius: 4px;
+}
+
+    .reset-btn:hover {
+        background: var(--cyan);
+        color: #000;
+        box-shadow: 0 0 20px rgba(0, 242, 255, 0.4);
+    }
+
+/* ADMI RESET TERMNINAL */
+/* --- ADMIN REQUEST TERMINAL --- */
+.admin-terminal-box {
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid var(--border-color);
+    border-left: 3px solid var(--gold); /* Gold accent for Admin */
+    padding: 15px;
+    border-radius: 8px;
+    font-family: 'Consolas', monospace;
+    width: 90%;
+    max-width: 600px;
+    height: 100px; /* Fixed height for scrolling logs */
+    margin: 20px auto 10px auto; /* Tight margin for the button below */
+    position: relative;
+    box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.5);
+    overflow-y: auto;
+    text-align: left;
+}
+
+    .admin-terminal-box:hover {
+        border-color: rgba(255, 204, 0, 0.3); /* Gold glow on hover */
+    }
+
+/* Style for individual log lines */
+.log-entry {
+    display: block;
+    font-size: 11px;
+    color: var(--gold);
+    margin-bottom: 5px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+/* Specific button for Admin Request */
+.admin-req-btn {
+    background: transparent;
+    border: 1px solid var(--gold);
+    color: var(--gold);
+    padding: 12px 30px;
+    font-size: 11px;
+    letter-spacing: 2px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border-radius: 4px;
+}
+
+    .admin-req-btn:hover {
+        background: var(--gold);
+        color: #000;
+        box-shadow: 0 0 20px rgba(255, 204, 0, 0.4);
+    }
+
+
 /* --- AUTO-UPDATER OVERLAY --- */
 .overlay {
     position: fixed;
@@ -537,40 +669,73 @@ body {
     margin-top: 30px;
     text-align: center;
     max-width: 500px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
 }
 
 .spoofer-status-box {
-    background: #000;
-    border: 1px solid #111;
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid var(--border-color);
     padding: 20px;
     margin: 20px 0;
+    width: 100%;
+    border-radius: 4px;
+    box-shadow: inset 0 0 15px rgba(0,0,0,0.5);
 }
 
 .status-row {
-    font-size: 14px;
-    letter-spacing: 2px;
+    font-size: 11px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: #555;
 }
 
-#status-text.inactive {
-    color: var(--red);
+/* TARGET THE NEW IDs */
+#spoofer-status, #hwid-status {
+    font-weight: bold;
+    margin-left: 10px;
+    transition: all 0.3s ease;
+}
+
+/* STATE CLASSES (Matching your ui.js logic) */
+.inactive {
+    color: var(--red) !important;
     text-shadow: 0 0 10px var(--red);
 }
 
-#status-text.processing {
-    color: var(--gold);
+.processing {
+    color: var(--gold) !important;
     text-shadow: 0 0 10px var(--gold);
 }
 
-#status-text.active-status {
-    color: var(--green);
-    text-shadow: 0 0 10px var(--green);
+.spoof-btn:disabled {
+    border-color: #222;
+    color: #444;
+    cursor: not-allowed;
+    box-shadow: none;
 }
 
-.spoofer-controls {
-    display: flex;
-    gap: 15px;
-    justify-content: center;
+.active-status {
+    color: var(--green) !important;
+    text-shadow: 0 0 15px var(--green);
+    animation: status-pulse 2s infinite; /* Pulsing effect for 'ACTIVE' */
 }
+
+@keyframes status-pulse {
+    0% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.6;
+    }
+
+    100% {
+        opacity: 1;
+    }
+}
+
 
 /* --- SCROLLBAR --- */
 ::-webkit-scrollbar {
@@ -586,6 +751,6 @@ body {
     border-radius: 10px;
 }
 
-::-webkit-scrollbar-thumb:hover {
-    background: var(--cyan);
-}
+    ::-webkit-scrollbar-thumb:hover {
+        background: var(--cyan);
+    }
