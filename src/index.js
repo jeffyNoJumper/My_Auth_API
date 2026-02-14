@@ -90,36 +90,68 @@ app.post('/admin/reset-hwid', verifyAdmin, async (req, res) => {
     }
 });
 
-// --- 5. DYNAMIC ACTIONS (Pause, Unpause, Ban, Delete) ---
-// Note: Changed :action-key to :action to match your UI's fetch calls
-app.post('/admin/:action-key', verifyAdmin, async (req, res) => {
+// --- ADMIN: UNIFIED MANAGEMENT (Place this ABOVE your login route) ---
+app.post('/admin/:action', verifyAdmin, async (req, res) => {
     try {
         const { license_key } = req.body;
-        let action = req.params.action;
+        const action = req.params.action; // e.g., "get-key", "pause-key", "reset-hwid"
 
-        // This removes "-key" from the URL if your UI sends /admin/pause-key
-        action = action.replace('-key', '');
+        let user = null;
+        if (license_key) {
+            user = await User.findOne({ license_key: license_key.toUpperCase() });
+        }
 
-        const user = await User.findOne({ license_key: license_key.toUpperCase() });
-        if (!user && action !== 'delete') {
-            return res.status(404).json({ error: "Key not found" });
+        // 1. Check if user exists (unless we are deleting or loading all keys)
+        if (!user && !['delete-key', 'load-keys'].includes(action)) {
+            return res.status(404).json({ success: false, error: "Key not found" });
         }
 
         switch (action) {
-            case 'pause': user.is_paused = true; break;
-            case 'unpause': user.is_paused = false; break;
-            case 'ban': user.is_banned = true; break;
-            case 'delete':
+            case 'load-keys':
+                const keys = await User.find({}, 'license_key expiry_date is_banned is_paused games');
+                return res.json({ success: true, keys });
+
+            case 'get-key':
+                return res.json({
+                    success: true,
+                    is_banned: user.is_banned || false,
+                    is_paused: user.is_paused || false,
+                    hwid: user.hwid || null,
+                    expiry: user.expiry_date,
+                    games: user.games || []
+                });
+
+            case 'reset-hwid':
+                user.hwid = null;
+                await user.save();
+                return res.json({ success: true, message: "HWID reset successfully." });
+
+            case 'pause-key':
+                user.is_paused = true;
+                await user.save();
+                return res.json({ success: true, message: "Key paused successfully." });
+
+            case 'unpause-key':
+                user.is_paused = false;
+                await user.save();
+                return res.json({ success: true, message: "Key unpaused successfully." });
+
+            case 'ban-key':
+                user.is_banned = true;
+                await user.save();
+                return res.json({ success: true, message: "Key banned successfully." });
+
+            case 'delete-key':
                 await User.deleteOne({ license_key: license_key.toUpperCase() });
-                return res.json({ success: true, message: "Key deleted" });
+                return res.json({ success: true, message: "Key deleted successfully." });
+
             default:
-                return res.status(400).json({ error: "Invalid action: " + action });
+                return res.status(400).json({ success: false, error: `Invalid Action: ${action}` });
         }
 
-        await user.save();
-        res.json({ success: true, message: `Key ${action}ed successfully` });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error("Admin Route Error:", err);
+        return res.status(500).json({ success: false, error: "Internal Server Error" });
     }
 });
 
