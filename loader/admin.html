@@ -220,148 +220,202 @@
             </div>
         </div>
 
-        <!-- MANAGE KEY -->
+        <!-- MANAGE KEY SECTION -->
         <div style="margin-top:20px;border-top:1px solid #222;padding-top:15px;">
             <div style="font-size:12px;color:#888;text-align:left;">MANAGE KEY</div>
 
             <input type="text" id="manage-key-input" placeholder="Enter License Key">
 
-            <button onclick="loadKey()">LOAD KEY</button>
+            <!-- RESTORED: LOAD KEY BUTTON -->
+            <button id="load-btn" onclick="loadKey()">LOAD KEY</button>
 
             <div id="manage-info">
-                <div><span style="color:#888;">Status:</span> <span id="manage-status"></span></div>
-                <div><span style="color:#888;">HWID:</span> <span id="manage-hwid"></span></div>
-                <div><span style="color:#888;">Expiry:</span> <span id="manage-expiry"></span></div>
-                <div><span style="color:#888;">Games:</span> <span id="manage-games"></span></div>
+                <div style="margin-top:10px; border-bottom:1px solid #222; padding-bottom:10px; margin-bottom:10px;">
+                    <div><span style="color:#888;">Status:</span> <span id="manage-status"></span></div>
+                    <div><span style="color:#888;">HWID:</span> <span id="manage-hwid" style="font-size: 10px; word-break: break-all;"></span></div>
+                    <div><span style="color:#888;">Expiry:</span> <span id="manage-expiry"></span></div>
+                    <div><span style="color:#888;">Games:</span> <span id="manage-games"></span></div>
+                </div>
 
                 <div style="margin-top:10px;">
-                    <button onclick="pauseKey()">PAUSE</button>
-                    <button onclick="unpauseKey()">UNPAUSE</button>
-                    <button style="background:#ff3e3e;color:white;" onclick="banKey()">BAN</button>
-                    <button style="background:#444;color:white;" onclick="deleteKey()">DELETE</button>
+                    <div style="display: flex; gap: 5px;">
+                        <button onclick="pauseKey()" style="flex: 1;">PAUSE</button>
+                        <button onclick="unpauseKey()" style="flex: 1;">UNPAUSE</button>
+                    </div>
+
+                    <!-- THE NEW RESET BUTTON -->
+                    <button style="background:#00f2ff; color:black; width:100%; margin:5px 0;" onclick="resetHWID()">RESET HWID</button>
+
+                    <div style="display: flex; gap: 5px;">
+                        <button style="background:#ff3e3e; color:white; flex: 1;" onclick="banKey()">BAN</button>
+                        <button style="background:#444; color:white; flex: 1;" onclick="deleteKey()">DELETE</button>
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
 
-    <script>
-        const { ipcRenderer, clipboard } = require('electron');
-        const API = 'https://sk-auth-api.up.railway.app';
 
-        function closeWin() { ipcRenderer.send('admin-close'); }
-        function minWin() { ipcRenderer.send('admin-min'); }
 
-        // GENERATE KEY
-        async function generateKey() {
-            const btn = document.getElementById('gen-btn');
-            const pass = document.getElementById('admin-pass').value;
-            const days = document.getElementById('key-days').value;
-            const game = document.getElementById('key-game').value;
-            const display = document.getElementById('key-display');
-            const keyText = document.getElementById('key-text');
+        <script>
+            const { ipcRenderer, clipboard } = require('electron');
+            const API = 'https://sk-auth-api.up.railway.app';
 
-            if (!pass) return alert("Enter Admin Password!");
+            function closeWin() { ipcRenderer.send('admin-close'); }
+            function minWin() { ipcRenderer.send('admin-min'); }
 
-            btn.disabled = true;
-            btn.innerHTML = '<div class="loader"></div>';
-            display.style.display = 'none';
+            // GENERATE KEY
+            async function generateKey() {
+                const btn = document.getElementById('gen-btn');
+                const pass = document.getElementById('admin-pass').value;
+                const days = document.getElementById('key-days').value;
+                const game = document.getElementById('key-game').value;
+                const display = document.getElementById('key-display');
+                const keyText = document.getElementById('key-text');
 
-            try {
-                const response = await fetch(`${API}/admin/create-key`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        admin_password: pass,
-                        days: parseInt(days),
-                        games: [game]
-                    })
-                });
+                if (!pass) return alert("Enter Admin Password!");
 
-                if (!response.ok && response.status !== 401) throw new Error(`Server returned ${response.status}`);
+                btn.disabled = true;
+                btn.innerHTML = '<div class="loader"></div>';
+                display.style.display = 'none';
 
-                const data = await response.json();
+                try {
+                    const response = await fetch(`${API}/admin/create-key`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            admin_password: pass,
+                            days: parseInt(days),
+                            games: [game]
+                        })
+                    });
 
-                if (data.success) {
-                    display.style.display = 'block';
-                    keyText.innerText = `${game.substring(0, 2).toUpperCase()}-${data.key}`;
-                    document.getElementById('key-days-display').innerText = days == 999 ? "Lifetime" : days + " Day(s)";
-                    document.getElementById('key-expiry').innerText = new Date(data.expires).toLocaleString();
-                    document.getElementById('key-games').innerText = data.games.join(", ");
-                    if (clipboard) clipboard.writeText(data.key);
-                } else {
-                    alert("API Error: " + (data.error || "Access Denied"));
+                    if (!response.ok && response.status !== 401) throw new Error(`Server returned ${response.status}`);
+
+                    const data = await response.json();
+
+                    if (data.success) {
+                        display.style.display = 'block';
+                        keyText.innerText = `${game.substring(0, 2).toUpperCase()}-${data.key}`;
+                        document.getElementById('key-days-display').innerText = days == 999 ? "Lifetime" : days + " Day(s)";
+                        document.getElementById('key-expiry').innerText = new Date(data.expires).toLocaleString();
+                        document.getElementById('key-games').innerText = data.games.join(", ");
+                        if (clipboard) clipboard.writeText(data.key);
+                    } else {
+                        alert("API Error: " + (data.error || "Access Denied"));
+                    }
+                } catch (err) {
+                    console.error(err);
+                    alert("Failed to connect to server.");
+                } finally {
+                    btn.disabled = false;
+                    btn.innerHTML = 'GENERATE KEY';
                 }
-            } catch (err) {
-                console.error(err);
-                alert("Failed to connect to server.");
-            } finally {
-                btn.disabled = false;
-                btn.innerHTML = 'GENERATE KEY';
             }
-        }
 
-        // LOAD KEY
-        async function loadKey() {
-            const key = document.getElementById('manage-key-input').value;
-            const pass = document.getElementById('admin-pass').value;
-            const infoDiv = document.getElementById('manage-info');
+            // LOAD KEY (Matched to your Backend Response)
+            async function loadKey() {
+                const key = document.getElementById('manage-key-input').value;
+                const pass = document.getElementById('admin-pass').value;
+                const infoDiv = document.getElementById('manage-info');
 
-            if (!key || !pass) return alert("Enter Key and Admin Password!");
+                if (!key || !pass) return alert("Enter Key and Admin Password!");
 
-            try {
-                const res = await fetch(`${API}/admin/get-key`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ license_key: key, admin_password: pass })
-                });
-                const data = await res.json();
+                try {
+                    // REMOVED '/api' because your backend route is just '/admin/get-key'
+                    const res = await fetch(`${API}/admin/get-key`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ license_key: key, admin_password: pass })
+                    });
 
-                if (data.success) {
-                    infoDiv.style.display = 'block';
-                    document.getElementById('manage-status').innerText = data.is_banned ? "BANNED" : data.is_paused ? "PAUSED" : "ACTIVE";
-                    document.getElementById('manage-hwid').innerText = data.hwid || "None";
-                    document.getElementById('manage-expiry').innerText = new Date(data.expiry).toLocaleString();
-                    document.getElementById('manage-games').innerText = data.games.join(", ");
-                } else {
-                    alert(data.error || "Failed to load key");
+                    const data = await res.json();
+
+                    if (data.success) {
+                        infoDiv.style.display = 'block';
+
+                        // Matches your backend: user.is_banned, user.is_paused, etc.
+                        document.getElementById('manage-status').innerText = data.is_banned ? "BANNED" : (data.is_paused ? "PAUSED" : "ACTIVE");
+
+                        // Matches your backend: user.hwid
+                        document.getElementById('manage-hwid').innerText = (data.hwid === "null" || !data.hwid) ? "READY FOR CAPTURE" : data.hwid;
+
+                        // Matches your backend: user.expiry_date (sent as 'expiry' in your JSON)
+                        document.getElementById('manage-expiry').innerText = data.expiry ? new Date(data.expiry).toLocaleString() : "N/A";
+
+                        // Matches your backend: user.games
+                        document.getElementById('manage-games').innerText = data.games ? data.games.join(", ") : "None";
+
+                    } else {
+                        alert(data.error || "Failed to load key");
+                    }
+                } catch (err) {
+                    console.error(err);
+                    // This is where you were hitting "Connection Failed"
+                    alert("Connection failed: Check if Railway server is awake and URL is correct.");
                 }
-            } catch (err) {
-                console.error(err);
-                alert("Connection failed");
             }
-        }
 
-        // KEY ACTIONS
-        async function pauseKey() { await modifyKey('pause'); }
-        async function unpauseKey() { await modifyKey('unpause'); }
-        async function banKey() { await modifyKey('ban'); }
-        async function deleteKey() { await modifyKey('delete'); }
+            async function resetHWID() {
+                const key = document.getElementById('manage-key-input').value;
+                const pass = document.getElementById('admin-pass').value;
 
-        async function modifyKey(action) {
-            const key = document.getElementById('manage-key-input').value;
-            const pass = document.getElementById('admin-pass').value;
+                if (!confirm(`Are you sure you want to reset HWID for ${key}?`)) return;
 
-            if (!key || !pass) return alert("Enter Key and Admin Password!");
+                try {
+                    // REMOVED '/api' TO MATCH YOUR OTHER ROUTES
+                    const response = await fetch(`${API}/admin/reset-hwid`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            admin_password: pass,
+                            license_key: key
+                        })
+                    });
 
-            try {
-                const res = await fetch(`${API}/admin/${action}-key`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ license_key: key, admin_password: pass })
-                });
-                const data = await res.json();
-
-                if (data.success) {
-                    alert(`Key ${action.toUpperCase()} successful`);
-                    loadKey(); // refresh info
-                } else {
-                    alert(data.error || `Failed to ${action} key`);
+                    const data = await response.json();
+                    if (data.success) {
+                        alert("HWID Reset Successful!");
+                        loadKey(); // Refresh the info display automatically
+                    } else {
+                        alert("Reset Failed: " + (data.error || data.message || "Unknown Error"));
+                    }
+                } catch (err) {
+                    alert("Error connecting to API. Check console for details.");
+                    console.error(err);
                 }
-            } catch (err) {
-                console.error(err);
-                alert("Connection failed");
             }
-        }
-    </script>
+
+            // KEY ACTIONS
+            async function pauseKey() { await modifyKey('pause'); }
+            async function unpauseKey() { await modifyKey('unpause'); }
+            async function banKey() { await modifyKey('ban'); }
+            async function deleteKey() { await modifyKey('delete'); }
+
+            async function modifyKey(action) {
+                const key = document.getElementById('manage-key-input').value;
+                const pass = document.getElementById('admin-pass').value;
+
+                if (!key || !pass) return alert("Enter Key and Admin Password!");
+
+                try {
+                    const res = await fetch(`${API}/admin/${action}-key`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ license_key: key, admin_password: pass })
+                    });
+                    const data = await res.json();
+
+                    if (data.success) {
+                        alert(`Key ${action.toUpperCase()} successful`);
+                        loadKey(); // refresh info
+                    } else {
+                        alert(data.error || `Failed to ${action} key`);
+                    }
+                } catch (err) {
+                    console.error(err);
+                    alert("Connection failed");
+                }
+            }
+        </script>
 </body>
 </html>
