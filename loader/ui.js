@@ -1,3 +1,5 @@
+const API = 'https://sk-auth-api.up.railway.app';
+
 // 1. Boot Screen Logic
 window.onload = () => {
     updateHWIDDisplay();
@@ -80,6 +82,7 @@ async function loginUser() {
         const data = await res.json();
 
         if (data.token === "VALID") {
+
             alert("Login Successful!");
             // continue to load your app/game
         } else {
@@ -409,36 +412,44 @@ async function requestHWIDReset() {
 async function sendAdminRequest() {
     const terminal = document.getElementById('admin-terminal');
     const hwid = document.getElementById('hwid-id').innerText;
+    const savedKey = localStorage.getItem('license_key'); 
 
-    // Helper to add log lines
     const addLog = (msg) => {
-        terminal.innerHTML += `<span class="log-entry">> ${msg}</span>`;
-        terminal.scrollTop = terminal.scrollHeight; // Auto-scroll
+        terminal.innerHTML += `<span class="log-entry">> ${msg}</span><br>`;
+        terminal.scrollTop = terminal.scrollHeight;
     };
 
-    addLog("INITIALIZING AUTHENTICATION...");
+    if (!savedKey) {
+        return addLog("ERROR: DATA NOT FOUND. PLEASE RE-LOGIN.");
+    }
+
+    addLog("CONNECTING TO AUTH SERVER...");
 
     try {
-        const response = await fetch('https://sk-auth-api.up.railway.app', {
+        const response = await fetch(`${API}/request-hwid-reset`, {
             method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${localStorage.getItem('token')}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ hwid: hwid, type: "MANUAL_RESET" })
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                hwid: hwid,
+                license_key: savedKey,
+                type: "MANUAL_RESET"
+            })
         });
 
-        if (response.ok) {
-            addLog("REQUEST SENT SUCCESSFULLY.");
-            addLog("STATUS: PENDING ADMIN APPROVAL.");
+        if (!response.ok) throw new Error("Server Error");
+
+        const data = await response.json();
+
+        if (data.success) {
+            addLog("REQUEST SENT TO ADMIN.");
+            addLog("STATUS: PENDING APPROVAL.");
         } else {
-            addLog("ERROR: REQUEST REJECTED BY SERVER.");
+            addLog(`FAILED: ${data.error || "REJECTED"}`);
         }
     } catch (err) {
         addLog("CRITICAL: API CONNECTION FAILED.");
     }
 }
-
 
 
 // 5. AUTO-UPDATER UI LOGIC
