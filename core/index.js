@@ -37,7 +37,13 @@ app.post('/admin/create-key', verifyAdmin, async (req, res) => {
         const newKey = `${prefix}-${randomPart}`;
 
         const expiry = new Date();
-        expiry.setDate(expiry.getDate() + (parseInt(days) || 30));
+        if (days < 1) {
+            // For fractional days, treat as hours
+            expiry.setTime(expiry.getTime() + days * 24 * 60 * 60 * 1000);
+        } else {
+            expiry.setDate(expiry.getDate() + Math.floor(days));
+        }
+
 
         const newUser = new User({
             license_key: newKey,
@@ -92,7 +98,7 @@ app.post('/admin/reset-hwid', verifyAdmin, async (req, res) => {
 
 // --- ADMIN: UNIFIED MANAGEMENT ---
 app.post('/admin/:action', verifyAdmin, async (req, res) => {
-    const safeJson = (obj) => res.json(obj); // shorthand to always send JSON
+    const safeJson = (obj) => res.json(obj);
 
     try {
         const { license_key } = req.body;
