@@ -224,31 +224,52 @@
         <div style="margin-top:20px;border-top:1px solid #222;padding-top:15px;">
             <div style="font-size:12px;color:#888;text-align:left;">MANAGE KEY</div>
 
-            <input type="text" id="manage-key-input" placeholder="Enter License Key">
+            <!-- Dropdown -->
+            <select id="manage-key-input">
+                <option value="">-- Select License Key --</option>
+            </select>
 
-            <!-- RESTORED: LOAD KEY BUTTON -->
-            <button id="load-btn" onclick="loadKey()">LOAD KEY</button>
+            <!-- Load All Keys Button -->
+            <button onclick="loadKeysDropdown()" style="background:#444;color:white;">
+                LOAD ALL KEYS
+            </button>
+
+            <!-- Load Selected Key Info -->
+            <button id="load-btn" onclick="loadKey()">
+                LOAD KEY
+            </button>
 
             <div id="manage-info">
                 <div style="margin-top:10px; border-bottom:1px solid #222; padding-bottom:10px; margin-bottom:10px;">
                     <div><span style="color:#888;">Status:</span> <span id="manage-status"></span></div>
-                    <div><span style="color:#888;">HWID:</span> <span id="manage-hwid" style="font-size: 10px; word-break: break-all;"></span></div>
+                    <div>
+                        <span style="color:#888;">HWID:</span>
+                        <span id="manage-hwid" style="font-size:10px; word-break:break-all;"></span>
+                    </div>
                     <div><span style="color:#888;">Expiry:</span> <span id="manage-expiry"></span></div>
                     <div><span style="color:#888;">Games:</span> <span id="manage-games"></span></div>
                 </div>
 
                 <div style="margin-top:10px;">
-                    <div style="display: flex; gap: 5px;">
-                        <button onclick="pauseKey()" style="flex: 1;">PAUSE</button>
-                        <button onclick="unpauseKey()" style="flex: 1;">UNPAUSE</button>
+                    <div style="display:flex; gap:5px;">
+                        <button onclick="pauseKey()" style="flex:1;">PAUSE</button>
+                        <button onclick="unpauseKey()" style="flex:1;">UNPAUSE</button>
                     </div>
 
-                    <!-- THE NEW RESET BUTTON -->
-                    <button style="background:#00f2ff; color:black; width:100%; margin:5px 0;" onclick="resetHWID()">RESET HWID</button>
+                    <button style="background:#00f2ff;color:black;width:100%;margin:5px 0;"
+                            onclick="resetHWID()">
+                        RESET HWID
+                    </button>
 
-                    <div style="display: flex; gap: 5px;">
-                        <button style="background:#ff3e3e; color:white; flex: 1;" onclick="banKey()">BAN</button>
-                        <button style="background:#444; color:white; flex: 1;" onclick="deleteKey()">DELETE</button>
+                    <div style="display:flex; gap:5px;">
+                        <button style="background:#ff3e3e;color:white;flex:1;"
+                                onclick="banKey()">
+                            BAN
+                        </button>
+                        <button style="background:#444;color:white;flex:1;"
+                                onclick="deleteKey()">
+                            DELETE
+                        </button>
                     </div>
                 </div>
             </div>
@@ -414,6 +435,62 @@
                 } catch (err) {
                     console.error(err);
                     alert("Connection failed");
+                }
+            }
+
+            // LOAD ALL KEYS INTO DROPDOWN
+            async function loadKeysDropdown() {
+                const pass = document.getElementById('admin-pass').value;
+                const dropdown = document.getElementById('manage-key-input');
+
+                if (!pass) return alert("Enter Admin Password!");
+
+                dropdown.innerHTML = '<option value="">Loading keys...</option>';
+
+                try {
+                    const res = await fetch(`${API}/admin/load-keys`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json', // force JSON
+                            'Accept': 'application/json'
+                        },
+                        body: JSON.stringify({ admin_password: pass })
+                    });
+
+                    console.log("Fetch status:", res.status);
+
+                    // First check response content-type
+                    const contentType = res.headers.get('content-type');
+                    console.log("Content-Type:", contentType);
+
+                    let data;
+                    try {
+                        data = await res.json(); // use .json() directly
+                    } catch (jsonErr) {
+                        const text = await res.text(); // fallback raw text
+                        console.error("Failed to parse JSON, raw response:", text);
+                        alert("Server returned invalid JSON. Check console.");
+                        dropdown.innerHTML = '<option value="">-- Select License Key --</option>';
+                        return;
+                    }
+
+                    if (data.success && Array.isArray(data.keys)) {
+                        dropdown.innerHTML = '<option value="">-- Select License Key --</option>';
+                        data.keys.forEach(k => {
+                            const option = document.createElement("option");
+                            option.value = k.license_key;
+                            option.textContent = k.license_key;
+                            dropdown.appendChild(option);
+                        });
+                    } else {
+                        dropdown.innerHTML = '<option value="">-- Select License Key --</option>';
+                        alert(data.error || "Failed to load keys");
+                    }
+
+                } catch (err) {
+                    console.error("Fetch error:", err);
+                    alert("Connection failed. Make sure your API is reachable and not asleep.");
+                    dropdown.innerHTML = '<option value="">-- Select License Key --</option>';
                 }
             }
         </script>
