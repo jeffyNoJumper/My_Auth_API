@@ -5,6 +5,7 @@ const User = require('./user');
 const crypto = require('crypto');
 const cors = require('cors');
 
+
 const app = express();
 
 // Middleware
@@ -211,27 +212,29 @@ app.post('/request-hwid-reset', async (req, res) => {
             return res.status(400).json({ success: false, error: "Invalid Request Format" });
         }
 
-        // LOG TO RAILWAY TERMINAL (Check your Railway Dashboard Logs!)
         console.log(`[!] RESET REQUEST | Key: ${license_key} | HWID: ${hwid}`);
 
-        // OPTIONAL: If you don't have a 'Request' model yet, comment out the DB save
-        await Request.create({ hwid, license_key, type, date: new Date() });
+        // 2. Send to Discord (Optional)
+        const DISCORD_WEBHOOK = "YOUR_DISCORD_WEBHOOK_URL";
 
-        res.json({ success: true, message: "Admin notified." });
+        if (DISCORD_WEBHOOK.includes("discord.com")) {
+            await fetch(DISCORD_WEBHOOK, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    content: `📢 **HWID RESET REQUEST**\n**Key:** \`${license_key}\`\n**New HWID:** \`${hwid}\``
+                })
+            });
+        }
+
+        return res.json({ success: true, message: "Admin notified." });
+
     } catch (err) {
         console.error("Server Error:", err);
-        res.status(500).json({ success: false, error: "Internal Server Error" });
+        if (!res.headersSent) {
+            return res.status(500).json({ success: false, error: "Internal Server Error" });
+        }
     }
-
-    await fetch('YOUR_DISCORD_WEBHOOK_URL', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            content: `📢 **HWID RESET REQUEST**\nKey: \`${license_key}\`\nNew HWID: \`${hwid}\``
-        })
-    });
-
-    res.json({ success: true });
 });
 
 
