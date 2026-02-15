@@ -391,6 +391,10 @@
             const infoDiv = document.getElementById('manage-info');
             const dropdown = document.getElementById('manage-key-input');
 
+            // --- ADD THESE TWO LINES ---
+            const requestBox = document.getElementById('pending-request-box');
+            const requestedHwidEl = document.getElementById('requested-hwid');
+
             if (!key || !pass) return alert("Enter Key and Admin Password!");
 
             try {
@@ -405,23 +409,26 @@
                 if (data.success) {
                     infoDiv.style.display = 'block';
 
-                    // Update the Detail Spans
+                    // 1. Update basic info
                     document.getElementById('manage-status').innerText = data.is_banned ? "BANNED" : (data.is_paused ? "PAUSED" : "ACTIVE");
                     document.getElementById('manage-hwid').innerText = (!data.hwid || data.hwid === "null") ? "READY FOR CAPTURE" : data.hwid;
                     document.getElementById('manage-expiry').innerText = data.expiry ? new Date(data.expiry).toLocaleString() : "N/A";
                     document.getElementById('manage-games').innerText = data.games && data.games.length > 0 ? data.games.join(", ") : "None";
 
+                    // 2. Handle the PENDING REQUEST (Gold Box)
                     if (data.pending_request) {
                         requestBox.style.display = 'block';
                         requestedHwidEl.innerText = "REQUESTED HWID: " + data.pending_request.hwid;
-                        // Make the Reset button glow gold to show it's the suggested action
-                        document.querySelector('[onclick="modifyKey(\'reset-hwid\')"]').style.boxShadow = "0 0 15px #ffcc00";
+                        // Highlight the Reset button
+                        const resetBtn = document.querySelector('[onclick*="reset-hwid"]');
+                        if (resetBtn) resetBtn.style.boxShadow = "0 0 15px #ffcc00";
                     } else {
                         requestBox.style.display = 'none';
-                        document.querySelector('[onclick="modifyKey(\'reset-hwid\')"]').style.boxShadow = "none";
+                        const resetBtn = document.querySelector('[onclick*="reset-hwid"]');
+                        if (resetBtn) resetBtn.style.boxShadow = "none";
                     }
 
-                    // Sync the Dropdown Visuals
+                    // 3. Sync Dropdown UI
                     for (let i = 0; i < dropdown.options.length; i++) {
                         if (dropdown.options[i].value === key) {
                             if (data.is_banned) {
@@ -441,6 +448,7 @@
                     alert(data.error || "Failed to load key");
                 }
             } catch (err) {
+                console.error(err);
                 alert("Connection failed: Check Railway Logs.");
             }
         }
