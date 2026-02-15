@@ -1,11 +1,3 @@
-const Request = mongoose.models.Request || mongoose.model('Request', new mongoose.Schema({
-    hwid: String,
-    license_key: String,
-    type: String,
-    status: { type: String, default: "PENDING" },
-    date: { type: Date, default: Date.now }
-}));
-
 require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
@@ -24,6 +16,14 @@ app.use(express.json());
 mongoose.connect(process.env.MONGO_URL)
     .then(() => console.log("✅ Connected to MongoDB"))
     .catch(err => console.error("❌ MongoDB Error:", err));
+
+const Request = mongoose.models.Request || mongoose.model('Request', new mongoose.Schema({
+    hwid: String,
+    license_key: String,
+    type: String,
+    status: { type: String, default: "PENDING" },
+    date: { type: Date, default: Date.now }
+}));
 
 // --- 1. ADMIN MIDDLEWARE ---
 function verifyAdmin(req, res, next) {
