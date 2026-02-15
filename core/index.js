@@ -244,8 +244,6 @@ app.post('/request-hwid-reset', async (req, res) => {
         const upperKey = license_key.toUpperCase();
         console.log(`[!] RESET REQUEST | Key: ${upperKey} | HWID: ${hwid}`);
 
-        // --- 1. SAVE TO DATABASE (THE MISSING PIECE) ---
-        // Using insertOne talks directly to the 'requests' collection in your DB
         await mongoose.connection.collection('requests').insertOne({
             hwid: hwid,
             license_key: upperKey,
