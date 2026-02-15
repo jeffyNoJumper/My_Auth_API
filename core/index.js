@@ -2,7 +2,6 @@ require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const User = require('./user');
-const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const cors = require('cors');
 
@@ -12,37 +11,31 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// MongoDB Connection (Fixed to connect only once)
+// MongoDB Connection
 mongoose.connect(process.env.MONGO_URL)
     .then(() => console.log("✅ Connected to MongoDB"))
-    .catch(err => console.error("MongoDB Connection Error:", err));
+    .catch(err => console.error("❌ MongoDB Error:", err));
 
-app.post('/admin/create-key', async (req, res) => {
+// --- 1. ADMIN MIDDLEWARE ---
+function verifyAdmin(req, res, next) {
+    const { admin_password } = req.body;
+    // Uses ADMIN_SECRET from Railway env
+    if (!admin_password || admin_password !== process.env.ADMIN_SECRET) {
+        return res.status(401).json({ success: false, error: "Unauthorized" });
+    }
+    next();
+}
+
+// --- 2. CREATE KEY ---
+app.post('/admin/create-key', verifyAdmin, async (req, res) => {
     try {
-        const { admin_password, days, games } = req.body;
-
-        if (admin_password !== process.env.ADMIN_SECRET) {
-            console.log("Admin login attempt failed: Wrong Password");
-            return res.status(401).json({ error: "Unauthorized" });
-        }
-
-        // Pick first game for prefix
-        const gamePrefixMap = {
-            "FiveM": "FIVM",
-            "GTAV": "GTAV",
-            "Warzone": "WARZ",
-            "CS2": "CS2X"
-        };
-
+        const { days, games } = req.body;
+        const gamePrefixMap = { "FiveM": "FIVM", "GTAV": "GTAV", "Warzone": "WARZ", "CS2": "CS2X" };
         const firstGame = (games && games.length > 0) ? games[0] : "FiveM";
-        const prefix = gamePrefixMap[firstGame] || "GENR"; // fallback
-
-        // Generate random rest of key
+        const prefix = gamePrefixMap[firstGame] || "GENR";
         const randomPart = crypto.randomBytes(6).toString('hex').toUpperCase().match(/.{4}/g).join('-');
-
         const newKey = `${prefix}-${randomPart}`;
 
-        // Set expiry
         const expiry = new Date();
         expiry.setDate(expiry.getDate() + (parseInt(days) || 30));
 
@@ -50,234 +43,162 @@ app.post('/admin/create-key', async (req, res) => {
             license_key: newKey,
             hwid: null,
             expiry_date: expiry,
-            games: games || ["FiveM", "GTAV", "Warzone", "CS2"],
+            games: games || ["FiveM"],
             profile_pic: "https://i.imgur.com"
         });
 
         await newUser.save();
-        console.log(`[ADMIN] Created Key: ${newKey}`);
         res.json({ success: true, key: newKey, expires: expiry, games: newUser.games });
-
     } catch (err) {
-        console.error("Create Key Error:", err);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ success: false, error: err.message });
     }
 });
 
-// --- ADMIN: MANAGE KEYS (Pause, Unpause, Ban, Delete) ---
-app.post('/admin/:action-key', async (req, res) => {
+// --- 3. GET KEY INFO (MUST BE ABOVE DYNAMIC ROUTES) ---
+app.post('/admin/get-key', verifyAdmin, async (req, res) => {
     try {
-        const { license_key, admin_password } = req.body;
-        const { action } = req.params;
-
-        // 1. Security Check
-        if (admin_password !== process.env.ADMIN_SECRET) {
-            return res.status(401).json({ error: "Unauthorized" });
-        }
-
-        // 2. Find the User
+        const { license_key } = req.body;
         const user = await User.findOne({ license_key: license_key.toUpperCase() });
-        if (!user && action !== 'delete') {
-            return res.status(404).json({ error: "Key not found" });
-        }
+        if (!user) return res.status(404).json({ success: false, error: "Key not found" });
 
-        // 3. Perform Action
-        switch (action) {
-            case 'pause':
-                user.is_paused = true;
-                break;
-            case 'unpause':
-                user.is_paused = false;
-                break;
-            case 'ban':
-                user.is_banned = true;
-                break;
-            case 'delete':
-                await User.deleteOne({ license_key: license_key.toUpperCase() });
-                return res.json({ success: true, message: "Key deleted" });
-            default:
-                return res.status(400).json({ error: "Invalid action" });
-        }
-
-        await user.save();
-        res.json({ success: true, message: `Key ${action}ed successfully` });
-
+        res.json({
+            success: true,
+            is_banned: user.is_banned || false,
+            is_paused: user.is_paused || false,
+            hwid: user.hwid,
+            expiry: user.expiry_date,
+            games: user.games
+        });
     } catch (err) {
-        console.error(`Error during ${req.params.action}:`, err);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ success: false, error: "Internal Server Error" });
     }
 });
 
+// --- 4. HWID RESET ---
+app.post('/admin/reset-hwid', verifyAdmin, async (req, res) => {
+    try {
+        const { license_key } = req.body;
+        const user = await User.findOneAndUpdate(
+            { license_key: license_key.toUpperCase() },
+            { hwid: null },
+            { new: true }
+        );
+        if (!user) return res.status(404).json({ success: false, error: "Key not found" });
+        res.json({ success: true, message: "HWID cleared successfully." });
+    } catch (error) {
+        res.status(500).json({ success: false, error: "Internal Server Error" });
+    }
+});
 
-// --- USER: LOGIN ---
+// --- ADMIN: UNIFIED MANAGEMENT ---
+app.post('/admin/:action', verifyAdmin, async (req, res) => {
+    const safeJson = (obj) => res.json(obj); // shorthand to always send JSON
+
+    try {
+        const { license_key } = req.body;
+        const action = req.params.action.toLowerCase();
+
+        let user = null;
+        if (license_key) {
+            user = await User.findOne({ license_key: license_key.toUpperCase() });
+        }
+
+        // Allow load-keys without a user
+        if (!user && !['delete-key', 'load-keys'].includes(action)) {
+            return safeJson({ success: false, error: "Key not found" });
+        }
+
+        switch (action) {
+
+            case 'load-keys':
+                try {
+                    const keys = await User.find({}, 'license_key expiry_date is_banned is_paused games').lean();
+                    // Lean ensures plain JS objects, safe for JSON
+                    return safeJson({
+                        success: true, keys: keys.map(k => ({
+                            license_key: k.license_key,
+                            expiry: k.expiry_date,
+                            is_banned: k.is_banned || false,
+                            is_paused: k.is_paused || false,
+                            games: k.games || []
+                        }))
+                    });
+                } catch (err) {
+                    console.error("Load keys error:", err);
+                    return safeJson({ success: false, keys: [], error: "Failed to fetch keys" });
+                }
+
+            case 'get-key':
+                return safeJson({
+                    success: true,
+                    is_banned: user.is_banned || false,
+                    is_paused: user.is_paused || false,
+                    hwid: user.hwid || null,
+                    expiry: user.expiry_date,
+                    games: user.games || []
+                });
+
+            case 'reset-hwid':
+                user.hwid = null;
+                await user.save();
+                return safeJson({ success: true, message: "HWID reset successfully." });
+
+            case 'pause-key':
+                user.is_paused = true;
+                await user.save();
+                return safeJson({ success: true, message: "Key paused successfully." });
+
+            case 'unpause-key':
+                user.is_paused = false;
+                await user.save();
+                return safeJson({ success: true, message: "Key unpaused successfully." });
+
+            case 'ban-key':
+                user.is_banned = true;
+                await user.save();
+                return safeJson({ success: true, message: "Key banned successfully." });
+
+            case 'delete-key':
+                await User.deleteOne({ license_key: license_key.toUpperCase() });
+                return safeJson({ success: true, message: "Key deleted successfully." });
+
+            default:
+                return safeJson({ success: false, error: `Invalid Action: ${action}` });
+        }
+
+    } catch (err) {
+        console.error("Admin Route Error:", err);
+        return safeJson({ success: false, error: "Internal Server Error" });
+    }
+});
+
+// --- 6. USER LOGIN ---
 app.post('/login', async (req, res) => {
     try {
         const { license_key, hwid } = req.body;
+        const user = await User.findOne({ license_key: license_key.toUpperCase() });
 
-        const user = await User.findOne({
-            license_key: license_key.toUpperCase()
-        });
+        if (!user) return res.json({ error: "Invalid Key" });
+        if (user.is_banned) return res.json({ error: "Key Banned" });
+        if (user.is_paused) return res.json({ error: "Key Paused" });
+        if (new Date() > user.expiry_date) return res.json({ error: "Key Expired" });
 
-        if (!user)
-            return res.json({ error: "Invalid Key" });
-
-        if (user.is_banned)
-            return res.json({ error: "Key Banned" });
-
-        if (user.is_paused)
-            return res.json({ error: "Key Paused" });
-
-        if (new Date() > user.expiry_date)
-            return res.json({ error: "Key Expired" });
-
-        if (!user.hwid) {
+        if (!user.hwid || user.hwid === "null") {
             user.hwid = hwid;
         } else if (user.hwid !== hwid) {
             return res.json({ error: "HWID Mismatch" });
         }
 
         await user.save();
-
-        res.json({
-            token: "VALID",
-            profile_pic: user.profile_pic,
-            expiry: user.expiry_date
-        });
-
+        res.json({ token: "VALID", profile_pic: user.profile_pic, expiry: user.expiry_date });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
 
-async function loginUser() {
-    const key = document.getElementById('key-input').value; // user-entered key
-    const hwid = getHWID(); // your HWID function
-
-    if (!key) return alert("Enter your license key!");
-
-    try {
-        const res = await fetch('https://sk-auth-api.up.railway.app/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ license_key: key, hwid })
-        });
-        const data = await res.json();
-
-        if (data.token === "VALID") {
-            alert("Login Successful!");
-            // continue to load your app/game
-        } else {
-            alert("Login Failed: " + data.error);
-        }
-    } catch (err) {
-        console.error(err);
-        alert("Connection to server failed!");
-    }
-}
-
-// --- ADMIN: HWID RESET ---
-app.post('/reset-hwid', async (req, res) => {
-    try {
-        const { license_key, admin_password } = req.body;
-
-        if (admin_password !== process.env.ADMIN_SECRET) {
-            return res.status(401).json({ error: "Unauthorized" });
-        }
-
-        const user = await User.findOne({ license_key });
-        if (!user) return res.status(404).json({ error: "Key not found" });
-
-        user.hwid = null;
-        await user.save();
-
-        res.json({ success: true, message: "HWID reset successfully." });
-    } catch (error) {
-        res.status(500).json({ error: "Internal Server Error" });
-    }
-});
-
-app.post('/admin/pause-key', verifyAdmin, async (req, res) => {
-    const { license_key } = req.body;
-
-    await User.updateOne(
-        { license_key: license_key.toUpperCase() },
-        { is_paused: true }
-    );
-
-    res.json({ success: true });
-});
-
-app.post('/admin/unpause-key', verifyAdmin, async (req, res) => {
-    const { license_key } = req.body;
-
-    await User.updateOne(
-        { license_key: license_key.toUpperCase() },
-        { is_paused: false }
-    );
-
-    res.json({ success: true });
-});
-
-app.post('/admin/ban-key', verifyAdmin, async (req, res) => {
-    const { license_key } = req.body;
-
-    await User.updateOne(
-        { license_key: license_key.toUpperCase() },
-        { is_banned: true }
-    );
-
-    res.json({ success: true });
-});
-
-app.post('/admin/delete-key', verifyAdmin, async (req, res) => {
-    const { license_key } = req.body;
-
-    await User.deleteOne({
-        license_key: license_key.toUpperCase()
-    });
-
-    res.json({ success: true });
-});
-
-app.post('/admin/get-key', verifyAdmin, async (req, res) => {
-    try {
-        const { license_key } = req.body;
-        const user = await User.findOne({ license_key: license_key.toUpperCase() });
-        if (!user) return res.status(404).json({ error: "Key not found" });
-
-        res.json({
-            success: true,
-            key: user.license_key,
-            is_banned: user.is_banned,
-            is_paused: user.is_paused || false,
-            hwid: user.hwid,
-            expiry: user.expiry_date,
-            games: user.games,
-        });
-    } catch (err) {
-        console.error("Get Key Error:", err);
-        res.status(500).json({ error: "Internal Server Error" });
-    }
-});
-function verifyAdmin(req, res, next) {
-    const { admin_password } = req.body;
-
-    if (admin_password !== process.env.ADMIN_SECRET) {
-        return res.status(401).json({ error: "Unauthorized" });
-    }
-
-    next();
-}
-
 app.get('/', (req, res) => res.send('API Online & Connected.'));
 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Health Check Active: Listening on port ${PORT}`);
+    console.log(`🚀 API Active on port ${PORT}`);
 });
-
-// DB connection stays at the bottom or top, but doesn't block the listener
-mongoose.connect(process.env.MONGO_URL)
-    .then(() => console.log("✅ Connected to MongoDB"))
-    .catch(err => console.error("❌ MongoDB Error:", err));
-
