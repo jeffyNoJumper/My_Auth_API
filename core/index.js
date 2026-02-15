@@ -1,3 +1,11 @@
+const Request = mongoose.models.Request || mongoose.model('Request', new mongoose.Schema({
+    hwid: String,
+    license_key: String,
+    type: String,
+    status: { type: String, default: "PENDING" },
+    date: { type: Date, default: Date.now }
+}));
+
 require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
@@ -11,7 +19,6 @@ const app = express();
 // Middleware
 app.use(cors());
 app.use(express.json());
-
 
 // MongoDB Connection
 mongoose.connect(process.env.MONGO_URL)
@@ -62,34 +69,20 @@ app.post('/admin/create-key', verifyAdmin, async (req, res) => {
     }
 });
 
-// --- 1. DEFINE MODELS (TOP OF FILE) ---
-// This check prevents "OverwriteModelError" if the server restarts
-const Request = mongoose.models.Request || mongoose.model('Request', new mongoose.Schema({
-    hwid: String,
-    license_key: String,
-    type: String,
-    status: { type: String, default: "PENDING" },
-    date: { type: Date, default: Date.now }
-}));
-
-// --- 2. GET KEY INFO (FIXED 500 ERROR) ---
 app.post('/admin/get-key', verifyAdmin, async (req, res) => {
     try {
         const { license_key } = req.body;
         if (!license_key) return res.status(400).json({ success: false, error: "No key provided" });
 
         const upperKey = license_key.toUpperCase();
-
-        // Find User
         const user = await User.findOne({ license_key: upperKey });
         if (!user) return res.status(404).json({ success: false, error: "Key not found" });
 
-        // Find Request (Safety check for nulls)
         let pendingRequest = null;
         try {
             pendingRequest = await Request.findOne({ license_key: upperKey, status: "PENDING" });
         } catch (dbErr) {
-            console.log("Request DB check failed, continuing without it.");
+            console.log("Request DB check failed.");
         }
 
         res.json({
@@ -99,11 +92,11 @@ app.post('/admin/get-key', verifyAdmin, async (req, res) => {
             hwid: user.hwid,
             expiry: user.expiry_date,
             games: user.games,
-            pending_request: pendingRequest // Correct name for Admin Panel
+            pending_request: pendingRequest
         });
     } catch (err) {
         console.error("CRASH IN GET-KEY:", err.message);
-        res.status(500).json({ success: false, error: "Server Side Crash: " + err.message });
+        res.status(500).json({ success: false, error: "Internal Server Error" });
     }
 });
 
