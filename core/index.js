@@ -241,17 +241,28 @@ app.post('/request-hwid-reset', async (req, res) => {
             return res.status(400).json({ success: false, error: "Invalid Request Format" });
         }
 
-        console.log(`[!] RESET REQUEST | Key: ${license_key} | HWID: ${hwid}`);
+        const upperKey = license_key.toUpperCase();
+        console.log(`[!] RESET REQUEST | Key: ${upperKey} | HWID: ${hwid}`);
 
-        // 2. Send to Discord (Optional)
+        // --- 1. SAVE TO DATABASE (THE MISSING PIECE) ---
+        // Using insertOne talks directly to the 'requests' collection in your DB
+        await mongoose.connection.collection('requests').insertOne({
+            hwid: hwid,
+            license_key: upperKey,
+            type: type,
+            status: "PENDING",
+            date: new Date()
+        });
+        console.log(`[✅] DB SUCCESS: Saved to requests table.`);
+
+        // --- 2. SEND TO DISCORD ---
         const DISCORD_WEBHOOK = "YOUR_DISCORD_WEBHOOK_URL";
-
         if (DISCORD_WEBHOOK.includes("discord.com")) {
             await fetch(DISCORD_WEBHOOK, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    content: `📢 **HWID RESET REQUEST**\n**Key:** \`${license_key}\`\n**New HWID:** \`${hwid}\``
+                    content: `📢 **HWID RESET REQUEST**\n**Key:** \`${upperKey}\`\n**New HWID:** \`${hwid}\``
                 })
             });
         }
@@ -259,7 +270,7 @@ app.post('/request-hwid-reset', async (req, res) => {
         return res.json({ success: true, message: "Admin notified." });
 
     } catch (err) {
-        console.error("Server Error:", err);
+        console.error("[❌] Server/DB Error:", err);
         if (!res.headersSent) {
             return res.status(500).json({ success: false, error: "Internal Server Error" });
         }
