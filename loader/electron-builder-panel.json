@@ -1,7 +1,6 @@
 {
   "appId": "com.sk.adminpanel",
   "productName": "SK-ADMIN-PANEL",
-  "version": "1.0.4",
   "extraMetadata": {
     "main": "panel-main.js"
   },
