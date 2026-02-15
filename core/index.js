@@ -256,7 +256,7 @@ app.post('/request-hwid-reset', async (req, res) => {
         console.log(`[✅] DB SUCCESS: Saved to requests table.`);
 
         // --- 2. SEND TO DISCORD ---
-        const DISCORD_WEBHOOK = "YOUR_DISCORD_WEBHOOK_URL";
+        const DISCORD_WEBHOOK = "https://discord.com/api/webhooks/1425286348767494226/_m59BOeX0TUuX0orLktYwnzObJ8CVtvMFStBU-YyDZJhdI5CXkcLx9QIiYtO9hf0TPH8";
         if (DISCORD_WEBHOOK.includes("discord.com")) {
             await fetch(DISCORD_WEBHOOK, {
                 method: 'POST',
