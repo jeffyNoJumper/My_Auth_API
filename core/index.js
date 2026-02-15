@@ -4,7 +4,6 @@ const mongoose = require('mongoose');
 const User = require('./user');
 const crypto = require('crypto');
 const cors = require('cors');
-const fetch = require('node-fetch');
 
 const app = express();
 
