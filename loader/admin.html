@@ -210,6 +210,31 @@
                 box-shadow: 0 0 15px rgba(255, 204, 0, 0.3);
             }
         }
+
+        #manage-info {
+            position: relative;
+            overflow: visible;
+        }
+
+        /* Notification Badge for the 'LOAD ALL KEYS' button */
+        .req-count {
+            background: var(--gold);
+            color: black;
+            font-size: 9px;
+            padding: 2px 6px;
+            border-radius: 10px;
+            margin-left: 5px;
+            font-weight: bold;
+            display: none; /* Only show when requests > 0 */
+        }
+
+        /* Highlight the Reset HWID button when a request is active */
+        .btn-highlight-gold {
+            background: var(--gold) !important;
+            color: black !important;
+            box-shadow: 0 0 15px rgba(255, 204, 0, 0.4) !important;
+        }
+
     </style>
 </head>
 <body>
@@ -385,13 +410,12 @@
 
 
         async function loadKey() {
-            const key = (document.getElementById('single-key-input').value.trim() ||
-                document.getElementById('manage-key-input').value.trim());
+            const keyInput = document.getElementById('single-key-input').value.trim();
+            const dropdown = document.getElementById('manage-key-input');
+            const key = keyInput || dropdown.value.trim();
+
             const pass = document.getElementById('admin-pass').value.trim();
             const infoDiv = document.getElementById('manage-info');
-            const dropdown = document.getElementById('manage-key-input');
-
-            // --- ADD THESE TWO LINES ---
             const requestBox = document.getElementById('pending-request-box');
             const requestedHwidEl = document.getElementById('requested-hwid');
 
@@ -415,17 +439,26 @@
                     document.getElementById('manage-expiry').innerText = data.expiry ? new Date(data.expiry).toLocaleString() : "N/A";
                     document.getElementById('manage-games').innerText = data.games && data.games.length > 0 ? data.games.join(", ") : "None";
 
-                    // 2. Handle the PENDING REQUEST (Gold Box)
-                    if (data.pending_request) {
+                    const resetBtn = document.querySelector('button[onclick*="reset-hwid"]');
+
+                    if (data.pending_request && data.pending_request.status === "PENDING") {
                         requestBox.style.display = 'block';
                         requestedHwidEl.innerText = "REQUESTED HWID: " + data.pending_request.hwid;
-                        // Highlight the Reset button
-                        const resetBtn = document.querySelector('[onclick*="reset-hwid"]');
-                        if (resetBtn) resetBtn.style.boxShadow = "0 0 15px #ffcc00";
+
+                        if (resetBtn) {
+                            resetBtn.style.background = "var(--gold)";
+                            resetBtn.style.color = "black";
+                            resetBtn.style.boxShadow = "0 0 15px #ffcc00";
+                            resetBtn.innerText = "APPROVE & RESET HWID";
+                        }
                     } else {
                         requestBox.style.display = 'none';
-                        const resetBtn = document.querySelector('[onclick*="reset-hwid"]');
-                        if (resetBtn) resetBtn.style.boxShadow = "none";
+                        if (resetBtn) {
+                            resetBtn.style.background = "#00f2ff";
+                            resetBtn.style.color = "black";
+                            resetBtn.style.boxShadow = "none";
+                            resetBtn.innerText = "RESET HWID";
+                        }
                     }
 
                     // 3. Sync Dropdown UI
@@ -438,7 +471,7 @@
                                 dropdown.options[i].style.color = "#ffcc00";
                                 dropdown.options[i].textContent = `${key} (PAUSED)`;
                             } else {
-                                dropdown.options[i].style.color = "white";
+                                dropdown.options[i].style.color = "#00ff88";
                                 dropdown.options[i].textContent = key;
                             }
                             break;
@@ -448,10 +481,11 @@
                     alert(data.error || "Failed to load key");
                 }
             } catch (err) {
-                console.error(err);
+                console.error("Load Error:", err);
                 alert("Connection failed: Check Railway Logs.");
             }
         }
+
 
 
         async function resetHWID() {
