@@ -166,9 +166,19 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                 });
 
             case 'reset-hwid':
+                // 1. Wipe the user's HWID
                 user.hwid = null;
                 await user.save();
-                return safeJson({ success: true, message: "HWID reset successfully." });
+                try {
+                    await mongoose.connection.collection('requests').deleteMany({
+                        license_key: license_key.toUpperCase()
+                    });
+                    console.log(`[!] Cleared pending requests for: ${license_key}`);
+                } catch (err) {
+                    console.error("Failed to clear request table:", err);
+                }
+
+                return safeJson({ success: true, message: "HWID reset and request cleared." });
 
             case 'pause-key':
                 user.is_paused = true;
