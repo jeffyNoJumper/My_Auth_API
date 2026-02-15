@@ -90,29 +90,46 @@ app.post('/admin/reset-hwid', verifyAdmin, async (req, res) => {
     }
 });
 
-// --- ADMIN: UNIFIED MANAGEMENT (Place this ABOVE your login route) ---
+// --- ADMIN: UNIFIED MANAGEMENT ---
 app.post('/admin/:action', verifyAdmin, async (req, res) => {
+    const safeJson = (obj) => res.json(obj); // shorthand to always send JSON
+
     try {
         const { license_key } = req.body;
-        const action = req.params.action; // e.g., "get-key", "pause-key", "reset-hwid"
+        const action = req.params.action.toLowerCase();
 
         let user = null;
         if (license_key) {
             user = await User.findOne({ license_key: license_key.toUpperCase() });
         }
 
-        // 1. Check if user exists (unless we are deleting or loading all keys)
+        // Allow load-keys without a user
         if (!user && !['delete-key', 'load-keys'].includes(action)) {
-            return res.status(404).json({ success: false, error: "Key not found" });
+            return safeJson({ success: false, error: "Key not found" });
         }
 
         switch (action) {
+
             case 'load-keys':
-                const keys = await User.find({}, 'license_key expiry_date is_banned is_paused games');
-                return res.json({ success: true, keys });
+                try {
+                    const keys = await User.find({}, 'license_key expiry_date is_banned is_paused games').lean();
+                    // Lean ensures plain JS objects, safe for JSON
+                    return safeJson({
+                        success: true, keys: keys.map(k => ({
+                            license_key: k.license_key,
+                            expiry: k.expiry_date,
+                            is_banned: k.is_banned || false,
+                            is_paused: k.is_paused || false,
+                            games: k.games || []
+                        }))
+                    });
+                } catch (err) {
+                    console.error("Load keys error:", err);
+                    return safeJson({ success: false, keys: [], error: "Failed to fetch keys" });
+                }
 
             case 'get-key':
-                return res.json({
+                return safeJson({
                     success: true,
                     is_banned: user.is_banned || false,
                     is_paused: user.is_paused || false,
@@ -124,34 +141,34 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
             case 'reset-hwid':
                 user.hwid = null;
                 await user.save();
-                return res.json({ success: true, message: "HWID reset successfully." });
+                return safeJson({ success: true, message: "HWID reset successfully." });
 
             case 'pause-key':
                 user.is_paused = true;
                 await user.save();
-                return res.json({ success: true, message: "Key paused successfully." });
+                return safeJson({ success: true, message: "Key paused successfully." });
 
             case 'unpause-key':
                 user.is_paused = false;
                 await user.save();
-                return res.json({ success: true, message: "Key unpaused successfully." });
+                return safeJson({ success: true, message: "Key unpaused successfully." });
 
             case 'ban-key':
                 user.is_banned = true;
                 await user.save();
-                return res.json({ success: true, message: "Key banned successfully." });
+                return safeJson({ success: true, message: "Key banned successfully." });
 
             case 'delete-key':
                 await User.deleteOne({ license_key: license_key.toUpperCase() });
-                return res.json({ success: true, message: "Key deleted successfully." });
+                return safeJson({ success: true, message: "Key deleted successfully." });
 
             default:
-                return res.status(400).json({ success: false, error: `Invalid Action: ${action}` });
+                return safeJson({ success: false, error: `Invalid Action: ${action}` });
         }
 
     } catch (err) {
         console.error("Admin Route Error:", err);
-        return res.status(500).json({ success: false, error: "Internal Server Error" });
+        return safeJson({ success: false, error: "Internal Server Error" });
     }
 });
 
