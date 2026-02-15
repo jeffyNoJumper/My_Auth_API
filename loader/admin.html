@@ -5,10 +5,12 @@
     <style>
         :root {
             --accent: #00ff88;
+            --gold: #ffcc00; /* New color for Admin Requests */
             --bg-main: #151515;
             --bg-input: #222;
             --text: #ffffff;
             --text-dim: #888;
+            --red: #ff3e3e;
         }
 
         body {
@@ -19,14 +21,14 @@
             align-items: center;
             height: 100vh;
             margin: 0;
-            overflow: hidden; /* Prevent body scroll */
+            overflow: hidden;
         }
 
         .panel {
             background: var(--bg-main);
-            padding: 25px 25px 20px 25px; /* Balanced padding */
+            padding: 25px 25px 20px 25px;
             border-radius: 12px;
-            width: 420px; /* Wider for better layout */
+            width: 420px;
             max-height: 95vh;
             overflow-y: auto;
             text-align: center;
@@ -36,17 +38,17 @@
             box-shadow: 0 0 15px rgba(0, 255, 136, 0.2);
             animation: glow-pulse 3s infinite ease-in-out;
             box-sizing: border-box;
-            margin-top: 20px; /* Offset for titlebar area */
+            margin-top: 20px;
         }
 
-            /* HIDE SCROLLBARS FOR CHROME/ELECTRON */
+            /* HIDE SCROLLBARS */
             .panel::-webkit-scrollbar {
                 display: none;
             }
 
         .panel {
-            -ms-overflow-style: none; /* IE and Edge */
-            scrollbar-width: none; /* Firefox */
+            -ms-overflow-style: none;
+            scrollbar-width: none;
         }
 
         .titlebar {
@@ -81,7 +83,7 @@
             }
 
         .close-btn:hover {
-            color: #ff3e3e;
+            color: var(--red);
         }
 
         h2 {
@@ -92,20 +94,28 @@
             text-transform: uppercase;
         }
 
-        /* SECTION WRAPPERS */
-        .section {
-            margin-top: 20px;
-            border-top: 1px solid rgba(255,255,255,0.05);
-            padding-top: 15px;
+        /* NEW: PENDING REQUEST STYLING */
+        #pending-request-box {
+            display: none;
+            background: rgba(255, 204, 0, 0.05);
+            border: 1px solid var(--gold);
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 15px;
             text-align: left;
+            animation: glow-pulse-gold 2s infinite ease-in-out;
         }
 
-        .section-label {
+        #requested-hwid {
+            font-family: 'Consolas', monospace;
             font-size: 10px;
-            color: var(--text-dim);
-            letter-spacing: 1px;
-            margin-bottom: 10px;
-            text-transform: uppercase;
+            color: var(--text);
+            background: rgba(0,0,0,0.3);
+            padding: 5px;
+            margin-top: 8px;
+            border-radius: 3px;
+            word-break: break-all;
+            display: block;
         }
 
         input, select {
@@ -137,7 +147,7 @@
             border-radius: 4px;
             transition: 0.3s;
             margin-top: 8px;
-            font-size: 12px;
+            font-size: 11px;
             text-transform: uppercase;
         }
 
@@ -146,37 +156,19 @@
                 box-shadow: 0 0 10px rgba(0, 255, 136, 0.3);
             }
 
-        #key-display {
-            margin-top: 15px;
-            padding: 15px;
-            background: #000;
-            border: 1px dashed var(--accent);
-            color: var(--accent);
-            border-radius: 4px;
-            display: none;
-        }
+            /* CUSTOM RESET BUTTON COLOR */
+            button[onclick*="reset-hwid"] {
+                background: #00f2ff; /* Cyan variant for reset */
+            }
 
         #manage-info {
             margin-top: 10px;
             background: #0a0a0a;
             padding: 15px;
-            border-radius: 4px;
+            border-radius: 8px;
             border: 1px solid #222;
-            display: none;
         }
 
-        .info-row {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 5px;
-            font-size: 12px;
-        }
-
-        .info-label {
-            color: var(--text-dim);
-        }
-
-        /* GRID BUTTONS FOR MANAGE SECTION */
         .btn-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -184,12 +176,8 @@
             margin-top: 10px;
         }
 
-            .btn-grid button {
-                margin: 0;
-            }
-
         .ban-btn {
-            background: #ff3e3e !important;
+            background: var(--red) !important;
             color: white !important;
         }
 
@@ -198,15 +186,28 @@
             color: white !important;
         }
 
+        /* ANIMATIONS */
         @keyframes glow-pulse {
             0%, 100% {
                 border-color: var(--accent);
-                box-shadow: 0 0 10px rgba(0,255,136,0.2);
+                box-shadow: 0 0 10px rgba(0,255,136,0.1);
             }
 
             50% {
                 border-color: #00ffaa;
-                box-shadow: 0 0 20px rgba(0,255,136,0.4);
+                box-shadow: 0 0 20px rgba(0,255,136,0.3);
+            }
+        }
+
+        @keyframes glow-pulse-gold {
+            0%, 100% {
+                border-color: var(--gold);
+                box-shadow: 0 0 5px rgba(255, 204, 0, 0.1);
+            }
+
+            50% {
+                border-color: #ffe600;
+                box-shadow: 0 0 15px rgba(255, 204, 0, 0.3);
             }
         }
     </style>
@@ -276,6 +277,12 @@
             </div>
 
             <div id="manage-info" style="margin-top:10px;">
+                <!-- NEW: REQUEST NOTIFICATION BOX -->
+                <div id="pending-request-box" style="display:none; background: rgba(255, 204, 0, 0.1); border: 1px solid #ffcc00; padding: 10px; border-radius: 4px; margin-bottom: 15px; animation: glow-pulse-gold 2s infinite;">
+                    <div style="color: #ffcc00; font-size: 11px; font-weight: bold; letter-spacing: 1px;">⚠️ PENDING RESET REQUEST</div>
+                    <div id="requested-hwid" style="color: #fff; font-size: 9px; margin-top: 5px; word-break: break-all; opacity: 0.8;"></div>
+                </div>
+
                 <div style="margin-bottom:10px; border-bottom:1px solid #222; padding-bottom:10px;">
                     <div><span style="color:#888;">Status:</span> <span id="manage-status"></span></div>
                     <div>
@@ -398,27 +405,31 @@
                 if (data.success) {
                     infoDiv.style.display = 'block';
 
-                    const statusEl = document.getElementById('manage-status');
-                    const hwidEl = document.getElementById('manage-hwid');
-                    const expiryEl = document.getElementById('manage-expiry');
-                    const gamesEl = document.getElementById('manage-games');
+                    // Update the Detail Spans
+                    document.getElementById('manage-status').innerText = data.is_banned ? "BANNED" : (data.is_paused ? "PAUSED" : "ACTIVE");
+                    document.getElementById('manage-hwid').innerText = (!data.hwid || data.hwid === "null") ? "READY FOR CAPTURE" : data.hwid;
+                    document.getElementById('manage-expiry').innerText = data.expiry ? new Date(data.expiry).toLocaleString() : "N/A";
+                    document.getElementById('manage-games').innerText = data.games && data.games.length > 0 ? data.games.join(", ") : "None";
 
-                    // Update info
-                    let statusText = data.is_banned ? "BANNED" : (data.is_paused ? "PAUSED" : "ACTIVE");
-                    statusEl.innerText = statusText;
+                    if (data.pending_request) {
+                        requestBox.style.display = 'block';
+                        requestedHwidEl.innerText = "REQUESTED HWID: " + data.pending_request.hwid;
+                        // Make the Reset button glow gold to show it's the suggested action
+                        document.querySelector('[onclick="modifyKey(\'reset-hwid\')"]').style.boxShadow = "0 0 15px #ffcc00";
+                    } else {
+                        requestBox.style.display = 'none';
+                        document.querySelector('[onclick="modifyKey(\'reset-hwid\')"]').style.boxShadow = "none";
+                    }
 
-                    hwidEl.innerText = (!data.hwid || data.hwid === "null") ? "READY FOR CAPTURE" : data.hwid;
-                    expiryEl.innerText = data.expiry ? new Date(data.expiry).toLocaleString() : "N/A";
-                    gamesEl.innerText = data.games ? data.games.join(", ") : "None";
-
+                    // Sync the Dropdown Visuals
                     for (let i = 0; i < dropdown.options.length; i++) {
                         if (dropdown.options[i].value === key) {
                             if (data.is_banned) {
-                                dropdown.options[i].style.color = "#ff3e3e"; // red for banned
-                                dropdown.options[i].textContent = key + " (BANNED)";
+                                dropdown.options[i].style.color = "#ff3e3e";
+                                dropdown.options[i].textContent = `${key} (BANNED)`;
                             } else if (data.is_paused) {
-                                dropdown.options[i].style.color = "#ffcc00"; // yellow for paused
-                                dropdown.options[i].textContent = key + " (PAUSED)";
+                                dropdown.options[i].style.color = "#ffcc00";
+                                dropdown.options[i].textContent = `${key} (PAUSED)`;
                             } else {
                                 dropdown.options[i].style.color = "white";
                                 dropdown.options[i].textContent = key;
@@ -426,82 +437,68 @@
                             break;
                         }
                     }
-
                 } else {
                     alert(data.error || "Failed to load key");
                 }
             } catch (err) {
-                console.error(err);
-                alert("Connection failed: Check if Railway server is awake and URL is correct.");
+                alert("Connection failed: Check Railway Logs.");
             }
         }
+
 
         async function resetHWID() {
-            const key = document.getElementById('manage-key-input').value;
-            const pass = document.getElementById('admin-pass').value;
-
-            if (!confirm(`Are you sure you want to reset HWID for ${key}?`)) return;
-
-            try {
-                const response = await fetch(`${API}/admin/reset-hwid`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        admin_password: pass,
-                        license_key: key
-                    })
-                });
-
-                const data = await response.json();
-                if (data.success) {
-                    alert("HWID Reset Successful!");
-                    loadKey(); // Refresh the info display automatically
-                } else {
-                    alert("Reset Failed: " + (data.error || data.message || "Unknown Error"));
-                }
-            } catch (err) {
-                alert("Error connecting to API. Check console for details.");
-                console.error(err);
-            }
-        }
-
-        async function modifyKey(action) {
-            const dropdown = document.getElementById('manage-key-input');
-            const keyInput = document.getElementById('single-key-input');
-
-            const key = (keyInput.value.trim() || dropdown.value.trim());
+            const key = document.getElementById('manage-key-input').value.trim();
             const pass = document.getElementById('admin-pass').value.trim();
 
             if (!key || !pass) return alert("Enter Key and Admin Password!");
+            if (!confirm(`Are you sure you want to reset HWID for ${key}?`)) return;
+
+            try {
+                const res = await fetch(`${API}/admin/reset-hwid`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ license_key: key, admin_password: pass })
+                });
+
+                const data = await res.json();
+                if (data.success) {
+                    alert("HWID Reset Successful!");
+                    loadKey(); // refresh panel
+                } else {
+                    alert(data.error || "Failed to reset HWID");
+                }
+            } catch (err) {
+                console.error(err);
+                alert("Connection failed. Check API.");
+            }
+        }
+
+
+        async function modifyKey(action) {
+            const key = (document.getElementById('single-key-input').value.trim() ||
+                document.getElementById('manage-key-input').value.trim());
+            const pass = document.getElementById('admin-pass').value.trim();
+            const dropdown = document.getElementById('manage-key-input');
+            const keyInput = document.getElementById('single-key-input');
+
+            if (!key || !pass) return alert("Enter Key and Admin Password!");
+
+            let endpoint = (action === "reset-hwid") ? "reset-hwid" : `${action}-key`;
 
             const payload = { license_key: key, admin_password: pass };
 
             try {
-                const res = await fetch(`${API}/admin/${action}-key`, {
+                const res = await fetch(`${API}/admin/${endpoint}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
 
-                if (!res.ok) {
-                    alert(`Server returned ${res.status}`);
-                    return;
-                }
-
-                const text = await res.text();
-                let data;
-                try {
-                    data = JSON.parse(text);
-                } catch (jsonErr) {
-                    console.error("JSON parse failed:", jsonErr, "Raw:", text);
-                    alert("Server returned invalid JSON. Check console.");
-                    return;
-                }
+                const data = await res.json();
 
                 if (data.success) {
                     alert(`Key ${action.toUpperCase()} successful`);
 
-                    // Pause/Unpause color update
                     if (["pause", "unpause"].includes(action)) {
                         for (let i = 0; i < dropdown.options.length; i++) {
                             if (dropdown.options[i].value === key) {
@@ -512,7 +509,6 @@
                         }
                     }
 
-                    // Delete key from dropdown
                     if (action === "delete") {
                         for (let i = 0; i < dropdown.options.length; i++) {
                             if (dropdown.options[i].value === key) {
@@ -520,19 +516,15 @@
                                 break;
                             }
                         }
-
                         if (keyInput.value.trim() === key) keyInput.value = "";
                     }
 
-                    // Refresh the manage info display
                     loadKey();
-
                 } else {
                     alert(data.error || `Failed to ${action} key`);
                 }
-
             } catch (err) {
-                console.error("Fetch error:", err);
+                console.error(err);
                 alert("Connection failed. Make sure API is awake and reachable.");
             }
         }
@@ -547,12 +539,10 @@
             dropdown.innerHTML = '<option value="">Loading keys...</option>';
 
             try {
+                // Matches the 'load-keys' case in your index.js switch
                 const res = await fetch(`${API}/admin/load-keys`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json'
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ admin_password: pass })
                 });
 
