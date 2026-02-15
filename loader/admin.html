@@ -3,6 +3,14 @@
 <head>
     <title>SK-AUTH | Admin</title>
     <style>
+        :root {
+            --accent: #00ff88;
+            --bg-main: #151515;
+            --bg-input: #222;
+            --text: #ffffff;
+            --text-dim: #888;
+        }
+
         body {
             background: transparent;
             font-family: 'Segoe UI', sans-serif;
@@ -11,21 +19,34 @@
             align-items: center;
             height: 100vh;
             margin: 0;
-            overflow: hidden;
+            overflow: hidden; /* Prevent body scroll */
         }
 
         .panel {
-            background: #151515;
-            padding: 75px 30px 30px 30px;
+            background: var(--bg-main);
+            padding: 25px 25px 20px 25px; /* Balanced padding */
             border-radius: 12px;
-            width: 320px;
+            width: 420px; /* Wider for better layout */
+            max-height: 95vh;
+            overflow-y: auto;
             text-align: center;
             position: relative;
-            border: 1px solid #00ff88;
-            color: white;
+            border: 1px solid var(--accent);
+            color: var(--text);
             box-shadow: 0 0 15px rgba(0, 255, 136, 0.2);
             animation: glow-pulse 3s infinite ease-in-out;
             box-sizing: border-box;
+            margin-top: 20px; /* Offset for titlebar area */
+        }
+
+            /* HIDE SCROLLBARS FOR CHROME/ELECTRON */
+            .panel::-webkit-scrollbar {
+                display: none;
+            }
+
+        .panel {
+            -ms-overflow-style: none; /* IE and Edge */
+            scrollbar-width: none; /* Firefox */
         }
 
         .titlebar {
@@ -33,145 +54,161 @@
             top: 0;
             left: 0;
             width: 100%;
-            height: 40px;
+            height: 35px;
             display: flex;
             justify-content: flex-end;
             align-items: center;
             -webkit-app-region: drag;
-            z-index: 9999;
-            /* pointer-events: none; */ /* allows clicks to pass through except buttons */
+            z-index: 10000;
         }
 
         .window-controls {
             display: flex;
             -webkit-app-region: no-drag;
-            padding-right: 5px;
-            pointer-events: auto;
+            padding-right: 10px;
         }
 
         .control-btn {
-            padding: 5px 12px;
+            padding: 8px 12px;
             cursor: pointer;
-            font-size: 12px;
+            font-size: 14px;
             transition: 0.2s;
             color: #555;
         }
 
             .control-btn:hover {
-                color: #00ff88;
+                color: var(--accent);
             }
 
         .close-btn:hover {
             color: #ff3e3e;
         }
 
-        @keyframes glow-pulse {
-            0% {
-                box-shadow: 0 0 10px rgba(0,255,136,0.2);
-                border-color: #00ff88;
-            }
-
-            50% {
-                box-shadow: 0 0 25px rgba(0,255,136,0.4);
-                border-color: #00ffaa;
-            }
-
-            100% {
-                box-shadow: 0 0 10px rgba(0,255,136,0.2);
-                border-color: #00ff88;
-            }
+        h2 {
+            color: var(--accent);
+            letter-spacing: 3px;
+            margin: 15px 0 20px;
+            font-size: 1.1rem;
+            text-transform: uppercase;
         }
 
-        h2 {
-            color: #00ff88;
-            letter-spacing: 2px;
-            margin: 10px 0 20px;
-            font-size: 1.2rem;
+        /* SECTION WRAPPERS */
+        .section {
+            margin-top: 20px;
+            border-top: 1px solid rgba(255,255,255,0.05);
+            padding-top: 15px;
+            text-align: left;
+        }
+
+        .section-label {
+            font-size: 10px;
+            color: var(--text-dim);
+            letter-spacing: 1px;
+            margin-bottom: 10px;
             text-transform: uppercase;
         }
 
         input, select {
             width: 100%;
-            padding: 12px;
-            margin: 10px 0;
-            background: #222;
-            border: 1px solid #444;
-            color: white;
+            padding: 10px;
+            margin: 5px 0;
+            background: var(--bg-input);
+            border: 1px solid #333;
+            color: var(--text);
             border-radius: 4px;
             box-sizing: border-box;
             outline: none;
+            font-size: 13px;
+            transition: border 0.2s;
         }
 
-            input:focus {
-                border-color: #00ff88;
+            input:focus, select:focus {
+                border-color: var(--accent);
             }
 
         button {
             width: 100%;
-            padding: 12px;
-            background: #00ff88;
+            padding: 10px;
+            background: var(--accent);
             border: none;
             color: black;
             font-weight: bold;
             cursor: pointer;
             border-radius: 4px;
             transition: 0.3s;
-            margin-top: 10px;
+            margin-top: 8px;
+            font-size: 12px;
+            text-transform: uppercase;
         }
 
             button:hover {
                 background: #00cc6e;
-                transform: translateY(-1px);
+                box-shadow: 0 0 10px rgba(0, 255, 136, 0.3);
             }
 
         #key-display {
-            margin-top: 20px;
+            margin-top: 15px;
             padding: 15px;
             background: #000;
-            border: 1px dashed #00ff88;
-            color: #00ff88;
+            border: 1px dashed var(--accent);
+            color: var(--accent);
+            border-radius: 4px;
             display: none;
-        }
-
-        .loader {
-            border: 2px solid #000;
-            border-top: 2px solid #000;
-            border-radius: 50%;
-            width: 14px;
-            height: 14px;
-            animation: spin 1s linear infinite;
-            display: inline-block;
-        }
-
-        @keyframes spin {
-            0% {
-                transform: rotate(0deg);
-            }
-
-            100% {
-                transform: rotate(360deg);
-            }
         }
 
         #manage-info {
             margin-top: 10px;
-            background: #111;
-            padding: 10px;
+            background: #0a0a0a;
+            padding: 15px;
+            border-radius: 4px;
             border: 1px solid #222;
-            text-align: left;
-            font-size: 13px;
             display: none;
         }
 
-            #manage-info button {
-                margin: 3px 0;
-                width: 48%;
-                font-size: 12px;
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+            font-size: 12px;
+        }
+
+        .info-label {
+            color: var(--text-dim);
+        }
+
+        /* GRID BUTTONS FOR MANAGE SECTION */
+        .btn-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+            .btn-grid button {
+                margin: 0;
             }
 
-                #manage-info button + button {
-                    margin-left: 4%;
-                }
+        .ban-btn {
+            background: #ff3e3e !important;
+            color: white !important;
+        }
+
+        .del-btn {
+            background: #444 !important;
+            color: white !important;
+        }
+
+        @keyframes glow-pulse {
+            0%, 100% {
+                border-color: var(--accent);
+                box-shadow: 0 0 10px rgba(0,255,136,0.2);
+            }
+
+            50% {
+                border-color: #00ffaa;
+                box-shadow: 0 0 20px rgba(0,255,136,0.4);
+            }
+        }
     </style>
 </head>
 <body>
@@ -193,6 +230,7 @@
             <div style="font-size:12px;color:#888;text-align:left;">CREATE KEY</div>
 
             <select id="key-days">
+                <option value="0.0417">1 Hour</option>
                 <option value="1">1 Day</option>
                 <option value="7">7 Days</option>
                 <option value="30" selected>30 Days</option>
@@ -224,23 +262,21 @@
         <div style="margin-top:20px;border-top:1px solid #222;padding-top:15px;">
             <div style="font-size:12px;color:#888;text-align:left;">MANAGE KEY</div>
 
+            <input type="text" id="single-key-input" placeholder="Enter License Key" style="margin-bottom:5px;">
+
             <!-- Dropdown -->
             <select id="manage-key-input">
                 <option value="">-- Select License Key --</option>
             </select>
 
-            <!-- Load All Keys Button -->
-            <button onclick="loadKeysDropdown()" style="background:#444;color:white;">
-                LOAD ALL KEYS
-            </button>
+            <div style="display:flex; gap:5px; margin-top:5px;">
+                <!-- Load Buttons -->
+                <button onclick="loadKeysDropdown()" style="flex:1; background:#444;color:white;">LOAD ALL KEYS</button>
+                <button id="load-btn" onclick="loadKey()" style="flex:1;">LOAD KEY</button>
+            </div>
 
-            <!-- Load Selected Key Info -->
-            <button id="load-btn" onclick="loadKey()">
-                LOAD KEY
-            </button>
-
-            <div id="manage-info">
-                <div style="margin-top:10px; border-bottom:1px solid #222; padding-bottom:10px; margin-bottom:10px;">
+            <div id="manage-info" style="margin-top:10px;">
+                <div style="margin-bottom:10px; border-bottom:1px solid #222; padding-bottom:10px;">
                     <div><span style="color:#888;">Status:</span> <span id="manage-status"></span></div>
                     <div>
                         <span style="color:#888;">HWID:</span>
@@ -250,249 +286,321 @@
                     <div><span style="color:#888;">Games:</span> <span id="manage-games"></span></div>
                 </div>
 
-                <div style="margin-top:10px;">
-                    <div style="display:flex; gap:5px;">
-                        <button onclick="pauseKey()" style="flex:1;">PAUSE</button>
-                        <button onclick="unpauseKey()" style="flex:1;">UNPAUSE</button>
-                    </div>
+                <div style="display:flex; gap:5px; margin-bottom:5px;">
+                    <button onclick="modifyKey('pause')" style="flex:1;">PAUSE</button>
+                    <button onclick="modifyKey('unpause')" style="flex:1;">UNPAUSE</button>
+                </div>
 
-                    <button style="background:#00f2ff;color:black;width:100%;margin:5px 0;"
-                            onclick="resetHWID()">
-                        RESET HWID
-                    </button>
+                <button style="background:#00f2ff;color:black;width:100%;margin:5px 0;"
+                        onclick="modifyKey('reset-hwid')">
+                    RESET HWID
+                </button>
 
-                    <div style="display:flex; gap:5px;">
-                        <button style="background:#ff3e3e;color:white;flex:1;"
-                                onclick="banKey()">
-                            BAN
-                        </button>
-                        <button style="background:#444;color:white;flex:1;"
-                                onclick="deleteKey()">
-                            DELETE
-                        </button>
-                    </div>
+                <div style="display:flex; gap:5px;">
+                    <button style="background:#ff3e3e;color:white;flex:1;" onclick="modifyKey('ban')">BAN</button>
+                    <button style="background:#444;color:white;flex:1;" onclick="modifyKey('delete')">DELETE</button>
                 </div>
             </div>
         </div>
+    </div>
 
 
 
-        <script>
-            const { ipcRenderer, clipboard } = require('electron');
-            const API = 'https://sk-auth-api.up.railway.app';
+    <script>
+        const { ipcRenderer, clipboard } = require('electron');
+        const API = 'https://sk-auth-api.up.railway.app';
 
-            function closeWin() { ipcRenderer.send('admin-close'); }
-            function minWin() { ipcRenderer.send('admin-min'); }
+        function closeWin() { ipcRenderer.send('admin-close'); }
+        function minWin() { ipcRenderer.send('admin-min'); }
 
-            // GENERATE KEY
-            async function generateKey() {
-                const btn = document.getElementById('gen-btn');
-                const pass = document.getElementById('admin-pass').value;
-                const days = document.getElementById('key-days').value;
-                const game = document.getElementById('key-game').value;
-                const display = document.getElementById('key-display');
-                const keyText = document.getElementById('key-text');
+        // GENERATE KEY
+        async function generateKey() {
+            const btn = document.getElementById('gen-btn');
+            const pass = document.getElementById('admin-pass').value;
+            const days = parseFloat(document.getElementById('key-days').value);
+            const game = document.getElementById('key-game').value;
+            const display = document.getElementById('key-display');
+            const keyText = document.getElementById('key-text');
 
-                if (!pass) return alert("Enter Admin Password!");
+            if (!pass) return alert("Enter Admin Password!");
 
-                btn.disabled = true;
-                btn.innerHTML = '<div class="loader"></div>';
-                display.style.display = 'none';
+            btn.disabled = true;
+            btn.innerHTML = '<div class="loader"></div>';
+            display.style.display = 'none';
 
-                try {
-                    const response = await fetch(`${API}/admin/create-key`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            admin_password: pass,
-                            days: parseInt(days),
-                            games: [game]
-                        })
-                    });
+            try {
+                const response = await fetch(`${API}/admin/create-key`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        admin_password: pass,
+                        days: days,
+                        games: [game]
+                    })
+                });
 
-                    if (!response.ok && response.status !== 401) throw new Error(`Server returned ${response.status}`);
+                if (!response.ok && response.status !== 401) throw new Error(`Server returned ${response.status}`);
 
-                    const data = await response.json();
+                const data = await response.json();
 
-                    if (data.success) {
-                        display.style.display = 'block';
-                        keyText.innerText = `${game.substring(0, 2).toUpperCase()}-${data.key}`;
-                        document.getElementById('key-days-display').innerText = days == 999 ? "Lifetime" : days + " Day(s)";
-                        document.getElementById('key-expiry').innerText = new Date(data.expires).toLocaleString();
-                        document.getElementById('key-games').innerText = data.games.join(", ");
-                        if (clipboard) clipboard.writeText(data.key);
-                    } else {
-                        alert("API Error: " + (data.error || "Access Denied"));
-                    }
-                } catch (err) {
-                    console.error(err);
-                    alert("Failed to connect to server.");
-                } finally {
-                    btn.disabled = false;
-                    btn.innerHTML = 'GENERATE KEY';
+                if (data.success) {
+                    display.style.display = 'block';
+                    keyText.innerText = data.key;
+
+                    let displayText;
+                    if (days === 999) displayText = "Lifetime";
+                    else if (days < 1) displayText = `${Math.round(days * 24)} Hour(s)`;
+                    else displayText = `${days} Day(s)`;
+                    document.getElementById('key-days-display').innerText = displayText;
+
+                    const expiryDate = new Date(data.expires);
+                    const formattedExpiry =
+                        `${expiryDate.getMonth() + 1}/${expiryDate.getDate()}/${expiryDate.getFullYear()}, ` +
+                        `${expiryDate.getHours().toString().padStart(2, '0')}:` +
+                        `${expiryDate.getMinutes().toString().padStart(2, '0')}:` +
+                        `${expiryDate.getSeconds().toString().padStart(2, '0')}`;
+                    document.getElementById('key-expiry').innerText = formattedExpiry;
+
+                    document.getElementById('key-games').innerText = data.games.join(", ");
+
+                    if (clipboard) clipboard.writeText(data.key);
+                } else {
+                    alert("API Error: " + (data.error || "Access Denied"));
                 }
+            } catch (err) {
+                console.error(err);
+                alert("Failed to connect to server.");
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = 'GENERATE KEY';
             }
+        }
 
-            // LOAD KEY (Matched to your Backend Response)
-            async function loadKey() {
-                const key = document.getElementById('manage-key-input').value;
-                const pass = document.getElementById('admin-pass').value;
-                const infoDiv = document.getElementById('manage-info');
 
-                if (!key || !pass) return alert("Enter Key and Admin Password!");
+        async function loadKey() {
+            const key = (document.getElementById('single-key-input').value.trim() ||
+                document.getElementById('manage-key-input').value.trim());
+            const pass = document.getElementById('admin-pass').value.trim();
+            const infoDiv = document.getElementById('manage-info');
+            const dropdown = document.getElementById('manage-key-input');
 
-                try {
-                    // REMOVED '/api' because your backend route is just '/admin/get-key'
-                    const res = await fetch(`${API}/admin/get-key`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ license_key: key, admin_password: pass })
-                    });
+            if (!key || !pass) return alert("Enter Key and Admin Password!");
 
-                    const data = await res.json();
+            try {
+                const res = await fetch(`${API}/admin/get-key`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ license_key: key, admin_password: pass })
+                });
 
-                    if (data.success) {
-                        infoDiv.style.display = 'block';
+                const data = await res.json();
 
-                        // Matches your backend: user.is_banned, user.is_paused, etc.
-                        document.getElementById('manage-status').innerText = data.is_banned ? "BANNED" : (data.is_paused ? "PAUSED" : "ACTIVE");
+                if (data.success) {
+                    infoDiv.style.display = 'block';
 
-                        // Matches your backend: user.hwid
-                        document.getElementById('manage-hwid').innerText = (data.hwid === "null" || !data.hwid) ? "READY FOR CAPTURE" : data.hwid;
+                    const statusEl = document.getElementById('manage-status');
+                    const hwidEl = document.getElementById('manage-hwid');
+                    const expiryEl = document.getElementById('manage-expiry');
+                    const gamesEl = document.getElementById('manage-games');
 
-                        // Matches your backend: user.expiry_date (sent as 'expiry' in your JSON)
-                        document.getElementById('manage-expiry').innerText = data.expiry ? new Date(data.expiry).toLocaleString() : "N/A";
+                    // Update info
+                    let statusText = data.is_banned ? "BANNED" : (data.is_paused ? "PAUSED" : "ACTIVE");
+                    statusEl.innerText = statusText;
 
-                        // Matches your backend: user.games
-                        document.getElementById('manage-games').innerText = data.games ? data.games.join(", ") : "None";
+                    hwidEl.innerText = (!data.hwid || data.hwid === "null") ? "READY FOR CAPTURE" : data.hwid;
+                    expiryEl.innerText = data.expiry ? new Date(data.expiry).toLocaleString() : "N/A";
+                    gamesEl.innerText = data.games ? data.games.join(", ") : "None";
 
-                    } else {
-                        alert(data.error || "Failed to load key");
+                    for (let i = 0; i < dropdown.options.length; i++) {
+                        if (dropdown.options[i].value === key) {
+                            if (data.is_banned) {
+                                dropdown.options[i].style.color = "#ff3e3e"; // red for banned
+                                dropdown.options[i].textContent = key + " (BANNED)";
+                            } else if (data.is_paused) {
+                                dropdown.options[i].style.color = "#ffcc00"; // yellow for paused
+                                dropdown.options[i].textContent = key + " (PAUSED)";
+                            } else {
+                                dropdown.options[i].style.color = "white";
+                                dropdown.options[i].textContent = key;
+                            }
+                            break;
+                        }
                     }
-                } catch (err) {
-                    console.error(err);
-                    // This is where you were hitting "Connection Failed"
-                    alert("Connection failed: Check if Railway server is awake and URL is correct.");
+
+                } else {
+                    alert(data.error || "Failed to load key");
                 }
+            } catch (err) {
+                console.error(err);
+                alert("Connection failed: Check if Railway server is awake and URL is correct.");
             }
+        }
 
-            async function resetHWID() {
-                const key = document.getElementById('manage-key-input').value;
-                const pass = document.getElementById('admin-pass').value;
+        async function resetHWID() {
+            const key = document.getElementById('manage-key-input').value;
+            const pass = document.getElementById('admin-pass').value;
 
-                if (!confirm(`Are you sure you want to reset HWID for ${key}?`)) return;
+            if (!confirm(`Are you sure you want to reset HWID for ${key}?`)) return;
 
-                try {
-                    // REMOVED '/api' TO MATCH YOUR OTHER ROUTES
-                    const response = await fetch(`${API}/admin/reset-hwid`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            admin_password: pass,
-                            license_key: key
-                        })
-                    });
+            try {
+                const response = await fetch(`${API}/admin/reset-hwid`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        admin_password: pass,
+                        license_key: key
+                    })
+                });
 
-                    const data = await response.json();
-                    if (data.success) {
-                        alert("HWID Reset Successful!");
-                        loadKey(); // Refresh the info display automatically
-                    } else {
-                        alert("Reset Failed: " + (data.error || data.message || "Unknown Error"));
-                    }
-                } catch (err) {
-                    alert("Error connecting to API. Check console for details.");
-                    console.error(err);
+                const data = await response.json();
+                if (data.success) {
+                    alert("HWID Reset Successful!");
+                    loadKey(); // Refresh the info display automatically
+                } else {
+                    alert("Reset Failed: " + (data.error || data.message || "Unknown Error"));
                 }
+            } catch (err) {
+                alert("Error connecting to API. Check console for details.");
+                console.error(err);
             }
+        }
 
-            // KEY ACTIONS
-            async function pauseKey() { await modifyKey('pause'); }
-            async function unpauseKey() { await modifyKey('unpause'); }
-            async function banKey() { await modifyKey('ban'); }
-            async function deleteKey() { await modifyKey('delete'); }
+        async function modifyKey(action) {
+            const dropdown = document.getElementById('manage-key-input');
+            const keyInput = document.getElementById('single-key-input');
 
-            async function modifyKey(action) {
-                const key = document.getElementById('manage-key-input').value;
-                const pass = document.getElementById('admin-pass').value;
+            const key = (keyInput.value.trim() || dropdown.value.trim());
+            const pass = document.getElementById('admin-pass').value.trim();
 
-                if (!key || !pass) return alert("Enter Key and Admin Password!");
+            if (!key || !pass) return alert("Enter Key and Admin Password!");
 
-                try {
-                    const res = await fetch(`${API}/admin/${action}-key`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ license_key: key, admin_password: pass })
-                    });
-                    const data = await res.json();
+            const payload = { license_key: key, admin_password: pass };
 
-                    if (data.success) {
-                        alert(`Key ${action.toUpperCase()} successful`);
-                        loadKey(); // refresh info
-                    } else {
-                        alert(data.error || `Failed to ${action} key`);
-                    }
-                } catch (err) {
-                    console.error(err);
-                    alert("Connection failed");
+            try {
+                const res = await fetch(`${API}/admin/${action}-key`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!res.ok) {
+                    alert(`Server returned ${res.status}`);
+                    return;
                 }
-            }
 
-            // LOAD ALL KEYS INTO DROPDOWN
-            async function loadKeysDropdown() {
-                const pass = document.getElementById('admin-pass').value;
-                const dropdown = document.getElementById('manage-key-input');
-
-                if (!pass) return alert("Enter Admin Password!");
-
-                dropdown.innerHTML = '<option value="">Loading keys...</option>';
-
+                const text = await res.text();
+                let data;
                 try {
-                    const res = await fetch(`${API}/admin/load-keys`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json', // force JSON
-                            'Accept': 'application/json'
-                        },
-                        body: JSON.stringify({ admin_password: pass })
-                    });
+                    data = JSON.parse(text);
+                } catch (jsonErr) {
+                    console.error("JSON parse failed:", jsonErr, "Raw:", text);
+                    alert("Server returned invalid JSON. Check console.");
+                    return;
+                }
 
-                    console.log("Fetch status:", res.status);
+                if (data.success) {
+                    alert(`Key ${action.toUpperCase()} successful`);
 
-                    // First check response content-type
-                    const contentType = res.headers.get('content-type');
-                    console.log("Content-Type:", contentType);
-
-                    let data;
-                    try {
-                        data = await res.json(); // use .json() directly
-                    } catch (jsonErr) {
-                        const text = await res.text(); // fallback raw text
-                        console.error("Failed to parse JSON, raw response:", text);
-                        alert("Server returned invalid JSON. Check console.");
-                        dropdown.innerHTML = '<option value="">-- Select License Key --</option>';
-                        return;
+                    // Pause/Unpause color update
+                    if (["pause", "unpause"].includes(action)) {
+                        for (let i = 0; i < dropdown.options.length; i++) {
+                            if (dropdown.options[i].value === key) {
+                                dropdown.options[i].style.color = action === "pause" ? "#ff3e3e" : "white";
+                                dropdown.options[i].textContent = key + (action === "pause" ? " (PAUSED)" : "");
+                                break;
+                            }
+                        }
                     }
 
-                    if (data.success && Array.isArray(data.keys)) {
-                        dropdown.innerHTML = '<option value="">-- Select License Key --</option>';
-                        data.keys.forEach(k => {
-                            const option = document.createElement("option");
-                            option.value = k.license_key;
-                            option.textContent = k.license_key;
-                            dropdown.appendChild(option);
-                        });
-                    } else {
-                        dropdown.innerHTML = '<option value="">-- Select License Key --</option>';
-                        alert(data.error || "Failed to load keys");
+                    // Delete key from dropdown
+                    if (action === "delete") {
+                        for (let i = 0; i < dropdown.options.length; i++) {
+                            if (dropdown.options[i].value === key) {
+                                dropdown.remove(i);
+                                break;
+                            }
+                        }
+
+                        if (keyInput.value.trim() === key) keyInput.value = "";
                     }
 
-                } catch (err) {
-                    console.error("Fetch error:", err);
-                    alert("Connection failed. Make sure your API is reachable and not asleep.");
+                    // Refresh the manage info display
+                    loadKey();
+
+                } else {
+                    alert(data.error || `Failed to ${action} key`);
+                }
+
+            } catch (err) {
+                console.error("Fetch error:", err);
+                alert("Connection failed. Make sure API is awake and reachable.");
+            }
+        }
+
+        // LOAD ALL KEYS INTO DROPDOWN
+        async function loadKeysDropdown() {
+            const pass = document.getElementById('admin-pass').value;
+            const dropdown = document.getElementById('manage-key-input');
+
+            if (!pass) return alert("Enter Admin Password!");
+
+            dropdown.innerHTML = '<option value="">Loading keys...</option>';
+
+            try {
+                const res = await fetch(`${API}/admin/load-keys`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({ admin_password: pass })
+                });
+
+                console.log("Fetch status:", res.status);
+
+                let data;
+                try {
+                    data = await res.json();
+                } catch (jsonErr) {
+                    const text = await res.text();
+                    console.error("Failed to parse JSON, raw response:", text);
+                    alert("Server returned invalid JSON. Check console.");
                     dropdown.innerHTML = '<option value="">-- Select License Key --</option>';
+                    return;
                 }
+
+                if (data.success && Array.isArray(data.keys)) {
+                    dropdown.innerHTML = '<option value="">-- Select License Key --</option>';
+
+                    data.keys.forEach(k => {
+                        const option = document.createElement("option");
+                        option.value = k.license_key;
+
+                        // Show paused or banned status in dropdown
+                        if (k.is_banned) {
+                            option.textContent = `${k.license_key} (BANNED)`;
+                            option.style.color = "#eb3434"; // red
+                        } else if (k.is_paused) {
+                            option.textContent = `${k.license_key} (PAUSED)`;
+                            option.style.color = "#ebe834"; // yellow
+                        } else {
+                            option.textContent = k.license_key;
+                            option.style.color = "#34eb3a"; // active
+                        }
+
+                        dropdown.appendChild(option);
+                    });
+                } else {
+                    dropdown.innerHTML = '<option value="">-- Select License Key --</option>';
+                    alert(data.error || "Failed to load keys");
+                }
+
+            } catch (err) {
+                console.error("Fetch error:", err);
+                alert("Connection failed. Make sure your API is reachable and not asleep.");
+                dropdown.innerHTML = '<option value="">-- Select License Key --</option>';
             }
-        </script>
+        }
+    </script>
 </body>
 </html>
