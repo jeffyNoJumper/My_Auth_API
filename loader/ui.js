@@ -414,9 +414,14 @@ async function sendAdminRequest() {
     const savedKey = localStorage.getItem('license_key'); 
 
     const addLog = (msg) => {
-        terminal.innerHTML += `<span class="log-entry">> ${msg}</span><br>`;
+        const entry = document.createElement('div');
+        entry.className = 'log-entry';
+        if (msg.includes("PENDING")) entry.style.color = "var(--gold)";
+        entry.innerHTML = `<span class="prompt">></span> ${msg}`;
+        terminal.appendChild(entry);
         terminal.scrollTop = terminal.scrollHeight;
     };
+
 
     if (!savedKey) {
         return addLog("ERROR: DATA NOT FOUND. PLEASE RE-LOGIN.");
