@@ -62,14 +62,35 @@ app.post('/admin/create-key', verifyAdmin, async (req, res) => {
     }
 });
 
-// --- 3. GET KEY INFO (MUST BE ABOVE DYNAMIC ROUTES) ---
+// --- 1. DEFINE MODELS (TOP OF FILE) ---
+// This check prevents "OverwriteModelError" if the server restarts
+const Request = mongoose.models.Request || mongoose.model('Request', new mongoose.Schema({
+    hwid: String,
+    license_key: String,
+    type: String,
+    status: { type: String, default: "PENDING" },
+    date: { type: Date, default: Date.now }
+}));
+
+// --- 2. GET KEY INFO (FIXED 500 ERROR) ---
 app.post('/admin/get-key', verifyAdmin, async (req, res) => {
     try {
         const { license_key } = req.body;
-        const user = await User.findOne({ license_key: license_key.toUpperCase() });
+        if (!license_key) return res.status(400).json({ success: false, error: "No key provided" });
+
+        const upperKey = license_key.toUpperCase();
+
+        // Find User
+        const user = await User.findOne({ license_key: upperKey });
         if (!user) return res.status(404).json({ success: false, error: "Key not found" });
 
-        const request = await Request.findOne({ license_key: upperKey, status: "PENDING" });
+        // Find Request (Safety check for nulls)
+        let pendingRequest = null;
+        try {
+            pendingRequest = await Request.findOne({ license_key: upperKey, status: "PENDING" });
+        } catch (dbErr) {
+            console.log("Request DB check failed, continuing without it.");
+        }
 
         res.json({
             success: true,
@@ -78,12 +99,14 @@ app.post('/admin/get-key', verifyAdmin, async (req, res) => {
             hwid: user.hwid,
             expiry: user.expiry_date,
             games: user.games,
-            pending_request: request
+            pending_request: pendingRequest // Correct name for Admin Panel
         });
     } catch (err) {
-        res.status(500).json({ success: false, error: "Internal Server Error" });
+        console.error("CRASH IN GET-KEY:", err.message);
+        res.status(500).json({ success: false, error: "Server Side Crash: " + err.message });
     }
 });
+
 
 // --- 4. HWID RESET ---
 app.post('/admin/reset-hwid', verifyAdmin, async (req, res) => {
