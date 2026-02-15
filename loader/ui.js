@@ -9,11 +9,10 @@ window.onload = () => {
     const status = document.getElementById('boot-status');
     document.addEventListener('DOMContentLoaded', updateHWIDDisplay);
 
-    // Ensure boot screen starts visible and centered
     if (bootScreen) {
         bootScreen.style.display = 'flex';
         bootScreen.style.opacity = '1';
-        bootScreen.style.zIndex = '10002'; // Sit on top of everything while loading
+        bootScreen.style.zIndex = '10002';
     } else {
         // If there's no boot screen, just skip to login
         switchScreen('boot-screen', 'login-screen');
