@@ -69,13 +69,16 @@ app.post('/admin/get-key', verifyAdmin, async (req, res) => {
         const user = await User.findOne({ license_key: license_key.toUpperCase() });
         if (!user) return res.status(404).json({ success: false, error: "Key not found" });
 
+        const request = await Request.findOne({ license_key: upperKey, status: "PENDING" });
+
         res.json({
             success: true,
             is_banned: user.is_banned || false,
             is_paused: user.is_paused || false,
             hwid: user.hwid,
             expiry: user.expiry_date,
-            games: user.games
+            games: user.games,
+            pending_request: request
         });
     } catch (err) {
         res.status(500).json({ success: false, error: "Internal Server Error" });
