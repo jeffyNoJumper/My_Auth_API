@@ -1,11 +1,47 @@
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
-const path = require('path');
+const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
 const { autoUpdater } = require('electron-updater');
-const spoofer = require('./build/Release/spoofer.node');
+const path = require('path');
+const { execSync } = require('child_process');
 
-let mainWindow;
-let latestNews = null;
-let isAuthorized = false;
+let mainWindow
+let spoofer
+function startSecurityMonitor() {
+    const blacklist = [
+        "x64dbg", "wireshark", "processhacker", "httpdebugger",
+        "fiddler", "dnspy", "vboxservice", "ghidra",
+        "ida64", "idaw", "ollydng", "cheatengine"
+    ];
+
+    setInterval(() => {
+        if (process.execArgv.some(arg => arg.includes('--inspect') || arg.includes('--debug'))) {
+            triggerReaction("Debugger Attachment Detected");
+        }
+
+        exec('tasklist', (err, stdout) => {
+            if (err) return;
+            const activeProcess = stdout.toLowerCase();
+
+            blacklist.forEach(tool => {
+                if (activeProcess.includes(tool.toLowerCase())) {
+                    triggerReaction(`Unauthorized Tool: ${tool}`);
+                }
+            });
+        });
+    }, 2000);
+}
+
+try {
+    spoofer = require('./build/Release/spoofer.node');
+    console.log("SUCCESS: C++ Spoofer Addon loaded.");
+} catch (e) {
+    console.error("CRITICAL: Failed to load C++ Spoofer Addon.", e);
+    spoofer = {
+        getMachineID: () => "MODULE_LOAD_FAIL",
+        getBaseboard: () => "MODULE_LOAD_FAIL",
+        getGPUID: () => "MODULE_LOAD_FAIL",
+        runSpoofer: (cb) => cb(null, { disk: false, guid: false })
+    };
+}
 
 app.setAppUserModelId("com.sk.allinone");
 
@@ -13,28 +49,28 @@ app.setAppUserModelId("com.sk.allinone");
 function createWindow() {
     mainWindow = new BrowserWindow({
         width: 820,
-        height: 700,
+        height: 720,
         frame: false,
         resizable: false,
         backgroundColor: '#050505',
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             backgroundThrottling: true,
-            offscreen: false,
+            contextIsolation: true,
             nodeIntegration: false,
-            contextIsolation: true
+            sandbox: false
         }
     });
 
     mainWindow.loadFile('index.html');
 
-    // Check for updates as soon as the app starts
     mainWindow.once('ready-to-show', () => {
         autoUpdater.checkForUpdatesAndNotify();
     });
 }
 
 // --- 2. IPC HANDLERS ---
+
 ipcMain.on('window-close', () => {
     app.quit();
 });
@@ -43,105 +79,153 @@ ipcMain.on('window-minimize', () => {
     if (mainWindow) mainWindow.minimize();
 });
 
-// Get HWID from C++ Bridge
-ipcMain.handle('get-hwid', async () => {
-    try {
-        return spoofer.getMachineID();
-    } catch (err) {
-        console.error("C++ HWID Error:", err);
-        return "UNKNOWN_ID";
-    }
-});
+// --- 3. AUTO-UPDATER LOGIC ---
 
-// Run Spoofer logic
-ipcMain.handle('start-spoof', async () => {
-    console.log("[MAIN] Calling C++ Spoofer...");
-    return spoofer.runSpoofer();
-});
-
-ipcMain.handle('launch-game', async (event, gameName) => {
-    console.log(`[MAIN] Initializing Injection for: ${gameName}`);
-
-    // Call the C++ LaunchCheat function from binding.cpp
-    const success = spoofer.launchCheat(gameName);
-
-    if (success) {
-        return { status: "Success", message: `${gameName} injected successfully!` };
-    } else {
-        return { status: "Error", message: `Failed to inject ${gameName}.` };
-    }
-});
-
-
-// --- 3. AUTO-UPDATER & NEWS LOGIC ---
-
-autoUpdater.autoDownload = false; // We want to show a "Update Available" message first
+autoUpdater.autoDownload = false;
 
 autoUpdater.on('update-available', (info) => {
-    latestNews = info.releaseNotes;
-
     mainWindow.webContents.send('update-available', {
         version: info.version,
         news: info.releaseNotes
     });
 });
 
-ipcMain.handle('get-news', async () => {
-    try {
-        return await autoUpdater.getCachedUpdateInfo();
-    } catch (err) {
-        console.error("Failed to get news:", err);
-        return { news: "No updates available" };
-    }
-});
-
-
-// 3b. Trigger Download (When user clicks 'Update' in UI)
 ipcMain.handle('start-update-download', () => {
     autoUpdater.downloadUpdate();
 });
 
-// 3c. Track Progress
 autoUpdater.on('download-progress', (progressObj) => {
     mainWindow.webContents.send('download-progress', progressObj.percent);
 });
 
-// 3d. Finalize & Relaunch
 autoUpdater.on('update-downloaded', () => {
     mainWindow.webContents.send('update-ready');
-    // Give the user 3 seconds to see the "Success" message before restart
     setTimeout(() => {
         autoUpdater.quitAndInstall();
     }, 6000);
 });
 
-async function checkLogin(key) {
-    const hwid = await window.api.getMachineIdentifier();
-    const res = await window.api.login(key, hwid);
-    if (res.token === "VALID") isAuthorized = true;
-    return res;
-}
+// Spoofing ----
 
-function launchGame(name) {
-    if (!isAuthorized) return alert("Invalid key! Login first.");
-    window.api.launchCheat(name);
-}
+ipcMain.handle('start-spoof', async (event, options) => { // Accept options from UI
+    return new Promise((resolve) => {
+        // Pass options as the first argument, and the callback as the second
+        spoofer.runSpoofer(options, (err, results) => {
+            if (err) {
+                console.error("[MAIN] C++ Worker Error:", err);
+                resolve({ disk: false, guid: false, Kernel: false, User: false });
+            } else {
+                // 'results' contains { User, Kernel, disk } from SpoofWorker::OnOK
+                resolve(results);
+            }
+        });
+    });
+});
 
 
+ipcMain.handle('launch-game', async (event, gameName, autoClose) => { // Added autoClose arg
+    let injectionType = "default";
+    let cheatPath = "";
+
+    if (gameName.toLowerCase() === 'cs2') {
+        const { response } = await dialog.showMessageBox({
+            type: 'question',
+            buttons: ['Inject DLL', 'External', 'Cancel'],
+            defaultId: 0,
+            cancelId: 2,
+            title: 'Injection Method',
+            message: 'How would you like to launch the CS2 cheat?',
+            detail: 'DLL injection is internal, External runs as a separate process.'
+        });
+
+        if (response === 2) return { status: "Cancelled", message: "Injection aborted." };
+
+        injectionType = response === 0 ? "dll" : "external";
+
+        // Updated filenames to match your project
+        const fileName = injectionType === "dll" ? "Ai cheat.dll" : "ZELDAv2.exe";
+        cheatPath = path.join(__dirname, 'assets', fileName);
+    }
+
+    console.log(`[MAIN] Initializing ${injectionType} from: ${cheatPath}`);
+
+    // Pass arguments to the C++ binding
+    const success = spoofer.launchCheat(gameName, injectionType, cheatPath);
+
+    if (success) {
+        // Handle the Auto-Close feature from your settings tab
+        if (autoClose) {
+            console.log("[MAIN] Auto-close enabled. Exiting in 3 seconds...");
+            setTimeout(() => {
+                app.quit();
+            }, 3000);
+        }
+
+        return { status: "Success", message: `${gameName} launched successfully!` };
+    } else {
+        return { status: "Error", message: `Failed to launch ${gameName}.` };
+    }
+});
+
+ipcMain.on('toggle-stream-proof', (event, enabled) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (win) {
+        // Native Electron feature to hide window from screen capture
+        win.setContentProtection(enabled);
+    }
+});
+
+// Discord RPC Placeholder
+ipcMain.on('toggle-discord', (event, enabled) => {
+    if (enabled) {
+        console.log("[MAIN] Discord RPC Enabled");
+        // Initialize your discord-rpc library here
+    } else {
+        console.log("[MAIN] Discord RPC Disabled");
+        // Destroy discord-rpc client here
+    }
+});
 
 
+// Listener for Machine ID
+ipcMain.handle('get-machine-id', async () => {
+    try {
+        return execSync('reg query "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Cryptography" /v "MachineGuid"').toString().split('REG_SZ')[1].trim();
+    } catch (e) { return "ERROR_READING_REG"; }
+});
+
+// Listener for Baseboard Serial
+ipcMain.handle('get-baseboard', async () => {
+    try {
+        // If you spoofed 'LastConfig' or similar in Registry, read that here.
+        // Otherwise, return a cached spoofed value.
+        return spoofer.getBaseboard();
+    } catch (e) { return "SERIAL-ERROR"; }
+});
+
+// Listener for GPU ID
+ipcMain.handle('get-gpuid', async () => {
+    return spoofer.getGPUID();
+});
+
+
+/* News Terminal */
+
+// Inside main.js
+ipcMain.handle('get-news', async () => {
+    return [
+        "> [v1.0.4] Added CS2 DLL & External support.",
+        "> [SECURITY] Spoofer kernel module updated.",
+        "> [INFO] New terminal interface integrated."
+    ].join('\n'); // Join with a newline
+});
+
+// --- 4. APP LIFECYCLE ---
 
 app.disableHardwareAcceleration();
-
-app.commandLine.appendSwitch('disable-renderer-backgrounding');
-app.commandLine.appendSwitch('disable-background-timer-throttling');
 
 app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();
 });
 
 app.whenReady().then(createWindow);
-
-app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') app.quit();
-});
