@@ -69,10 +69,10 @@ body {
     cursor: pointer;
 }
 
-.control-btn:hover {
-    color: #fff;
-    background: rgba(255,255,255,0.05);
-}
+    .control-btn:hover {
+        color: #fff;
+        background: rgba(255,255,255,0.05);
+    }
 
 .close-btn:hover {
     background: var(--red) !important;
@@ -209,14 +209,12 @@ body {
 
 
 .content-area {
-    width: 108%;
+    width: 100%;
     flex: 1;
-    overflow-y: auto;
-    display: flex;
-    justify-content: center;
-    overflow-x: hidden;
+    display: block;
     overflow-y: auto;
 }
+
 
 .tab-content {
     display: none !important;
@@ -235,14 +233,13 @@ body {
 
 .top-nav {
     position: relative;
-    z-index: 10001; /* Higher than Title Bar (9999) */
+    z-index: 10001;
     width: 100%;
     height: 60px;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 0 30px;
-    /* Use a SOLID color here to block out any ghost bars */
+    padding: 0 40px;
     background: #060606 !important;
     border-bottom: 1px solid var(--border-color);
     margin: 0;
@@ -251,10 +248,8 @@ body {
 #main-dashboard.screen {
     justify-content: flex-start !important;
     padding-top: 0 !important;
-    /* Ensure the dashboard itself is above the dead boot-screen */
     z-index: 5;
 }
-
 
 
 .welcome-panel {
@@ -280,10 +275,10 @@ body {
     border-bottom: 2px solid transparent;
 }
 
-    .nav-btn.active {
-        color: var(--cyan);
-        border-bottom: 2px solid var(--cyan);
-    }
+.nav-btn.active {
+    color: var(--cyan);
+    border-bottom: 2px solid var(--cyan);
+}
 
 .user-box {
     display: flex;
@@ -329,7 +324,6 @@ body {
     height: 100%;
     object-fit: cover;
     opacity: 0.5;
-    transition: all 0.3s ease;
 }
 
 /* Glowing Border Logic */
@@ -401,6 +395,7 @@ body {
 .hidden {
     display: none !important;
 }
+/* ==== HOME TAB ======
 
 /* --- TERMINAL NEWS BOX --- */
 .terminal-box {
@@ -418,81 +413,80 @@ body {
     line-height: 1.5;
 }
 
-.screen.active .typewriter::after {
-    content: "█";
-    animation: blink 1s step-end infinite;
-    margin-left: 5px;
-    color: var(--green);
-}
-
-@keyframes blink {
-    from, to {
-        opacity: 1;
+    .erminal-box p:last-child::after,
+    .terminal-box: .terminal-line:last-child::after {
+        content: "█";
+        animation: blink 1s step-end infinite;
+        margin-left: 5px;
+        color: var(--green);
     }
 
-    50% {
-        opacity: 0;
-    }
-}
 
 /* HWID TERMINAL */
-
-/* --- UPGRADED TERMINAL BOX --- */
-.hwid-terminal-box {
-    background: rgba(0, 0, 0, 0.4);
-    border: 1px solid var(--border-color);
-    border-left: 3px solid var(--cyan); /* Accent bar on the left */
-    padding: 20px;
-    border-radius: 8px;
-    font-family: 'Consolas', monospace;
-    width: 90%;
-    max-width: 600px;
-    margin: 20px auto;
-    position: relative;
-    box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.5);
-    transition: border-color 0.3s ease;
-}
-
-    .terminal-box:hover {
-        border-color: rgba(0, 242, 255, 0.3);
-    }
-
-    .terminal-box p {
-        margin: 12px 0;
-        font-size: 13px;
-        color: #888; /* Dimmer labels */
-        letter-spacing: 1px;
-        display: flex;
-        justify-content: space-between;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.03);
-        padding-bottom: 5px;
-    }
-
-.code-text {
-    color: var(--cyan); /* Your specific Cyan variable */
-    text-shadow: 0 0 10px rgba(0, 242, 255, 0.3);
-    font-weight: bold;
-    user-select: all; /* Allows easy triple-click copying */
-}
-
-.spoofer-panel {
+.hwid-header {
     display: flex;
     flex-direction: column;
     align-items: center;
-    width: 100%;
-    margin-top: 30px;
-}
-
-.glow-text-cyan {
-    color: var(--cyan);
-    font-size: 14px;
-    letter-spacing: 4px;
-    text-transform: uppercase;
+    gap: 8px;
+    text-align: center;
     margin-bottom: 20px;
-    text-shadow: 0 0 10px rgba(0, 242, 255, 0.4);
 }
 
-/* Matching your action buttons */
+#hwid-main-status {
+    font-size: 18px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+}
+
+.hwid-subtext {
+    font-size: 12px;
+    opacity: 0.6;
+    text-align: center;
+}
+
+.hwid-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 25px;
+}
+
+@media (max-width: 1100px) {
+    .hwid-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* TERMINAL BOX */
+.hwid-terminal-box {
+    background: #0d0d14;
+    border: 1px solid var(--border-color);
+    border-left: 3px solid var(--cyan);
+    padding: 18px;
+    border-radius: 8px;
+    font-family: 'Consolas', monospace;
+    box-shadow: inset 0 0 15px rgba(0,0,0,0.5);
+    white-space: pre-wrap;
+    word-break: break-all;
+    overflow-wrap: break-word;
+}
+
+    .hwid-terminal-box p {
+        margin: 10px 0;
+        font-size: 12px;
+        display: flex;
+        justify-content: space-between;
+        border-bottom: 1px solid rgba(255,255,255,0.03);
+        padding-bottom: 6px;
+    }
+
+.code-text {
+    color: var(--cyan);
+    text-shadow: 0 0 10px rgba(0, 242, 255, 0.3);
+    font-weight: bold;
+    user-select: all;
+}
+
+/* BUTTONS */
 .reset-btn {
     margin-top: 10px;
     background: transparent;
@@ -510,35 +504,28 @@ body {
     .reset-btn:hover {
         background: var(--cyan);
         color: #000;
-        box-shadow: 0 0 20px rgba(0, 242, 255, 0.4);
+        box-shadow: 0 0 20px rgba(0,242,255,0.4);
     }
 
-/* ADMI RESET TERMNINAL */
-/* --- ADMIN REQUEST TERMINAL --- */
+/* ADMIN PANEL */
+.admin-card {
+    border-left: 3px solid var(--gold);
+}
+
 .admin-terminal-box {
-    background: rgba(0, 0, 0, 0.4);
+    background: rgba(0,0,0,0.4);
     border: 1px solid var(--border-color);
-    border-left: 3px solid var(--gold); /* Gold accent for Admin */
+    border-left: 3px solid var(--gold);
     padding: 15px;
     border-radius: 8px;
     font-family: 'Consolas', monospace;
-    width: 90%;
-    max-width: 600px;
-    height: 100px; /* Fixed height for scrolling logs */
-    margin: 20px auto 10px auto; /* Tight margin for the button below */
-    position: relative;
-    box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.5);
+    height: 100px;
+    box-shadow: inset 0 0 20px rgba(0,0,0,0.5);
     overflow-y: auto;
     text-align: left;
 }
 
-    .admin-terminal-box:hover {
-        border-color: rgba(255, 204, 0, 0.3); /* Gold glow on hover */
-    }
-
-/* Style for individual log lines */
 .log-entry {
-    display: block;
     font-size: 11px;
     color: var(--gold);
     margin-bottom: 5px;
@@ -546,7 +533,6 @@ body {
     text-transform: uppercase;
 }
 
-/* Specific button for Admin Request */
 .admin-req-btn {
     background: transparent;
     border: 1px solid var(--gold);
@@ -563,8 +549,74 @@ body {
     .admin-req-btn:hover {
         background: var(--gold);
         color: #000;
-        box-shadow: 0 0 20px rgba(255, 204, 0, 0.4);
+        box-shadow: 0 0 20px rgba(255,204,0,0.4);
     }
+
+/* CARDS */
+.hwid-card,
+.admin-card {
+    background: rgba(0,0,0,0.4);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 15px; 
+    box-shadow: inset 0 0 20px rgba(0,0,0,0.6);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+}
+
+/* LOCK ICON ON TOP OF CARD */
+.lock-icon {
+    width: 120px;
+    height: 125px;
+    margin-top: 8px;
+    border-radius: 14px;
+    background: linear-gradient(145deg, #1a1a25, #101018);
+    border: 1px solid var(--border-color);
+    box-shadow: inset 0 0 20px rgba(0,0,0,0.5);
+}
+
+
+.lock-icon.active {
+    box-shadow: 0 0 15px var(--green), inset 0 0 10px var(--green);
+    animation: shield-pulse 1.8s infinite;
+}
+
+@keyframes shield-pulse {
+    0%,100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+
+    50% {
+        transform: scale(1.05);
+        opacity: 0.8;
+    }
+}
+
+.hwid-card .hwid-status-text {
+    font-size: 14px;
+    letter-spacing: 2px;
+    font-weight: bold;
+    text-transform: uppercase;
+    color: var(--green);
+    text-align: center;
+}
+
+.hwid-card .hwid-subtext {
+    font-size: 12px;
+    opacity: 0.6;
+    text-align: center;
+}
+
+.hwid-status-line {
+    font-size: 11px;
+    letter-spacing: 1px;
+    opacity: 0.6;
+    margin-top: 10px;
+}
+
 
 
 /* --- AUTO-UPDATER OVERLAY --- */
@@ -608,6 +660,36 @@ body {
     width: 100%;
 }
 
+/* --- BUTTONS & CONTROLS --- */
+.action-btn {
+    background: transparent;
+    border: 1px solid #333;
+    color: #fff;
+    padding: 10px 20px;
+    font-size: 11px;
+    font-weight: bold;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: 0.2s;
+    text-transform: uppercase;
+}
+
+.reset-btn:hover {
+    border-color: var(--red);
+    color: var(--red);
+    box-shadow: 0 0 15px rgba(255, 62, 62, 0.2);
+}
+
+.update-confirm:hover {
+    background: var(--cyan);
+    color: #000;
+    box-shadow: 0 0 20px var(--cyan);
+}
+
+/*
+    ===== SETTINGS TAB =====
+*/
+
 /* --- SETTINGS TAB LAYOUT --- */
 .settings-layout {
     display: grid;
@@ -632,109 +714,420 @@ body {
     margin-bottom: 20px;
 }
 
-/* --- BUTTONS & CONTROLS --- */
-.action-btn {
-    background: transparent;
-    border: 1px solid #333;
-    color: #fff;
-    padding: 10px 20px;
-    font-size: 11px;
-    font-weight: bold;
-    letter-spacing: 1px;
-    cursor: pointer;
-    transition: 0.2s;
-    text-transform: uppercase;
+/* --- CLEANED SETTINGS LAYOUT --- */
+#settings-tab.active {
+    display: flex !important;
+    justify-content: center;
+    width: 100%;
 }
 
-.spoof-btn:hover {
-    border-color: var(--green);
-    color: var(--green);
-    box-shadow: 0 0 15px rgba(0, 255, 136, 0.2);
+.settings-layout {
+    display: grid !important;
+    grid-template-columns: 1.4fr 1fr;
+    gap: 25px;
+    width: 95%;
+    max-width: 1200px;
+    margin: 20px auto;
+    align-items: start;
 }
 
-.reset-btn:hover {
-    border-color: var(--red);
-    color: var(--red);
-    box-shadow: 0 0 15px rgba(255, 62, 62, 0.2);
+/* --- SECTION HEADERS --- */
+.glow-text-cyan {
+    font-size: 14px;
+    letter-spacing: 2px;
+    margin-bottom: 15px;
+    color: var(--cyan);
+    text-shadow: 0 0 10px rgba(0, 242, 255, 0.3);
+    border-left: 3px solid var(--cyan);
+    padding-left: 10px;
 }
 
-.update-confirm:hover {
-    background: var(--cyan);
-    color: #000;
-    box-shadow: 0 0 20px var(--cyan);
-}
-
-/* --- SPOOFER UI --- */
-.spoofer-panel {
-    margin-top: 30px;
-    text-align: center;
-    max-width: 500px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-}
-
-.spoofer-status-box {
+/* --- TERMINAL (NEWS SECTION) UPGRADE --- */
+.news-section {
     background: rgba(0, 0, 0, 0.4);
     border: 1px solid var(--border-color);
-    padding: 20px;
-    margin: 20px 0;
-    width: 100%;
-    border-radius: 4px;
-    box-shadow: inset 0 0 15px rgba(0,0,0,0.5);
+    border-radius: 12px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
 }
 
-.status-row {
+.terminal-line {
+    display: block;
+    margin-bottom: 8px;
+    color: var(--cyan);
+    font-family: 'Consolas', monospace;
+    font-size: 13px;
+    line-height: 1.4;
+    text-shadow: 0 0 5px rgba(0, 242, 255, 0.3);
+}
+
+.terminal-box {
+    display: flex;
+    flex-direction: column;
+    padding: 15px;
+    background: rgba(0, 0, 0, 0.8);
+    border: 1px solid var(--border-color);
+    overflow-y: auto;
+}
+
+
+/* --- SETTINGS PANEL (CARDS) --- */
+.settings-panel {
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--border-color);
+    padding: 25px;
+    border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+.settings-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* --- TOGGLE ROW POLISH --- */
+.switch-container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 15px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid transparent;
+    border-radius: 8px;
+    transition: 0.2s;
+}
+
+    .switch-container:hover {
+        background: rgba(255, 255, 255, 0.05);
+        border-color: rgba(0, 242, 255, 0.2);
+    }
+
+/* --- COMPACT BUTTONS --- */
+.action-buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 20px;
+}
+
+.btn-small {
+    padding: 10px;
+    text-align: center;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
     font-size: 11px;
-    letter-spacing: 3px;
-    text-transform: uppercase;
-    color: #555;
+    color: #888;
+    cursor: pointer;
+    transition: 0.2s;
 }
 
-/* TARGET THE NEW IDs */
-#spoofer-status, #hwid-status {
-    font-weight: bold;
-    margin-left: 10px;
-    transition: all 0.3s ease;
+    .btn-small:hover {
+        color: #fff;
+        border-color: var(--cyan);
+    }
+
+/* Remove the old .typewriter::after and use this */
+#main-terminal .terminal-line:last-child::after {
+    content: "█";
+    animation: blink 1s step-end infinite;
+    margin-left: 5px;
+    color: var(--cyan);
+    display: inline-block;
+    vertical-align: middle;
 }
 
-/* STATE CLASSES (Matching your ui.js logic) */
-.inactive {
-    color: var(--red) !important;
-    text-shadow: 0 0 10px var(--red);
-}
-
-.processing {
-    color: var(--gold) !important;
-    text-shadow: 0 0 10px var(--gold);
-}
-
-.spoof-btn:disabled {
-    border-color: #222;
-    color: #444;
-    cursor: not-allowed;
-    box-shadow: none;
-}
-
-.active-status {
-    color: var(--green) !important;
-    text-shadow: 0 0 15px var(--green);
-    animation: status-pulse 2s infinite; /* Pulsing effect for 'ACTIVE' */
-}
-
-@keyframes status-pulse {
-    0% {
+@keyframes blink {
+    from, to {
         opacity: 1;
     }
 
     50% {
-        opacity: 0.6;
-    }
-
-    100% {
-        opacity: 1;
+        opacity: 0;
     }
 }
+
+.screen.active .typewriter::after {
+    display: none !important;
+}
+
+
+/* ============================= */
+/* SPOOFER PANEL – GLASS UPGRADE */
+/* ============================= */
+
+.spoofer-panel {
+    width: 100%;
+    margin-top: 30px;
+    padding: 28px;
+    border-radius: 16px;
+    background: rgba(15, 15, 22, 0.65);
+    backdrop-filter: blur(18px);
+    border: 1px solid var(--border-color);
+    box-shadow: 0 10px 40px rgba(0,0,0,0.6), inset 0 0 30px rgba(255,255,255,0.02);
+    display: flex;
+    flex-direction: column;
+    gap: 25px;
+}
+
+.spoofer-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    margin-top: 30px;
+}
+
+/* ============================= */
+/* STATUS HEADER                 */
+/* ============================= */
+
+.spoof-overview {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+
+.shield-icon {
+    width: 70px;
+    height: 70px;
+    border-radius: 14px;
+    background: linear-gradient(145deg, #1a1a25, #101018);
+    border: 1px solid var(--border-color);
+    box-shadow: inset 0 0 20px rgba(0,0,0,0.5);
+}
+
+#spoof-main-status {
+    font-size: 18px;
+    letter-spacing: 2px;
+    transition: 0.3s ease;
+}
+
+/* Keep your state classes */
+.inactive {
+    color: var(--red) !important;
+    text-shadow: 0 0 12px var(--red);
+}
+
+.processing {
+    color: var(--gold) !important;
+    text-shadow: 0 0 12px var(--gold);
+}
+
+.active-status {
+    color: var(--green) !important;
+    text-shadow: 0 0 16px var(--green);
+    animation: status-pulse 2s infinite;
+}
+
+@keyframes status-pulse {
+    0%,100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.65;
+    }
+}
+
+/* ============================= */
+/* MODE TOGGLE BUTTONS          */
+/* ============================= */
+
+.spoof-mode-toggle {
+    display: flex;
+    gap: 12px;
+}
+
+.mode-btn {
+    flex: 1;
+    padding: 12px;
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+    background: rgba(20,20,30,0.6);
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.25s ease;
+    font-size: 13px;
+    letter-spacing: 1px;
+}
+
+    .mode-btn:hover {
+        border-color: var(--cyan);
+        box-shadow: 0 0 18px rgba(0,242,255,0.25);
+    }
+
+    .mode-btn.active {
+        background: linear-gradient(90deg, var(--cyan), #00bcd4);
+        color: #000;
+        font-weight: 600;
+        box-shadow: 0 0 20px rgba(0,242,255,0.6);
+    }
+
+/* ============================= */
+/* GRID LAYOUT                  */
+/* ============================= */
+
+.spoof-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 25px;
+}
+
+@media (max-width: 900px) {
+    .spoof-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ============================= */
+/* LEFT OPTIONS CARD            */
+/* ============================= */
+
+.spoof-options {
+    background: rgba(0,0,0,0.4);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    box-shadow: inset 0 0 20px rgba(0,0,0,0.6);
+}
+
+    .spoof-options label {
+        font-size: 12px;
+        opacity: 0.7;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+    }
+
+    .spoof-options select {
+        padding: 10px;
+        border-radius: 8px;
+        background: #101018;
+        border: 1px solid var(--border-color);
+        color: var(--text);
+        transition: 0.2s ease;
+    }
+
+        .spoof-options select:focus {
+            border-color: var(--cyan);
+            box-shadow: 0 0 12px rgba(0,242,255,0.4);
+            outline: none;
+        }
+
+/* ============================= */
+/* CUSTOM TOGGLE SWITCH         */
+/* ============================= */
+
+.toggle-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+}
+
+    .toggle-row input[type="checkbox"] {
+        appearance: none;
+        width: 48px;
+        height: 24px;
+        border-radius: 20px;
+        background: #1c1c24;
+        position: relative;
+        cursor: pointer;
+        transition: 0.3s ease;
+    }
+
+        .toggle-row input[type="checkbox"]::before {
+            content: "";
+            position: absolute;
+            width: 18px;
+            height: 18px;
+            background: #fff;
+            border-radius: 50%;
+            top: 3px;
+            left: 4px;
+            transition: 0.3s ease;
+        }
+
+        .toggle-row input[type="checkbox"]:checked {
+            background: var(--cyan);
+            box-shadow: 0 0 15px rgba(0,242,255,0.6);
+        }
+
+            .toggle-row input[type="checkbox"]:checked::before {
+                transform: translateX(22px);
+            }
+
+/* ============================= */
+/* ACTION CARD                  */
+/* ============================= */
+
+.spoof-action-card {
+    position: relative;
+    background: rgba(20,20,30,0.85);
+    padding: 22px;
+    border-radius: 14px;
+    border: 1px solid var(--border-color);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.6), inset 0 0 25px rgba(255,255,255,0.02);
+}
+
+.recommended-tag {
+    position: absolute;
+    top: -12px;
+    right: 18px;
+    background: var(--cyan);
+    color: #000;
+    font-size: 11px;
+    padding: 5px 10px;
+    border-radius: 8px;
+    font-weight: 600;
+    box-shadow: 0 0 15px var(--cyan);
+}
+
+.warning-box {
+    background: rgba(255,62,62,0.08);
+    border: 1px solid rgba(255,62,62,0.3);
+    padding: 10px;
+    border-radius: 8px;
+    font-size: 12px;
+    margin: 15px 0;
+    color: var(--red);
+}
+
+/* ============================= */
+/* BUTTON POLISH                */
+/* ============================= */
+
+.spoof-btn {
+    width: 100%;
+    padding: 12px;
+    border-radius: 10px;
+    border: 1px solid var(--cyan);
+    background: transparent;
+    color: var(--cyan);
+    font-weight: 600;
+    cursor: pointer;
+    transition: 0.25s ease;
+}
+
+    .spoof-btn:hover {
+        background: var(--cyan);
+        color: #000;
+        box-shadow: 0 0 20px var(--cyan);
+    }
+
+    .spoof-btn:disabled {
+        border-color: #222;
+        color: #444;
+        cursor: not-allowed;
+        box-shadow: none;
+    }
+
 
 
 /* --- SCROLLBAR --- */
