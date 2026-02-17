@@ -1,6 +1,6 @@
 {
   "name": "sk-all-in-one-loader",
-  "version": "1.0.5",
+  "version": "1.0.4",
   "description": "Premium All-In-One Cheat Loader",
   "main": "main.js",
   "author": "SK-Development",
@@ -32,6 +32,13 @@
   "build": {
     "appId": "com.sk.allinone",
     "productName": "SK ALL-IN-ONE",
+    "extraResources": [
+      {
+        "from": "assets",
+        "to": "assets",
+        "filter": [ "**/*" ]
+      }
+    ],
     "copyright": "Copyright © 2026 SK-Development",
     "directories": {
       "output": "SK ALL IN-ONE LOADER"
@@ -39,7 +46,8 @@
     "files": [
       "**/*",
       "build/Release/spoofer.node",
-      "imgs/*"
+      "imgs/*",
+      "assets/*"
     ],
     "publish": [
       {
