@@ -1,5 +1,5 @@
 {
-  "version": "1.0.6",
-  "url": "https://github.com/jeffyNoJumper/My_Auth_API/releases/tag/v1.0.6",
+  "version": "1.0.7",
+  "url": "https://github.com/jeffyNoJumper/My_Auth_API/releases/tag/v1.0.7",
   "message": "Added new HWID spoofing and minor bug fixes."
 }
