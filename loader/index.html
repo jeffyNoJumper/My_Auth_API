@@ -79,7 +79,7 @@
                     <span id="user-expiry">EXP: --</span>
                     <span class="status-dot"></span>
                 </div>
-                <img src="imgs/default-profile.png" id="user-pic" class="glow-border">
+                <img src="./imgs/default-profile.png" id="user-pic" class="glow-border">
                 <input type="file" id="profile-upload" style="display: none;" accept="image/*">
             </div>
         </nav>
@@ -130,83 +130,219 @@
 
             <!-- Tab: HWID -->
             <div id="hwid-tab" class="tab-content">
-                <div class="spoofer-panel">
-                    <h3 class="glow-text-cyan">Hardware Identity</h3>
-                    <div class="hwid-terminal-box">
-                        <p>HWID: <span id="hwid-id" class="code-text">3492387659</span></p>
-                        <p>SERIAL: <span id="serial-id" class="code-text">240639063603906</span></p>
-                        <p>GPU_ID: <span id="gpu-id" class="code-text">PCI\VEN_1002...</span></p>
+                <div class="hwid-panel">
+
+                    <!-- HEADER -->
+                    <div class="hwid-header">
+                        <div class="lock-icon">
+                            <img src="imgs/lock.svg" alt="lock" class="lock-img">
+                        </div>
+                        <h2 id="hwid-main-status" class="inactive">HWID LINKED</h2>
+                        <p class="hwid-subtext">Your current hardware fingerprint details.</p>
                     </div>
-
-                    <button id="reset-btn" class="reset-btn" onclick="requestHWIDReset()">
-                        HWID RESET
-                    </button>
-
-                    <!-- New Admin Section -->
-                    <h3 class="glow-text-cyan" style="margin-top: 30px; color: var(--gold); text-shadow: 0 0 10px rgba(255, 204, 0, 0.4);">Admin Request Panel</h3>
-
-                    <div id="admin-terminal" class="admin-terminal-box">
-                        <span class="log-entry">> SYSTEM_IDLE: WAITING FOR REQUEST...</span>
-                    </div>
-
-                    <button id="admin-request-btn" class="admin-req-btn" onclick="sendAdminRequest()">
-                        REQUEST HWID RESET
-                    </button>
-
-                    <p id="hwid-status" style="font-size: 10px; margin-top: 15px; letter-spacing: 1px; color: #444;"></p>
                 </div>
-            </div>
 
+                <!-- GRID -->
+                <div class="hwid-grid">
 
+                    <!-- LEFT SIDE -->
+                    <div class="hwid-card">
+                        <h3 class="glow-text-cyan">Hardware Identity</h3>
 
-            <!-- Tab: Spoofing -->
-            <div id="spoofing-tab" class="tab-content">
-                <div class="spoofer-panel">
-                    <div class="panel-header">
-                        <h3 class="glow-text-red">HARDWARE MASKING</h3>
-                        <p>Protect your identity before launching any games.</p>
+                        <div class="hwid-terminal-box">
+                            <p>HWID: <span id="hwid-id" class="code-text">3492387659</span></p>
+                            <p>SERIAL: <span id="serial-id" class="code-text">240639063603906</span></p>
+                            <p>GPU_ID: <span id="gpu-id" class="code-text">PCI\VEN_1002...</span></p>
+                        </div>
+
+                        <button id="reset-btn" class="reset-btn" onclick="requestHWIDReset()">
+                            HWID RESET
+                        </button>
                     </div>
 
-                    <!-- ADD THIS LOADER ELEMENT HERE -->
+                    <!-- RIGHT SIDE -->
+                    <div class="admin-card">
+                        <h3 class="glow-text-cyan gold-text">Admin Request Panel</h3>
+
+                        <div id="admin-terminal" class="admin-terminal-box">
+                            <span class="log-entry">> SYSTEM_IDLE: WAITING FOR REQUEST...</span>
+                        </div>
+
+                        <button id="admin-request-btn" class="admin-req-btn" onclick="sendAdminRequest()">
+                            REQUEST HWID RESET
+                        </button>
+                    </div>
+
+                </div>
+
+                <p id="hwid-status" class="hwid-status-line"></p>
+
+            </div>
+        </div>
+
+
+        <!-- Tab: Spoofing -->
+        <div id="spoofing-tab" class="tab-content">
+
+            <div class="spoofer-panel">
+
+                <!-- STATUS OVERVIEW -->
+                <div class="spoof-overview">
+                    <div class="overview-left">
+                        <div class="shield-icon">
+                            <img src="imgs/shield.svg" alt="shield" class="shield-img">
+                        </div>
+
+                        <div class="overview-right">
+                            <h2 id="spoof-main-status" class="status-inactive">
+                                NOT SPOOFED
+                            </h2>
+                            <p id="spoof-subtext">
+                                Your hardware identifiers are currently exposed.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- MODE TOGGLE -->
+                    <div class="spoof-mode-toggle">
+                        <button id="mode-hwid" class="mode-btn active"
+                                onclick="setSpoofMode('hwid')">
+                            HWID (Permanent)
+                        </button>
+
+                        <button id="mode-traces" class="mode-btn"
+                                onclick="setSpoofMode('traces')">
+                            Traces (Temporary)
+                        </button>
+                    </div>
+
+                    <!-- LOADER -->
                     <div id="spoof-progress" class="hidden">
                         <div class="spinner"></div>
                         <p>Processing...</p>
                     </div>
 
-                    <div class="spoofer-status-box">
-                        <div class="status-row">
-                            <span>Status:</span>
-                            <span id="spoofer-status" class="inactive">NOT ACTIVE</span>
+                    <!-- GRID SECTION -->
+                    <div class="spoof-grid">
+
+                        <!-- LEFT OPTIONS -->
+                        <div class="spoof-options">
+
+                            <label>Motherboard Type</label>
+                            <select id="motherboard-select">
+                                <option>ASUS</option>
+                                <option>MSI</option>
+                                <option>Gigabyte</option>
+                                <option>ASRock</option>
+                                <option>Other</option>
+                            </select>
+
+                            <div class="toggle-row">
+                                <span>Auto BIOS Flash</span>
+                                <input type="checkbox" id="bios-flash">
+                            </div>
+
+                            <div class="toggle-row">
+                                <span>Clean Registry</span>
+                                <input type="checkbox" id="clean-reg">
+                            </div>
+
+                            <div class="toggle-row">
+                                <span>Clean Disk Traces</span>
+                                <input type="checkbox" id="clean-disk">
+                            </div>
+
                         </div>
+
+                        <!-- RIGHT ACTION CARD -->
+                        <div class="spoof-action-card">
+
+                            <div class="recommended-tag">
+                                RECOMMENDED
+                            </div>
+
+                            <h3 id="spoof-action-title">
+                                Natural Spoof
+                            </h3>
+
+                            <p id="spoof-action-desc">
+                                Firmware-level hardware masking for maximum persistence.
+                            </p>
+
+                            <div class="warning-box">
+                                WARNING: Permanent spoofing modifies firmware-level identifiers.
+                            </div>
+
+                            <button class="action-btn spoof-btn"
+                                    onclick="startSpoofing()">
+                                EXECUTE SPOOF
+                            </button>
+
+                        </div>
+
                     </div>
-                    <div class="spoofer-controls">
-                        <button class="action-btn spoof-btn" onclick="startSpoofing()">SPOOF HWID</button>
-                    </div>
+
                 </div>
+
             </div>
+
+        </div>
+
 
             <!-- Tab: Settings -->
             <div id="settings-tab" class="tab-content">
                 <div class="settings-layout">
+                    <!-- New Revamped Terminal Section -->
                     <div class="news-section">
-                        <h3 class="glow-text-cyan">GLOBAL_NEWS</h3>
-                        <div class="terminal-box">
-                            <div id="news-feed-text" class="typewriter">> Fetching latest updates...</div>
+                        <h3 class="glow-text-cyan">SYSTEM_TERMINAL</h3>
+                        <div class="terminal-box" id="main-terminal">
+                            <div id="news-feed-text" class="typewriter">> [STATUS] System operational...</div>
+                            <div class="terminal-line">> [LOG] Injection module standby.</div>
+                        </div>
+                        <div class="terminal-input-area">
+                            <span class="prompt">SK-USER:~$</span>
+                            <input type="text" id="terminal-cmd" placeholder="Enter command...">
                         </div>
                     </div>
+
+                    <!-- Expanded Settings Panel -->
                     <div class="settings-panel">
                         <h3 class="glow-text-cyan">CLIENT_SETTINGS</h3>
-                        <p class="desc">Version: 1.0.0 (Latest)</p>
-                        <label class="switch-container">
-                            <input type="checkbox" id="auto-launch">
-                            <span class="slider"></span> Auto-Launch on Start
-                        </label>
+                        <p class="desc">Build: 1.0.4-Beta | Auth: Verified</p>
+
+                        <div class="settings-group">
+                            <label class="switch-container">
+                                <input type="checkbox" id="auto-launch">
+                                <span class="slider"></span> Auto-Launch on Start
+                            </label>
+
+                            <!-- NEW: Auto-Close Feature -->
+                            <label class="switch-container">
+                                <input type="checkbox" id="auto-close-launcher" checked>
+                                <span class="slider"></span> Auto-Close Launcher on Inject
+                            </label>
+
+                            <!-- NEW: Discord RPC Feature -->
+                            <label class="switch-container">
+                                <input type="checkbox" id="discord-rpc">
+                                <span class="slider"></span> Enable Discord Rich Presence
+                            </label>
+
+                            <!-- NEW: Stream Proof Feature -->
+                            <label class="switch-container">
+                                <input type="checkbox" id="stream-proof">
+                                <span class="slider"></span> Stream Proof (Hide Visuals)
+                            </label>
+                        </div>
+
+                        <div class="action-buttons">
+                            <button class="btn-small" onclick="clearLogs()">CLEAR_LOGS</button>
+                            <button class="btn-small danger" onclick="resetConfig()">RESET_ALL</button>
+                        </div>
                     </div>
                 </div>
-            </div>
+            </div> <!-- End Content Area -->
 
-        </div> <!-- End Content Area -->
-
-        <script src="ui.js"></script>
+            <script src="ui.js"></script>
 </body>
 </html>
