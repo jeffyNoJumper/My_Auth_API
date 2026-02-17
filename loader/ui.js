@@ -1,27 +1,54 @@
 const API = 'https://sk-auth-api.up.railway.app';
 
-// 1. Boot Screen Logic
-window.onload = () => {
+// App Entry Point
+window.onload = async () => {
     updateHWIDDisplay();
+
+    const updateNeeded = await waitForUpdateCheck();
+
+    if (!updateNeeded) {
+        startBootSequence();
+    }
+};
+
+const getSetting = (id) => document.getElementById(id).checked;
+
+async function startCS2() {
+    const autoCloseActive = document.getElementById('auto-close-launcher').checked;
+
+    const result = await window.electron.invoke('launch-game', 'cs2', autoCloseActive);
+
+    if (result && result.status === "Success") {
+        if (typeof updateTerminal === 'function') {
+            updateTerminal(`> [SUCCESS] ${result.message}`);
+        } else {
+            addTerminalLine(`> [SUCCESS] ${result.message}`);
+        }
+    } else if (result && result.status === "Error") {
+        addTerminalLine(`> [ERROR] ${result.message}`);
+    }
+}
+
+
+function startBootSequence() {
     let progress = 0;
     const bootScreen = document.getElementById('boot-screen');
     const bar = document.getElementById('boot-progress');
     const status = document.getElementById('boot-status');
-    document.addEventListener('DOMContentLoaded', updateHWIDDisplay);
 
-    if (bootScreen) {
-        bootScreen.style.display = 'flex';
-        bootScreen.style.opacity = '1';
-        bootScreen.style.zIndex = '10002';
-    } else {
-        // If there's no boot screen, just skip to login
+    if (!bootScreen) {
         switchScreen('boot-screen', 'login-screen');
         return;
     }
 
+    bootScreen.style.display = 'flex';
+    bootScreen.style.opacity = '1';
+    bootScreen.style.zIndex = '10002';
+
     const interval = setInterval(() => {
-        progress += Math.random() * 12; 
+        progress += Math.random() * 12;
         if (progress > 100) progress = 100;
+
         if (bar) bar.style.width = progress + '%';
 
         if (status) {
@@ -33,42 +60,106 @@ window.onload = () => {
 
         if (progress >= 100) {
             clearInterval(interval);
-            
-            // 1. Start Fade Out
-            if (bootScreen) {
-                bootScreen.style.opacity = '0';
-                bootScreen.style.pointerEvents = 'none'; 
-                bootScreen.style.transition = 'opacity 0.5s ease, visibility 0.5s';
-            }
 
-            // 2. Wait for fade (500ms) then switch screens
+            bootScreen.style.opacity = '0';
+            bootScreen.style.pointerEvents = 'none';
+            bootScreen.style.transition = 'opacity 0.5s ease, visibility 0.5s';
+
             setTimeout(() => {
                 switchScreen('boot-screen', 'login-screen');
-                
-                // 3. COMPLETE REMOVAL
-                if (bootScreen) {
-                    bootScreen.style.display = 'none'; 
-                    bootScreen.style.visibility = 'hidden'; 
-                    bootScreen.style.zIndex = '-1'; 
-                    bootScreen.innerHTML = ''; 
-                }
-                
-                // 4. Force the Login/Main screens to be interactive and visible
+
+                bootScreen.style.display = 'none';
+                bootScreen.style.visibility = 'hidden';
+                bootScreen.style.zIndex = '-1';
+                bootScreen.innerHTML = '';
+
                 const loginScreen = document.getElementById('login-screen');
                 if (loginScreen) {
                     loginScreen.style.zIndex = '2';
                     loginScreen.style.opacity = '1';
                 }
-                
-                loadGlobalNews(); 
+
+                loadNews();
             }, 500);
         }
     }, 600);
-}; 
+}
+
+function waitForUpdateCheck() {
+    return new Promise((resolve) => {
+        let resolved = false;
+
+        // Listen for updates
+        if (window.api.onUpdateAvailable) {
+            window.api.onUpdateAvailable((data) => {
+                if (resolved) return;
+                resolved = true;
+
+                const overlay = document.getElementById('update-overlay');
+                if (overlay) overlay.classList.remove('hidden');
+                overlay.style.display = 'flex';
+
+                const versionEl = document.getElementById('update-version');
+                if (versionEl) versionEl.innerText = `Update Found: v${data.version}`;
+
+                resolve(true);
+            });
+        }
+
+        setTimeout(() => {
+            if (!resolved) {
+                resolved = true;
+                resolve(false);
+            }
+        }, 3000);
+    });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const settings = [
+        'auto-launch',
+        'auto-close-launcher',
+        'discord-rpc',
+        'stream-proof'
+    ];
+
+    settings.forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+
+        const savedState = localStorage.getItem(id);
+        if (savedState !== null) {
+            el.checked = savedState === 'true';
+        }
+
+        el.addEventListener('change', (e) => {
+            const isChecked = e.target.checked;
+            localStorage.setItem(id, isChecked);
+
+            handleSettingChange(id, isChecked);
+            addTerminalLine(`> [CONFIG] ${id.replace(/-/g, '_').toUpperCase()} set to ${isChecked}`);
+        });
+    });
+});
+
+function handleSettingChange(id, value) {
+    switch (id) {
+        case 'auto-launch':
+            // window.api.toggleStartup(value); // Requires C++ or Electron login
+            break;
+        case 'discord-rpc':
+            window.api.toggleDiscord(value); // Send to main.js
+            break;
+        case 'stream-proof':
+            // Logic to make your overlay invisible to OBS
+            // window.api.setStreamProof(value); 
+            break;
+    }
+}
 
 async function loginUser() {
-    const key = document.getElementById('key-input').value; // user-entered key
-    const hwid = getHWID(); // your HWID function
+    const key = document.getElementById('key-input').value;
+    const hwid = getHWID();
 
     if (!key) return alert("Enter your license key!");
 
@@ -83,7 +174,6 @@ async function loginUser() {
         if (data.token === "VALID") {
 
             alert("Login Successful!");
-            // continue to load your app/game
         } else {
             alert("Login Failed: " + data.error);
         }
@@ -94,51 +184,16 @@ async function loginUser() {
 }
 
 
-// 2. Navigation & News Feed Logic
+// Navigation & News Feed Logic
 function switchScreen(oldId, newId) {
     document.getElementById(oldId).classList.remove('active');
     document.getElementById(newId).classList.add('active');
 }
 
-// TERMINAL TYPEWRITER EFFECT
-function typeNews(text) {
-    const newsContainer = document.getElementById('news-feed-text');
-    if (!newsContainer) return;
-
-    newsContainer.innerHTML = "";
-    let i = 0;
-    const speed = 30; // ms per character
-
-    function type() {
-        if (i < text.length) {
-            newsContainer.innerHTML += text.charAt(i);
-            i++;
-            setTimeout(type, speed);
-        }
-    }
-    type();
-}
-
-async function loadGlobalNews() {
-    try {
-        // Fetches from the GitHub Release notes via Electron Main
-        const updateInfo = await window.api.getNews();
-        if (updateInfo && updateInfo.releaseNotes) {
-            typeNews(updateInfo.releaseNotes);
-        } else {
-            typeNews("> SYSTEM ONLINE: No new announcements at this time.");
-        }
-    } catch (err) {
-        typeNews("> ERROR: Could not reach News Server.");
-    }
-}
-
-
 window.addEventListener('DOMContentLoaded', () => {
     const userPic = document.getElementById('user-pic');
     const profileUpload = document.getElementById('profile-upload');
 
-    // On Load: Use the key from localStorage to "remember" them
     const savedPic = localStorage.getItem('saved_profile_pic');
     if (savedPic && userPic) userPic.src = savedPic;
 
@@ -153,11 +208,9 @@ window.addEventListener('DOMContentLoaded', () => {
             reader.onload = async (event) => {
                 const base64Image = event.target.result;
                 
-                // 1. Update UI immediately
                 userPic.src = base64Image;
                 localStorage.setItem('saved_profile_pic', base64Image);
 
-                // 2. Sync to MongoDB via your API
                 try {
                     const key = localStorage.getItem('license_key');
                     await fetch('https://sk-auth-api.up.railway.app/login', {
@@ -179,11 +232,9 @@ document.getElementById('reset-btn').addEventListener('click', async () => {
     statusText.innerText = "REQUESTING HWID RESET...";
 
     try {
-        // We reuse the startSpoof bridge but you can create a specific reset one
         const results = await window.api.startSpoof();
         if (results) {
             statusText.innerText = "HWID RESET COMPLETED";
-            // Important: Refresh the info display immediately
             await updateHWIDDisplay();
         }
     } catch (err) {
@@ -194,16 +245,13 @@ document.getElementById('reset-btn').addEventListener('click', async () => {
 
 // Updated Navigation Logic for 5 Tabs
 function showTab(tabName) {
-    // 1. Reset all buttons
+
     document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
-    // 2. Hide all content areas
     document.querySelectorAll('.tab-content').forEach(tab => {
         tab.classList.remove('active');
-        // Ensure display is toggled if your CSS doesn't handle .active visibility
         tab.style.display = 'none';
     });
 
-    // 3. Activate the chosen button and tab
     const selectedBtn = document.getElementById('btn-' + tabName);
     const selectedTab = document.getElementById(tabName + '-tab');
 
@@ -213,8 +261,10 @@ function showTab(tabName) {
         selectedTab.style.display = 'block';
     }
 
-    // 4. Tab-Specific Logic
-    if (tabName === 'settings') loadGlobalNews();
+    if (tabName === 'settings') {
+        selectedTab.style.display = 'grid';
+        loadNews();
+    }
     if (tabName === 'hwid') updateHWIDDisplay();
 }
 
@@ -222,17 +272,14 @@ async function updateHWIDDisplay() {
     try {
         console.log("Refreshing Hardware Terminal...");
 
-        // 1. Get the data from the Bridge
         const hwid = await window.api.getMachineID();
         const serial = await window.api.getBaseboard();
         const gpu = await window.api.getGPUID();
 
-        // 2. Target the spans in your HTML
         const hwidElem = document.getElementById('hwid-id');
         const serialElem = document.getElementById('serial-id');
         const gpuElem = document.getElementById('gpu-id');
 
-        // 3. Update the text if the elements exist
         if (hwidElem) hwidElem.innerText = hwid || "N/A";
         if (serialElem) serialElem.innerText = serial || "N/A";
         if (gpuElem) gpuElem.innerText = gpu.replace(/&amp;/g, '&');
@@ -246,7 +293,7 @@ async function updateHWIDDisplay() {
 
 
 
-// 3. Authentication
+// Authentication
 async function handleLogin() {
     const key = document.getElementById('license-key').value;
     const btn = document.getElementById('login-btn');
@@ -267,13 +314,13 @@ async function handleLogin() {
         const data = await response.json();
 
         if (data.token) {
-            // 1. Save credentials and profile to LocalStorage
+            // Save credentials and profile to LocalStorage
             localStorage.setItem('license_key', key);
             if (data.profile_pic) {
                 localStorage.setItem('saved_profile_pic', data.profile_pic);
             }
 
-            // 2. Update UI
+            // Update UI
             const userPic = document.getElementById('user-pic');
             if (userPic) userPic.src = data.profile_pic || 'imgs/default-profile.png';
             
@@ -300,12 +347,10 @@ window.addEventListener('DOMContentLoaded', async () => {
     const savedKey = localStorage.getItem('license_key');
     const savedPic = localStorage.getItem('saved_profile_pic');
 
-    // Auto-fill the license key if it exists
     if (savedKey && licenseInput) {
         licenseInput.value = savedKey;
     }
 
-    // Pre-load the profile picture so it's not black
     if (savedPic && userPic) {
         userPic.src = savedPic;
     } else if (userPic) {
@@ -316,13 +361,27 @@ window.addEventListener('DOMContentLoaded', async () => {
 
 // Function for the Spoofing Tab
 async function startSpoofing() {
-    // Target only the elements in the Spoofing tab
-    const mainStatus = document.getElementById('spoofer-status');
-    const loader = document.getElementById('spoof-progress');
 
-    // 1. Enter Processing State
+    const options = {
+        mode: currentSpoofMode,
+        motherboard: document.getElementById('motherboard-select').value,
+        biosFlash: document.getElementById('bios-flash').checked,
+        cleanReg: document.getElementById('clean-reg').checked,
+        cleanDisk: document.getElementById('clean-disk').checked
+    };
+
+    const statusText = document.getElementById('spoof-main-status');
+    const progress = document.getElementById('spoof-progress');
+    const btn = document.querySelector('.spoof-btn');
+
+    btn.disabled = true;
+    progress.classList.remove('hidden');
+    statusText.innerText = "SPOOFING...";
+    statusText.className = "processing";
+
+    // Enter Processing State
     mainStatus.innerText = "INITIALIZING...";
-    mainStatus.className = "processing"; // Triggers Gold color
+    mainStatus.className = "processing";
     loader.classList.remove('hidden');
 
     try {
@@ -330,13 +389,11 @@ async function startSpoofing() {
         const results = await window.api.startSpoof();
 
         if (results && (results.disk || results.guid)) {
-            // 3. Success State (ACTIVE)
             mainStatus.innerText = "SPOOFED SUCCESFULLY";
-            mainStatus.className = "active-status"; // Triggers Green Pulse
+            mainStatus.className = "active-status";
 
             console.log("Spoofing Active. Identity tab left untouched.");
         } else {
-            // 4. Failure State
             mainStatus.innerText = "FAILED";
             mainStatus.className = "inactive";
         }
@@ -345,17 +402,148 @@ async function startSpoofing() {
         mainStatus.innerText = "ERROR";
         mainStatus.className = "inactive";
     } finally {
-        // Hide loader after a small delay
         setTimeout(() => {
             loader.classList.add('hidden');
         }, 500);
     }
 }
 
+let currentSpoofMode = "hwid";
+let spoofState = "inactive"; // inactive | temp | perm
+
+document.addEventListener('DOMContentLoaded', () => {
+    // 1. Initialize Spoofer Options (Persistence)
+    const spooferOptions = ['motherboard-select', 'bios-flash', 'clean-reg', 'clean-disk'];
+
+    spooferOptions.forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+
+        const saved = localStorage.getItem('spoofer_' + id);
+        if (saved !== null) {
+            if (el.type === 'checkbox') el.checked = saved === 'true';
+            else el.value = saved;
+        }
+
+        el.addEventListener('change', () => {
+            const val = el.type === 'checkbox' ? el.checked : el.value;
+            localStorage.setItem('spoofer_' + id, val);
+            console.log(`[SPOOFER] ${id} updated to: ${val}`);
+        });
+    });
+
+    // 2. Load saved mode preference
+    const savedMode = localStorage.getItem('currentSpoofMode') || 'hwid';
+    setSpoofMode(savedMode);
+});
+
+// MODE SWITCHING
+function setSpoofMode(mode) {
+    currentSpoofMode = mode;
+    localStorage.setItem('currentSpoofMode', mode);
+
+    // Update Button Classes
+    document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
+    const activeBtn = document.getElementById(`mode-${mode}`);
+    if (activeBtn) activeBtn.classList.add('active');
+
+    updateModeDescription();
+}
+
+// Update Text Descriptions based on Mode
+function updateModeDescription() {
+    const title = document.getElementById('spoof-action-title');
+    const desc = document.getElementById('spoof-action-desc');
+
+    if (!title || !desc) return;
+
+    if (currentSpoofMode === 'hwid') {
+        title.innerText = "Natural Spoof";
+        desc.innerText = "Firmware-level hardware masking for maximum persistence. Recommended for permanent bans.";
+    } else {
+        title.innerText = "Trace Cleaner";
+        desc.innerText = "Temporary session-based cleaning. Use this to clear temporary developer markers.";
+    }
+}
 
 
+// UPDATE MODE DESCRIPTION
+function updateModeDescription() {
 
-// 5. Request HWID Reset Function (Synced with Railway API)
+    const title = document.getElementById("spoof-action-title");
+    const desc = document.getElementById("spoof-action-desc");
+    const warning = document.querySelector(".warning-box");
+
+    if (currentSpoofMode === "hwid") {
+        title.textContent = "Natural Spoof (Permanent)";
+        desc.textContent = "Reprogram motherboard and hardware serials at firmware level.";
+        warning.textContent = "WARNING: Permanent spoof modifies firmware identifiers.";
+    }
+
+    if (currentSpoofMode === "traces") {
+        title.textContent = "Trace Cleaner (Temporary)";
+        desc.textContent = "Removes local tracking artifacts without modifying firmware.";
+        warning.textContent = "Temporary spoof resets after reboot.";
+    }
+}
+
+// STATUS UPDATE
+function updateSpoofStatus(state) {
+
+    spoofState = state;
+
+    const status = document.getElementById("spoof-main-status");
+    const subtext = document.getElementById("spoof-subtext");
+
+    status.classList.remove("status-inactive", "status-temp", "status-perm");
+
+    if (state === "inactive") {
+        status.textContent = "NOT SPOOFED";
+        subtext.textContent = "Your hardware identifiers are currently exposed.";
+        status.classList.add("status-inactive");
+    }
+
+    if (state === "temp") {
+        status.textContent = "TEMPORARY SPOOF ACTIVE";
+        subtext.textContent = "Session-based masking is enabled.";
+        status.classList.add("status-temp");
+    }
+
+    if (state === "perm") {
+        status.textContent = "PERMANENT SPOOF ACTIVE";
+        subtext.textContent = "Firmware-level spoof successfully applied.";
+        status.classList.add("status-perm");
+    }
+}
+
+// SPOOF EXECUTION
+function startSpoofing() {
+
+    const loader = document.getElementById("spoof-progress");
+
+    loader.classList.remove("hidden");
+
+    setTimeout(() => {
+
+        loader.classList.add("hidden");
+
+        if (currentSpoofMode === "hwid") {
+            updateSpoofStatus("perm");
+        } else {
+            updateSpoofStatus("temp");
+        }
+
+    }, 2500);
+}
+
+// INITIALIZE ON TAB LOAD
+document.addEventListener("DOMContentLoaded", function () {
+    updateModeDescription();
+    updateSpoofStatus("inactive");
+});
+
+
+// Request HWID Reset Function
 async function requestHWIDReset() {
     const hwidStatus = document.getElementById('hwid-status');
     const spooferStatus = document.getElementById('spoofer-status');
@@ -367,7 +555,7 @@ async function requestHWIDReset() {
     }
 
     try {
-        // 1. Run local C++ spoofing logic
+        // Run local C++ spoofing logic
         const results = await window.api.startSpoof();
         if (results) {
 
@@ -376,12 +564,12 @@ async function requestHWIDReset() {
             const response = await fetch(API_URL, {
                 method: 'POST',
                 headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`, // Ensure token is stored here
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`,
                     'Content-Type': 'application/json'
                 }
             });
 
-            // 3. Give OS time to flush ID's
+            // Give OS time to flush ID's
             await new Promise(resolve => setTimeout(resolve, 2000));
 
             if (hwidStatus) {
@@ -394,7 +582,7 @@ async function requestHWIDReset() {
                 spooferStatus.className = "active-status";
             }
 
-            // 4. Refresh IDs in UI
+            // Refresh IDs in UI
             await updateHWIDDisplay();
 
             console.log("DB Cleared. New HWID will be captured on next login.");
@@ -456,7 +644,7 @@ async function sendAdminRequest() {
 }
 
 
-// 5. AUTO-UPDATER UI LOGIC
+// AUTO-UPDATER UI LOGIC
 window.api.onUpdateAvailable((data) => {
     document.getElementById('update-overlay').classList.remove('hidden');
     document.getElementById('update-version').innerText = `Update Found: v${data.version}`;
@@ -466,8 +654,10 @@ window.api.onUpdateAvailable((data) => {
     }
 });
 
-const status = document.getElementById("user-status");
 function setStatus(state) {
+    const status = document.getElementById("user-status");
+    if (!status) return;
+
     status.classList.remove(
         "status-online",
         "status-offline",
@@ -536,8 +726,142 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 });
 
+function typeNews(text) {
+    const newsContainer = document.getElementById('news-feed-text');
+    if (!newsContainer) {
+        console.error("Critical: 'news-feed-text' element not found in HTML.");
+        return;
+    }
 
-// 6. Injection
+    newsContainer.innerHTML = "";
+    let i = 0;
+    const speed = 30;
+
+    function type() {
+        if (i < text.length) {
+            newsContainer.innerHTML += text.charAt(i);
+            i++;
+            setTimeout(type, speed);
+        }
+    }
+    type();
+}
+
+// Updated News Loader
+let newsLoaded = false;
+
+async function loadNews() {
+
+    if (newsLoaded) return;
+
+    try {
+        const news = await window.api.getNews();
+        const terminal = document.getElementById('main-terminal');
+
+        if (news) {
+            const lines = news.split('\n');
+
+            const feedContainer = document.getElementById('news-feed-text');
+            if (feedContainer) feedContainer.innerHTML = "";
+
+            lines.forEach((line, index) => {
+                setTimeout(() => {
+                    addTerminalLine(line);
+                }, index * 150);
+            });
+            newsLoaded = true;
+        } else {
+            addTerminalLine("> [SYSTEM] Online: No new announcements.");
+        }
+    } catch (err) {
+        console.error("News Load Error:", err);
+        addTerminalLine("> [ERROR] Failed to synchronize news feed.");
+    }
+}
+
+// Terminal Input Handler
+const terminalInput = document.getElementById('terminal-cmd');
+if (terminalInput) {
+    terminalInput.addEventListener('keypress', function (e) {
+        if (e.key === 'Enter') {
+            const cmd = e.target.value.trim().toLowerCase();
+            if (cmd !== "") {
+                addTerminalLine(`SK-USER:~$ ${cmd}`);
+
+                if (cmd === 'clear') {
+                    document.getElementById('main-terminal').innerHTML = '<div id="news-feed-text" class="typewriter"></div>';
+                } else if (cmd === 'help') {
+                    addTerminalLine("> Available: status, inject, version, clear");
+                } else if (cmd === 'status') {
+                    addTerminalLine("> [SYSTEM] Security: Secure | Modules: Loaded");
+                } else {
+                    addTerminalLine(`> Unknown command: ${cmd}`);
+                }
+
+                e.target.value = "";
+                const box = document.getElementById('main-terminal');
+                box.scrollTop = box.scrollHeight;
+            }
+        }
+    });
+}
+
+function addTerminalLine(text) {
+    const box = document.getElementById('main-terminal');
+    if (!box) return;
+    const line = document.createElement('div');
+    line.className = 'terminal-line';
+    line.innerText = text;
+    box.appendChild(line);
+}
+
+document.getElementById('stream-proof').addEventListener('change', (e) => {
+    window.api.toggleStreamProof(e.target.checked);
+    addTerminalLine(`> [SYSTEM] Stream Proof: ${e.target.checked ? 'ENABLED' : 'DISABLED'}`);
+});
+
+document.getElementById('discord-rpc').addEventListener('change', (e) => {
+    window.api.toggleDiscord(e.target.checked);
+});
+
+// --- SETTINGS ACTIONS ---
+
+// Function to wipe the terminal UI
+function clearLogs() {
+    const terminal = document.getElementById('main-terminal');
+    if (terminal) {
+        terminal.innerHTML = '<div id="news-feed-text" class="typewriter">> [SYSTEM] Logs cleared. Buffer reset.</div>';
+        newsLoaded = false;
+        console.log("[UI] Terminal logs cleared by user.");
+    }
+}
+
+// Function to reset all saved toggles and localStorage
+function resetConfig() {
+    const confirmed = confirm("WARNING: This will reset all saved settings and preferences. Continue?");
+
+    if (confirmed) {
+        // 1. Clear the local storage
+        localStorage.clear();
+
+        const checkboxes = document.querySelectorAll('.switch-container input[type="checkbox"]');
+        checkboxes.forEach(cb => {
+            if (cb.id === 'auto-close-launcher') {
+                cb.checked = true;
+            } else {
+                cb.checked = false;
+            }
+        });
+
+        addTerminalLine("> [SYSTEM] Configuration reset. Reloading UI...");
+        setTimeout(() => {
+            window.location.reload();
+        }, 1500);
+    }
+}
+
+
+// Injection
 async function launchGame(gameName) {
     const res = await window.api.launchCheat(gameName);
     alert(res.message);
