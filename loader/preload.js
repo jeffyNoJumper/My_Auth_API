@@ -17,12 +17,16 @@ contextBridge.exposeInMainWorld('api', {
     minimize: () => ipcRenderer.send('window-minimize'),
 
     // Update Listeners
-    onUpdateAvailable: (callback) => {
-        ipcRenderer.removeAllListeners('update-available');
-        ipcRenderer.on('update-available', (event, data) => callback(data));
-    },
-    onDownloadProgress: (callback) =>
-        ipcRenderer.on('download-progress', (event, percent) => callback(percent)),
-    onUpdateReady: (callback) =>
-        ipcRenderer.on('update-ready', (event) => callback())
+onUpdateAvailable: (callback) => {
+    ipcRenderer.removeAllListeners('update-available');
+    ipcRenderer.on('update-available', (event, data) => callback(data));
+},
+onUpdateNotAvailable: (callback) => {
+    ipcRenderer.removeAllListeners('update-not-available');
+    ipcRenderer.on('update-not-available', () => callback());
+},
+onDownloadProgress: (callback) =>
+    ipcRenderer.on('download-progress', (event, percent) => callback(percent)),
+onUpdateReady: (callback) =>
+    ipcRenderer.on('update-ready', () => callback())
 });
