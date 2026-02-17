@@ -27,7 +27,7 @@ Built with **C# WinForms** for the frontend and a **C++ DLL** for injection and 
 - Clean, responsive **WinForms + ImGui overlay**
 
 *Example UI Screenshot:*
-![UI Screenshot](path/to/ui-screenshot.png)
+![UI Screenshot](examples/ui.png)
 
 ### Game Support
 - CS2 DLL & External injection
@@ -35,7 +35,8 @@ Built with **C# WinForms** for the frontend and a **C++ DLL** for injection and 
 - Auto-launch & auto-close options for convenience
 
 *Game Cards Animation Example:*
-![Game Card Animation](path/to/game-card-animation.gif)
+![Game Card Animation](examples/game-card.png)
+![Game Card Animation](examples/game-card1.png
 
 ### Security & Spoofing
 - Permanent HWID spoofing via motherboard/serial modification
@@ -44,7 +45,7 @@ Built with **C# WinForms** for the frontend and a **C++ DLL** for injection and 
 - Integrated terminal logs for spoofing and hardware status
 
 *Spoofer Example Screenshot:*
-![Spoofer Example](path/to/spoofer-example.png)
+![Spoofer Example](examples/spoofer.png)
 
 ### Account & Authentication
 - License key authentication with server verification
@@ -66,5 +67,5 @@ Built with **C# WinForms** for the frontend and a **C++ DLL** for injection and 
 1. Clone or download the repository:
 
 ```bash
-git clone https://github.com/yourusername/soloknight-loader.git
+git clone https://github.com/yourusername/My_Auth_API.git
 cd soloknight-loader
