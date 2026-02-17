@@ -27,7 +27,7 @@ Built with **C# WinForms** for the frontend and a **C++ DLL** for injection and 
 - Clean, responsive **WinForms + ImGui overlay**
 
 *Example UI Screenshot:*  
-![UI Screenshot](examples/ui.png)
+![UI Screenshot](examples/ui.PNG)
 
 ### Game Support
 - CS2 DLL & External injection
@@ -35,8 +35,8 @@ Built with **C# WinForms** for the frontend and a **C++ DLL** for injection and 
 - Auto-launch & auto-close options for convenience
 
 *Game Cards Animation Example:*  
-![Game Card Animation 1](examples/game-card.png)  
-![Game Card Animation 2](examples/game-card1.png)
+![Game Card Animation 1](examples/game-card.PNG)  
+![Game Card Animation 2](examples/game-card1.PNG)
 
 ### Security & Spoofing
 - Permanent HWID spoofing via motherboard/serial modification
@@ -45,7 +45,7 @@ Built with **C# WinForms** for the frontend and a **C++ DLL** for injection and 
 - Integrated terminal logs for spoofing and hardware status
 
 *Spoofer Example Screenshot:*  
-![Spoofer Example](examples/spoofer.png)
+![Spoofer Example](examples/spoofer.PNG)
 
 ### Account & Authentication
 - License key authentication with server verification
@@ -59,7 +59,7 @@ Built with **C# WinForms** for the frontend and a **C++ DLL** for injection and 
 - Integrated news feed during updates
 
 *Updater Overlay Example:*  
-![Updater Overlay](examples/updater-overlay.png)
+![Updater Overlay](examples/updater-overlay.PNG)
 
 ---
 
