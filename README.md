@@ -26,7 +26,7 @@ Built with **C# WinForms** for the frontend and a **C++ DLL** for injection and 
 - Interactive terminal interface for commands and logs
 - Clean, responsive **WinForms + ImGui overlay**
 
-*Example UI Screenshot:*
+*Example UI Screenshot:*  
 ![UI Screenshot](examples/ui.png)
 
 ### Game Support
@@ -34,9 +34,9 @@ Built with **C# WinForms** for the frontend and a **C++ DLL** for injection and 
 - COD & Fortnite injection modules
 - Auto-launch & auto-close options for convenience
 
-*Game Cards Animation Example:*
-![Game Card Animation](examples/game-card.png)
-![Game Card Animation](examples/game-card1.png
+*Game Cards Animation Example:*  
+![Game Card Animation 1](examples/game-card.png)  
+![Game Card Animation 2](examples/game-card1.png)
 
 ### Security & Spoofing
 - Permanent HWID spoofing via motherboard/serial modification
@@ -44,7 +44,7 @@ Built with **C# WinForms** for the frontend and a **C++ DLL** for injection and 
 - Stream proof mode hides visuals for safe streaming
 - Integrated terminal logs for spoofing and hardware status
 
-*Spoofer Example Screenshot:*
+*Spoofer Example Screenshot:*  
 ![Spoofer Example](examples/spoofer.png)
 
 ### Account & Authentication
@@ -58,8 +58,8 @@ Built with **C# WinForms** for the frontend and a **C++ DLL** for injection and 
 - Download progress bar for updates
 - Integrated news feed during updates
 
-*Updater Overlay Example:*
-![Updater Overlay](path/to/updater-overlay.png)
+*Updater Overlay Example:*  
+![Updater Overlay](examples/updater-overlay.png)
 
 ---
 
