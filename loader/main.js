@@ -90,6 +90,10 @@ autoUpdater.on('update-available', (info) => {
     });
 });
 
+autoUpdater.on('update-not-available', () => {
+    mainWindow.webContents.send('update-not-available');
+});
+
 ipcMain.handle('start-update-download', () => {
     autoUpdater.downloadUpdate();
 });
