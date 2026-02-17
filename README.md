@@ -1,6 +1,6 @@
-# SOLOKNIGHT Loader & Mod Menu
+# SOLOKNIGHT AIO Loader
 
-**Version:** 1.0.4-Beta  
+**Version:** 1.0.5-Beta  
 **Author:** SRC DEV
 
 ---
