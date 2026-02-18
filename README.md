@@ -59,7 +59,7 @@ Built with **C# WinForms** for the frontend and a **C++ DLL** for injection and 
 - Integrated news feed during updates
 
 *Updater Overlay Example:*  
-![Updater Overlay](examples/updater-overlay.PNG)
+![Updater Overlay](examples/updater-overlay.png)
 
 ---
 
