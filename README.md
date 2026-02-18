@@ -45,7 +45,7 @@ Built with **C# WinForms** for the frontend and a **C++ DLL** for injection and 
 - Integrated terminal logs for spoofing and hardware status
 
 *Spoofer Example Screenshot:*  
-![Spoofer Example](examples/spoofer.PNG)
+![Spoofer Example](examples/spoofer.png)
 
 ### Account & Authentication
 - License key authentication with server verification
