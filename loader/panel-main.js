@@ -2,8 +2,8 @@ const { app, BrowserWindow, ipcMain } = require('electron');
 
 function createWindow() {
     const win = new BrowserWindow({
-        width: 550,
-        height: 760,
+        width: 1100,
+        height: 720,
         frame: false,
         transparent: true,
         resizable: false,
