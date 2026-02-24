@@ -164,6 +164,18 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                     }))
                 });
 
+            case 'update-pfp':
+                // No admin_password check here because it's called by the USER loader
+                if (license_key) {
+                    const user = await User.findOneAndUpdate(
+                        { license_key: license_key.toUpperCase() },
+                        { profile_pic: req.body.profile_pic },
+                        { new: true }
+                    );
+                    if (user) return safeJson({ success: true, message: "PFP Updated" });
+                }
+                return safeJson({ success: false, error: "Failed to update PFP" });
+
             // Inside your index.js /admin/:action switch
             case 'get-key':
                 return safeJson({
@@ -215,48 +227,59 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
     }
 });
 
-// --- 6. USER LOGIN ---
+// --- 6. USER LOGIN (FINAL SECURE VERSION) ---
 app.post('/login', async (req, res) => {
     try {
         const { email, password, license_key, hwid } = req.body;
 
-        // 1. Find user by Email and Key
-        // Note: In production, use bcrypt to compare the password instead of plain text
-        const user = await User.findOne({
-            email: email.toLowerCase(),
-            license_key: license_key.toUpperCase()
-        });
+        if (!email || !password || !license_key) {
+            return res.json({ error: "Missing required fields" });
+        }
 
-        // 2. Initial Validations
+        const cleanEmail = email.toLowerCase().trim();
+        const cleanKey = license_key.toUpperCase().trim();
+        const cleanPass = password.trim();
+
+        // 1. Find user by email and key
+        const user = await User.findOne({ email: cleanEmail, license_key: cleanKey });
+
         if (!user) return res.json({ error: "Invalid Email or License Key" });
 
-        // Simple password check (Match this to how you store them in MongoDB)
-        if (user.password !== password) return res.json({ error: "Invalid Password" });
+        // 2. AUTO-REGISTRATION: If password field is missing, null, or empty string
+        if (!user.password || user.password === "" || user.password === null) {
+            user.password = cleanPass;
+            await user.save();
+            console.log(`[AUTH] First-time registration success for: ${cleanEmail}`);
+        }
+        // 3. VALIDATION: Standard check
+        else if (user.password !== cleanPass) {
+            return res.json({ error: "Invalid Password" });
+        }
 
+        // 4. STATUS CHECKS
         if (user.is_banned) return res.json({ error: "Account Banned" });
         if (user.is_paused) return res.json({ error: "Subscription Paused" });
         if (new Date() > user.expiry_date) return res.json({ error: "Subscription Expired" });
 
-        // 3. HWID Management
+        // 5. HWID LOCKING
         if (!user.hwid || user.hwid === "null" || user.hwid === null) {
-            // Link HWID on first login
             user.hwid = hwid;
             await user.save();
         } else if (user.hwid !== hwid) {
-            // Block if HWID doesn't match
+            // Using your existing HWID logic
             return res.json({ error: "HWID Mismatch. Please request a reset." });
         }
 
-        // 4. Success Response
+        // 6. SUCCESS RESPONSE
         res.json({
             token: "VALID",
             expiry: user.expiry_date,
-            profile_pic: user.profile_pic || 'imgs/default-profile.png',
+            profile_pic: user.profile_pic || '',
             games: user.games || []
         });
 
     } catch (err) {
-        console.error("Login Error:", err);
+        console.error("Login Crash:", err);
         res.status(500).json({ error: "Internal Server Error" });
     }
 });
