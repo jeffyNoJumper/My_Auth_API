@@ -251,6 +251,7 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                 console.log(`[DEBUG] Received unknown action: "${action}"`);
                 return safeJson({ success: false, error: `Invalid Action: ${action}` });
         }
+    }
 });
 
 // --- 6. USER LOGIN (FINAL SECURE VERSION) ---
