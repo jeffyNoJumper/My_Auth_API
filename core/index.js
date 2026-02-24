@@ -205,15 +205,28 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                 });
 
             case 'reset-hwid':
+                // 1. Wipe the user's current HWID to allow a new capture
                 user.hwid = null;
                 await user.save();
+
                 try {
-                    // Wipe pending requests for this key upon reset
-                    await mongoose.model('Request').deleteMany({
-                        license_key: license_key.toUpperCase()
-                    });
-                } catch (err) { console.error("Request clear failed:", err); }
-                return safeJson({ success: true, message: "HWID reset successfully." });
+                    // 2. Instead of deleting, mark the LATEST pending request as APPROVED
+                    // This is what the loader's terminal is "listening" for
+                    await mongoose.model('Request').findOneAndUpdate(
+                        {
+                            license_key: license_key.toUpperCase(),
+                            status: "PENDING"
+                        },
+                        { status: "APPROVED" },
+                        { sort: { date: -1 } } // Targets the most recent request
+                    );
+
+                    console.log(`[!] HWID Reset & Request APPROVED for: ${license_key}`);
+                } catch (err) {
+                    console.error("Request update failed:", err);
+                }
+
+                return safeJson({ success: true, message: "HWID reset and user notified." });
 
             case 'pause': // Handles 'pause' or 'pause-key'
                 user.is_paused = true;
@@ -301,6 +314,22 @@ app.post('/login', async (req, res) => {
     }
 });
 
+app.get('/check-reset-status', async (req, res) => {
+    try {
+        const { key } = req.query;
+        if (!key) return res.json({ status: "NONE" });
+
+        // Look for the latest request for this specific key
+        const request = await mongoose.model('Request').findOne({
+            license_key: key.toUpperCase()
+        }).sort({ date: -1 });
+
+        // Returns "PENDING", "APPROVED", or "DENIED"
+        res.json({ status: request ? request.status : "NONE" });
+    } catch (err) {
+        res.status(500).json({ status: "ERROR" });
+    }
+});
 
 app.post('/request-hwid-reset', async (req, res) => {
     try {
@@ -313,8 +342,7 @@ app.post('/request-hwid-reset', async (req, res) => {
         const upperKey = license_key.toUpperCase();
         console.log(`[!] RESET REQUEST | Key: ${upperKey} | HWID: ${hwid}`);
 
-        // --- 1. SAVE TO DATABASE (THE MISSING PIECE) ---
-        // Using insertOne talks directly to the 'requests' collection in your DB
+        // --- 1. SAVE TO DATABASE ---
         await mongoose.connection.collection('requests').insertOne({
             hwid: hwid,
             license_key: upperKey,
@@ -325,7 +353,7 @@ app.post('/request-hwid-reset', async (req, res) => {
         console.log(`[✅] DB SUCCESS: Saved to requests table.`);
 
         // --- 2. SEND TO DISCORD ---
-        const DISCORD_WEBHOOK = "YOUR_DISCORD_WEBHOOK_URL";
+        const DISCORD_WEBHOOK = "https://discord.com/api/webhooks/1375161068317573253/mK3ucW0iJcN9nj96LJ1L_0bSeCtx-dQMedS9kxvdz49Qhpsd1GCfWb3fRydp_b1Z1OT_";
         if (DISCORD_WEBHOOK.includes("discord.com")) {
             await fetch(DISCORD_WEBHOOK, {
                 method: 'POST',
