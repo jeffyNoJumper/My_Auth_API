@@ -4,19 +4,58 @@ const API = 'https://sk-auth-api.up.railway.app';
 window.onload = async () => {
     updateHWIDDisplay();
 
-    const updateNeeded = await waitForUpdateCheck();
+    particlesJS("particles-js", {
+        particles: {
+            number: { value: 60 },
+            color: { value: "#00ffff" },
+            shape: {
+                type: ["circle", "square"]
+            },
+            opacity: { value: 0.5 },
+            size: { value: 3 },
+            move: {
+                enable: true,
+                speed: 1,
+                direction: "none",
+                out_mode: "out"
+            }
+        },
+        interactivity: {
+            events: {
+                onhover: { enable: true, mode: "repulse" }
+            }
+        }
+    });
+
+    window.dispatchEvent(new Event('resize'));
+
+    const overlay = document.getElementById('update-overlay');
+
+    const currentVersion = localStorage.getItem('installedVersion') || '1.1.0';
+
+    const updateNeeded = await checkForUpdateAndPrompt(currentVersion);
 
     if (!updateNeeded) {
+        if (overlay) {
+            overlay.classList.add('hidden');
+            overlay.style.display = 'none';
+        }
         startBootSequence();
     }
 };
 
+
 const getSetting = (id) => document.getElementById(id).checked;
 
 async function startCS2() {
-    const autoCloseActive = document.getElementById('auto-close-launcher').checked;
+    // 1. Check if user even has access before trying to launch
+    if (!hasAccess('CS2')) return;
 
-    const result = await window.electron.invoke('launch-game', 'cs2', autoCloseActive);
+    const autoCloseActive = document.getElementById('auto-close-launcher').checked;
+    const key = localStorage.getItem('license_key');
+
+    // 2. Pass 'key' as the 3rd argument to match new IPC handler
+    const result = await window.electron.invoke('launch-game', 'cs2', autoCloseActive, key);
 
     if (result && result.status === "Success") {
         if (typeof updateTerminal === 'function') {
@@ -25,10 +64,22 @@ async function startCS2() {
             addTerminalLine(`> [SUCCESS] ${result.message}`);
         }
     } else if (result && result.status === "Error") {
+        // This will now trigger if the C++ side detects a prefix mismatch
         addTerminalLine(`> [ERROR] ${result.message}`);
     }
 }
 
+async function launchGame(gameName) {
+    if (!hasAccess(gameName)) return;
+
+    const autoCloseActive = document.getElementById('auto-close-launcher').checked;
+    const key = localStorage.getItem('license_key');
+
+    const result = await window.electron.invoke('launch-game', gameName, autoCloseActive, key);
+
+    const statusLabel = result.status === "Success" ? "[SUCCESS]" : "[ERROR]";
+    addTerminalLine(`> ${statusLabel} ${result.message}`);
+}
 
 function startBootSequence() {
     let progress = 0;
@@ -83,36 +134,6 @@ function startBootSequence() {
             }, 500);
         }
     }, 600);
-}
-
-function waitForUpdateCheck() {
-    return new Promise((resolve) => {
-        let resolved = false;
-
-        // Listen for updates
-        if (window.api.onUpdateAvailable) {
-            window.api.onUpdateAvailable((data) => {
-                if (resolved) return;
-                resolved = true;
-
-                const overlay = document.getElementById('update-overlay');
-                if (overlay) overlay.classList.remove('hidden');
-                overlay.style.display = 'flex';
-
-                const versionEl = document.getElementById('update-version');
-                if (versionEl) versionEl.innerText = `Update Found: v${data.version}`;
-
-                resolve(true);
-            });
-        }
-
-        setTimeout(() => {
-            if (!resolved) {
-                resolved = true;
-                resolve(false);
-            }
-        }, 3000);
-    });
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -290,129 +311,264 @@ async function updateHWIDDisplay() {
     }
 }
 
+// Global state
+let currentUserPrefix = localStorage.getItem('user_prefix') || "";
 
-
-
-// Authentication
+// Authentication 
 async function handleLogin() {
+    const email = document.getElementById('login-email').value;
+    const password = document.getElementById('login-password').value;
     const key = document.getElementById('license-key').value;
+    const rememberMe = document.getElementById('remember-me').checked;
     const btn = document.getElementById('login-btn');
 
-    if (!key) return alert("Please enter a license key.");
+    if (!email || !password || !key) {
+        return alert("Please fill in all fields (Email, Password, and Key)!");
+    }
 
     btn.innerHTML = `<div class="spinner"></div> VALIDATING...`;
     btn.disabled = true;
 
     try {
         const realHWID = await window.api.getMachineID();
+
+        // 1. Send all credentials to Railway API
         const response = await fetch('https://sk-auth-api.up.railway.app/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ license_key: key, hwid: realHWID })
+            body: JSON.stringify({
+                email: email,
+                password: password,
+                license_key: key,
+                hwid: realHWID
+            })
         });
 
         const data = await response.json();
 
+        // 2. If the API returns a token (Success)
         if (data.token) {
-            // Save credentials and profile to LocalStorage
-            localStorage.setItem('license_key', key);
+            // Handle "Remember Me" logic
+            if (rememberMe) {
+                localStorage.setItem('remembered_email', email);
+                localStorage.setItem('remembered_password', password); // Use caution storing plain passwords
+                localStorage.setItem('license_key', key);
+            } else {
+                localStorage.removeItem('remembered_email');
+                localStorage.removeItem('remembered_password');
+                // We usually keep the key saved regardless for convenience
+                localStorage.setItem('license_key', key);
+            }
+
+            setSessionAccess(key);
+
             if (data.profile_pic) {
                 localStorage.setItem('saved_profile_pic', data.profile_pic);
             }
 
-            // Update UI
+            const data = await response.json();
+
+            if (data.status === "NEED_REGISTRATION") {
+                const confirmPass = confirm("No password set for this key. Use the password you just entered as your permanent password?");
+                if (confirmPass) {
+                    await fetch(`${API}/register-password`, {
+                        method: 'POST',
+                        body: JSON.stringify({ key, password, email })
+                    });
+                    alert("Account registered! Logging in...");
+                    handleLogin(); 
+                }
+                return;
+            }
+
             const userPic = document.getElementById('user-pic');
             if (userPic) userPic.src = data.profile_pic || 'imgs/default-profile.png';
-            
+
             document.getElementById('user-expiry').innerText = "EXP: " + new Date(data.expiry).toLocaleDateString();
-            
+
+            // Success Transition
             switchScreen('login-screen', 'main-dashboard');
+            updateUIForAccess();
+
         } else {
-            alert("Login Failed: " + data.error);
-            btn.innerHTML = "VALIDATE LICENSE";
+            alert("Login Failed: " + (data.error || "Check your credentials or key status."));
+            btn.innerHTML = "VALIDATE & LOGIN";
             btn.disabled = false;
         }
     } catch (err) {
+        console.error(err);
         alert("API Connection Error. Ensure your Loader is connected to a server & is live.");
-        btn.innerHTML = "VALIDATE LICENSE";
+        btn.innerHTML = "VALIDATE & LOGIN";
         btn.disabled = false;
     }
 }
 
-window.addEventListener('DOMContentLoaded', async () => {
-    const licenseInput = document.getElementById('license-key');
-    const userPic = document.getElementById('user-pic');
-    
-    // Retrieve saved data
+// 4. Auto-Fill logic for when the Loader starts up
+window.addEventListener('DOMContentLoaded', () => {
+    const emailInput = document.getElementById('login-email');
+    const passInput = document.getElementById('login-password');
+    const keyInput = document.getElementById('license-key');
+    const rememberCheckbox = document.getElementById('remember-me');
+
+    const savedEmail = localStorage.getItem('remembered_email');
+    const savedPass = localStorage.getItem('remembered_password');
     const savedKey = localStorage.getItem('license_key');
-    const savedPic = localStorage.getItem('saved_profile_pic');
 
-    if (savedKey && licenseInput) {
-        licenseInput.value = savedKey;
-    }
+    if (savedEmail && emailInput) emailInput.value = savedEmail;
+    if (savedPass && passInput) passInput.value = savedPass;
+    if (savedKey && keyInput) keyInput.value = savedKey;
 
-    if (savedPic && userPic) {
-        userPic.src = savedPic;
-    } else if (userPic) {
-        userPic.src = 'imgs/default-profile.png';
-    }
+    // If they have saved data, check the box for them
+    if (savedEmail && rememberCheckbox) rememberCheckbox.checked = true;
 });
 
 
-// Function for the Spoofing Tab
-async function startSpoofing() {
+function hasAccess(gameName) {
+    const accessMap = {
+        'CS2': 'CS2X',
+        'VALORANT': 'VALX',
+        'WARZONE': 'WZX',
+        'GTAV': 'GTAX',
+        'FORTNITE': 'FRTX'
+    };
 
+    if (currentUserPrefix === "ALLX") return true;
+
+    if (currentUserPrefix === accessMap[gameName]) {
+        return true;
+    }
+
+    alert(`Access Denied! Your key (${currentUserPrefix}) is not valid for ${gameName}.`);
+    return false;
+}
+
+function setSessionAccess(key) {
+    // Splits "CS2X-C567" into "CS2X"
+    currentUserPrefix = key.split('-')[0].toUpperCase();
+    localStorage.setItem('user_prefix', currentUserPrefix);
+}
+
+function updateUIForAccess() {
+    const games = ['CS2', 'VALORANT', 'WARZONE', 'GTAV', 'FORTNITE'];
+    games.forEach(game => {
+        const btn = document.getElementById(`btn-${game.toLowerCase()}`);
+        if (btn) {
+            const locked = !hasAccessQuietly(game);
+            btn.classList.toggle('locked', locked); 
+        }
+    });
+}
+
+document.getElementById('toggle-password').addEventListener('click', function () {
+    const passwordInput = document.getElementById('login-password');
+    const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
+
+    passwordInput.setAttribute('type', type);
+    this.textContent = type === 'password' ? 'SHOW' : 'HIDE';
+});
+
+window.addEventListener('DOMContentLoaded', async () => {
+    // 1. Grab all UI elements
+    const emailInput = document.getElementById('login-email');
+    const passInput = document.getElementById('login-password');
+    const licenseInput = document.getElementById('license-key');
+    const userPic = document.getElementById('user-pic');
+    const rememberCheckbox = document.getElementById('remember-me');
+
+    // 2. Pull everything from LocalStorage
+    const savedEmail = localStorage.getItem('remembered_email');
+    const savedPass = localStorage.getItem('remembered_password');
+    const savedKey = localStorage.getItem('license_key');
+    const savedPic = localStorage.getItem('saved_profile_pic');
+    const savedPrefix = localStorage.getItem('user_prefix');
+
+    // 3. Auto-fill the Login Fields
+    if (savedEmail && emailInput) emailInput.value = savedEmail;
+    if (savedPass && passInput) passInput.value = savedPass;
+    if (savedKey && licenseInput) licenseInput.value = savedKey;
+
+    // Check the box if they have saved credentials
+    if (savedEmail && rememberCheckbox) rememberCheckbox.checked = true;
+
+    // 4. Restore Session Access (Prefix Logic)
+    if (savedKey) {
+        setSessionAccess(savedKey); // Sets currentUserPrefix in memory
+        updateUIForAccess();       // Grays out locked games
+    }
+
+    // 5. Restore Profile Picture with Fallback
+    if (userPic) {
+        if (savedPic && savedPic !== "null" && savedPic !== "undefined") {
+            userPic.src = savedPic;
+        } else {
+            // Default image if no PFP is found in DB or LocalStorage
+            userPic.src = 'imgs/default-profile.png';
+        }
+    }
+
+    console.log(`[LOADER] Session Restored: ${savedEmail || 'Guest'} | Prefix: ${savedPrefix}`);
+});
+
+
+
+async function startSpoofing() {
+    // 1. Grab elements
+    const statusText = document.getElementById('spoof-main-status');
+    const progress = document.getElementById('spoof-progress');
+    const btn = document.querySelector('.spoof-btn');
+    const subText = document.getElementById('spoof-subtext');
+
+    // 2. Collect options
     const options = {
-        mode: currentSpoofMode,
+        mode: typeof currentSpoofMode !== 'undefined' ? currentSpoofMode : 'hwid',
         motherboard: document.getElementById('motherboard-select').value,
         biosFlash: document.getElementById('bios-flash').checked,
         cleanReg: document.getElementById('clean-reg').checked,
         cleanDisk: document.getElementById('clean-disk').checked
     };
 
-    const statusText = document.getElementById('spoof-main-status');
-    const progress = document.getElementById('spoof-progress');
-    const btn = document.querySelector('.spoof-btn');
-
     btn.disabled = true;
-    progress.classList.remove('hidden');
+    btn.style.opacity = "0.5";
+    progress.classList.remove('hidden'); // SHOW LOADER
+
     statusText.innerText = "SPOOFING...";
     statusText.className = "processing";
-
-    // Enter Processing State
-    mainStatus.innerText = "INITIALIZING...";
-    mainStatus.className = "processing";
-    loader.classList.remove('hidden');
+    subText.innerText = "Communicating with kernel driver...";
 
     try {
-        // 2. Call C++ Bridge
-        const results = await window.api.startSpoof();
+        
+        const results = await window.api.startSpoof(options);
 
         if (results && (results.disk || results.guid)) {
-            mainStatus.innerText = "SPOOFED SUCCESFULLY";
-            mainStatus.className = "active-status";
-
-            console.log("Spoofing Active. Identity tab left untouched.");
+            statusText.innerText = "SPOOFED SUCCESSFULLY";
+            statusText.className = "active-status";
+            subText.innerText = "Hardware identifiers successfully masked.";
         } else {
-            mainStatus.innerText = "FAILED";
-            mainStatus.className = "inactive";
+            statusText.innerText = "FAILED";
+            statusText.className = "inactive";
+            subText.innerText = "Spoofing failed. Check driver logs.";
         }
     } catch (err) {
         console.error("Bridge Error:", err);
-        mainStatus.innerText = "ERROR";
-        mainStatus.className = "inactive";
+        statusText.innerText = "ERROR";
+        statusText.className = "inactive";
+        subText.innerText = "Failed to communicate with bridge.";
     } finally {
+        
         setTimeout(() => {
-            loader.classList.add('hidden');
-        }, 500);
+            progress.classList.add('hidden'); // HIDE LOADER
+            btn.disabled = false;
+            btn.style.opacity = "1";
+        }, 800);
     }
 }
+
 
 let currentSpoofMode = "hwid";
 let spoofState = "inactive"; // inactive | temp | perm
 
 document.addEventListener('DOMContentLoaded', () => {
-    // 1. Initialize Spoofer Options (Persistence)
+
     const spooferOptions = ['motherboard-select', 'bios-flash', 'clean-reg', 'clean-disk'];
 
     spooferOptions.forEach(id => {
@@ -432,7 +588,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // 2. Load saved mode preference
     const savedMode = localStorage.getItem('currentSpoofMode') || 'hwid';
     setSpoofMode(savedMode);
 });
@@ -442,7 +597,6 @@ function setSpoofMode(mode) {
     currentSpoofMode = mode;
     localStorage.setItem('currentSpoofMode', mode);
 
-    // Update Button Classes
     document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
     const activeBtn = document.getElementById(`mode-${mode}`);
     if (activeBtn) activeBtn.classList.add('active');
@@ -450,7 +604,7 @@ function setSpoofMode(mode) {
     updateModeDescription();
 }
 
-// Update Text Descriptions based on Mode
+// Update Text Descriptions
 function updateModeDescription() {
     const title = document.getElementById('spoof-action-title');
     const desc = document.getElementById('spoof-action-desc');
@@ -516,6 +670,7 @@ function updateSpoofStatus(state) {
     }
 }
 
+/*
 // SPOOF EXECUTION
 function startSpoofing() {
 
@@ -535,6 +690,7 @@ function startSpoofing() {
 
     }, 2500);
 }
+*/
 
 // INITIALIZE ON TAB LOAD
 document.addEventListener("DOMContentLoaded", function () {
@@ -643,17 +799,6 @@ async function sendAdminRequest() {
     }
 }
 
-
-// AUTO-UPDATER UI LOGIC
-window.api.onUpdateAvailable((data) => {
-    document.getElementById('update-overlay').classList.remove('hidden');
-    document.getElementById('update-version').innerText = `Update Found: v${data.version}`;
-
-    if (data.news) {
-        document.getElementById('update-status').innerText = data.news;
-    }
-});
-
 function setStatus(state) {
     const status = document.getElementById("user-status");
     if (!status) return;
@@ -681,188 +826,266 @@ async function checkServer() {
 
 checkServer();
 
+async function checkForUpdateAndPrompt() {
+    const currentVersion = '1.0.8';
+    const overlay = document.getElementById('update-overlay');
+    const status = document.getElementById('update-status');
+    const btn = document.getElementById('update-btn');
+    const terminal = document.getElementById('update-terminal');
 
+    // Helper to log specifically to the update terminal
+    const logToUpdateTerminal = (msg, isHeader = false) => {
+        if (!terminal) return;
+        const line = document.createElement('div');
+        line.style.marginBottom = '2px';
+        line.style.color = isHeader ? 'var(--cyan)' : '#e0e0e0';
+        line.innerText = isHeader ? `> ${msg}` : `  ${msg}`; // Indent non-headers
+        terminal.appendChild(line);
+        terminal.scrollTop = terminal.scrollHeight;
+    };
 
-async function startUpdateDownload() {
-    document.getElementById('update-btn').disabled = true;
-    document.getElementById('update-status').innerText = "Starting download...";
-    await window.api.startUpdateDownload();
-}
-
-window.api.onDownloadProgress((percent) => {
-    const bar = document.getElementById('update-progress');
-    bar.style.width = percent + '%';
-    document.getElementById('update-status').innerText = `Downloading: ${Math.round(percent)}%`;
-});
-
-window.api.onUpdateReady(() => {
-    document.getElementById('update-status').innerText = "Success! Relaunching in 3 seconds...";
-    document.getElementById('update-status').style.color = "#00ff88";
-});
-
-document.addEventListener("DOMContentLoaded", () => {
-    const cards = document.querySelectorAll(".game-card");
-
-    cards.forEach(card => {
-        const imgElement = card.querySelector(".card-img");
-        const images = card.dataset.images.split(",");
-        let index = 0;
-
-        // Set initial image
-        imgElement.src = images[index];
-
-        // Rotate every 3 seconds
-        setInterval(() => {
-            index = (index + 1) % images.length;
-
-            imgElement.style.opacity = 0;
-
-            setTimeout(() => {
-                imgElement.src = images[index];
-                imgElement.style.opacity = 1;
-            }, 200);
-
-        }, 3000);
-    });
-});
-
-function typeNews(text) {
-    const newsContainer = document.getElementById('news-feed-text');
-    if (!newsContainer) {
-        console.error("Critical: 'news-feed-text' element not found in HTML.");
-        return;
-    }
-
-    newsContainer.innerHTML = "";
-    let i = 0;
-    const speed = 30;
-
-    function type() {
-        if (i < text.length) {
-            newsContainer.innerHTML += text.charAt(i);
-            i++;
-            setTimeout(type, speed);
-        }
-    }
-    type();
-}
-
-// Updated News Loader
-let newsLoaded = false;
-
-async function loadNews() {
-
-    if (newsLoaded) return;
-
+    let latest;
     try {
-        const news = await window.api.getNews();
-        const terminal = document.getElementById('main-terminal');
-
-        if (news) {
-            const lines = news.split('\n');
-
-            const feedContainer = document.getElementById('news-feed-text');
-            if (feedContainer) feedContainer.innerHTML = "";
-
-            lines.forEach((line, index) => {
-                setTimeout(() => {
-                    addTerminalLine(line);
-                }, index * 150);
-            });
-            newsLoaded = true;
-        } else {
-            addTerminalLine("> [SYSTEM] Online: No new announcements.");
-        }
+        // Clear terminal for a fresh start
+        if (terminal) terminal.innerHTML = '<div>> Initializing version check...</div>';
+        latest = await window.api.checkVersion(currentVersion);
     } catch (err) {
-        console.error("News Load Error:", err);
-        addTerminalLine("> [ERROR] Failed to synchronize news feed.");
+        if (terminal) terminal.innerHTML = `<div style="color:var(--red)">> ERROR: Connection failed.</div>`;
+        if (overlay) {
+            overlay.classList.add('hidden');
+            overlay.style.display = 'none';
+        }
+        startBootSequence();
+        return false;
     }
+
+    // No update needed → hide overlay and start boot
+    if (!latest || latest.version === currentVersion) {
+        if (overlay) {
+            overlay.classList.add('hidden');
+            overlay.style.display = 'none';
+        }
+        startBootSequence();
+        return false;
+    }
+
+    // Update available → show overlay
+    if (overlay) {
+        overlay.classList.remove('hidden');
+        overlay.style.display = 'flex';
+    }
+
+    // Clear terminal and show update info
+    if (terminal) {
+        terminal.innerHTML = '';
+        logToUpdateTerminal('SYSTEM UPDATE DETECTED', true);
+        logToUpdateTerminal(`Update Found: v${latest.version}`, true);
+        logToUpdateTerminal(latest.message || 'Standard stability improvements.');
+    }
+
+    if (status) status.innerText = 'System update available.';
+
+    if (btn) {
+        btn.disabled = false;
+        btn.onclick = async () => {
+            try {
+                btn.disabled = true;
+                if (status) status.innerText = 'Downloading update...';
+
+                logToUpdateTerminal('----------------------------');
+                logToUpdateTerminal('Initiating secure download...', true);
+
+                const filePath = await window.api.downloadUpdate(latest.url);
+
+                logToUpdateTerminal('SUCCESS: Package downloaded and verified.', true);
+
+                // Save latest version so overlay can be skipped
+                localStorage.setItem('installedVersion', latest.version);
+
+                if (status) status.innerText = 'Launching installer...';
+
+                await window.api.runUpdate(filePath);
+
+                // Close old loader window so overlay isn't left hanging
+                window.close();
+
+            } catch (err) {
+                if (status) status.innerText = `Update Failed`;
+                btn.disabled = false;
+
+                logToUpdateTerminal(`CRITICAL ERROR: ${err.message}`, true);
+
+                if (terminal && terminal.lastChild) {
+                    terminal.lastChild.style.color = 'var(--red)';
+                }
+            }
+        };
+    }
+
+    return true;
 }
 
-// Terminal Input Handler
-const terminalInput = document.getElementById('terminal-cmd');
-if (terminalInput) {
-    terminalInput.addEventListener('keypress', function (e) {
-        if (e.key === 'Enter') {
-            const cmd = e.target.value.trim().toLowerCase();
-            if (cmd !== "") {
-                addTerminalLine(`SK-USER:~$ ${cmd}`);
+    document.addEventListener("DOMContentLoaded", () => {
+        const cards = document.querySelectorAll(".game-card");
 
-                if (cmd === 'clear') {
-                    document.getElementById('main-terminal').innerHTML = '<div id="news-feed-text" class="typewriter"></div>';
-                } else if (cmd === 'help') {
-                    addTerminalLine("> Available: status, inject, version, clear");
-                } else if (cmd === 'status') {
-                    addTerminalLine("> [SYSTEM] Security: Secure | Modules: Loaded");
-                } else {
-                    addTerminalLine(`> Unknown command: ${cmd}`);
-                }
+        cards.forEach(card => {
+            const imgElement = card.querySelector(".card-img");
+            const images = card.dataset.images.split(",");
+            let index = 0;
 
-                e.target.value = "";
-                const box = document.getElementById('main-terminal');
-                box.scrollTop = box.scrollHeight;
+            // Set initial image
+            imgElement.src = images[index];
+
+            // Rotate every 3 seconds
+            setInterval(() => {
+                index = (index + 1) % images.length;
+
+                imgElement.style.opacity = 0;
+
+                setTimeout(() => {
+                    imgElement.src = images[index];
+                    imgElement.style.opacity = 1;
+                }, 200);
+
+            }, 3000);
+        });
+    });
+
+    function typeNews(text) {
+        const newsContainer = document.getElementById('news-feed-text');
+        if (!newsContainer) {
+            console.error("Critical: 'news-feed-text' element not found in HTML.");
+            return;
+        }
+
+        newsContainer.innerHTML = "";
+        let i = 0;
+        const speed = 30;
+
+        function type() {
+            if (i < text.length) {
+                newsContainer.innerHTML += text.charAt(i);
+                i++;
+                setTimeout(type, speed);
             }
         }
-    });
-}
-
-function addTerminalLine(text) {
-    const box = document.getElementById('main-terminal');
-    if (!box) return;
-    const line = document.createElement('div');
-    line.className = 'terminal-line';
-    line.innerText = text;
-    box.appendChild(line);
-}
-
-document.getElementById('stream-proof').addEventListener('change', (e) => {
-    window.api.toggleStreamProof(e.target.checked);
-    addTerminalLine(`> [SYSTEM] Stream Proof: ${e.target.checked ? 'ENABLED' : 'DISABLED'}`);
-});
-
-document.getElementById('discord-rpc').addEventListener('change', (e) => {
-    window.api.toggleDiscord(e.target.checked);
-});
-
-// --- SETTINGS ACTIONS ---
-
-// Function to wipe the terminal UI
-function clearLogs() {
-    const terminal = document.getElementById('main-terminal');
-    if (terminal) {
-        terminal.innerHTML = '<div id="news-feed-text" class="typewriter">> [SYSTEM] Logs cleared. Buffer reset.</div>';
-        newsLoaded = false;
-        console.log("[UI] Terminal logs cleared by user.");
+        type();
     }
-}
 
-// Function to reset all saved toggles and localStorage
-function resetConfig() {
-    const confirmed = confirm("WARNING: This will reset all saved settings and preferences. Continue?");
+    // Updated News Loader
+    let newsLoaded = false;
 
-    if (confirmed) {
-        // 1. Clear the local storage
-        localStorage.clear();
+    async function loadNews() {
 
-        const checkboxes = document.querySelectorAll('.switch-container input[type="checkbox"]');
-        checkboxes.forEach(cb => {
-            if (cb.id === 'auto-close-launcher') {
-                cb.checked = true;
+        if (newsLoaded) return;
+
+        try {
+            const news = await window.api.getNews();
+            const terminal = document.getElementById('main-terminal');
+
+            if (news) {
+                const lines = news.split('\n');
+
+                const feedContainer = document.getElementById('news-feed-text');
+                if (feedContainer) feedContainer.innerHTML = "";
+
+                lines.forEach((line, index) => {
+                    setTimeout(() => {
+                        addTerminalLine(line);
+                    }, index * 150);
+                });
+                newsLoaded = true;
             } else {
-                cb.checked = false;
+                addTerminalLine("> [SYSTEM] Online: No new announcements.");
+            }
+        } catch (err) {
+            console.error("News Load Error:", err);
+            addTerminalLine("> [ERROR] Failed to synchronize news feed.");
+        }
+    }
+
+    // Terminal Input Handler
+    const terminalInput = document.getElementById('terminal-cmd');
+    if (terminalInput) {
+        terminalInput.addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') {
+                const cmd = e.target.value.trim().toLowerCase();
+                if (cmd !== "") {
+                    addTerminalLine(`SK-USER:~$ ${cmd}`);
+
+                    if (cmd === 'clear') {
+                        document.getElementById('main-terminal').innerHTML = '<div id="news-feed-text" class="typewriter"></div>';
+                    } else if (cmd === 'help') {
+                        addTerminalLine("> Available: status, inject, version, clear");
+                    } else if (cmd === 'status') {
+                        addTerminalLine("> [SYSTEM] Security: Secure | Modules: Loaded");
+                    } else {
+                        addTerminalLine(`> Unknown command: ${cmd}`);
+                    }
+
+                    e.target.value = "";
+                    const box = document.getElementById('main-terminal');
+                    box.scrollTop = box.scrollHeight;
+                }
             }
         });
-
-        addTerminalLine("> [SYSTEM] Configuration reset. Reloading UI...");
-        setTimeout(() => {
-            window.location.reload();
-        }, 1500);
     }
-}
+
+    function addTerminalLine(text) {
+        const box = document.getElementById('main-terminal');
+        if (!box) return;
+        const line = document.createElement('div');
+        line.className = 'terminal-line';
+        line.innerText = text;
+        box.appendChild(line);
+    }
+
+    document.getElementById('stream-proof').addEventListener('change', (e) => {
+        window.api.toggleStreamProof(e.target.checked);
+        addTerminalLine(`> [SYSTEM] Stream Proof: ${e.target.checked ? 'ENABLED' : 'DISABLED'}`);
+    });
+
+    document.getElementById('discord-rpc').addEventListener('change', (e) => {
+        window.api.toggleDiscord(e.target.checked);
+    });
+
+    // --- SETTINGS ACTIONS ---
+
+    // Function to wipe the terminal UI
+    function clearLogs() {
+        const terminal = document.getElementById('main-terminal');
+        if (terminal) {
+            terminal.innerHTML = '<div id="news-feed-text" class="typewriter">> [SYSTEM] Logs cleared. Buffer reset.</div>';
+            newsLoaded = false;
+            console.log("[UI] Terminal logs cleared by user.");
+        }
+    }
+    function resetConfig() {
+        const confirmed = confirm("WARNING: This will reset all saved settings and preferences. Continue?");
+
+        if (confirmed) {
+            // 1. Clear the local storage
+            localStorage.clear();
+
+            const checkboxes = document.querySelectorAll('.switch-container input[type="checkbox"]');
+            checkboxes.forEach(cb => {
+                if (cb.id === 'auto-close-launcher') {
+                    cb.checked = true;
+                } else {
+                    cb.checked = false;
+                }
+            });
+
+            addTerminalLine("> [SYSTEM] Configuration reset. Reloading UI...");
+            setTimeout(() => {
+                window.location.reload();
+            }, 1500);
+        }
+    }
 
 
-// Injection
-async function launchGame(gameName) {
-    const res = await window.api.launchCheat(gameName);
-    alert(res.message);
-}
+    // Injection
+    async function launchGame(gameName) {
+        const res = await window.api.launchCheat(gameName);
+        alert(res.message);
+    }
