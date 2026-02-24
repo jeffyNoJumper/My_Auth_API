@@ -218,36 +218,37 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                 );
                 return safeJson({ success: true, message: "HWID Reset & Approved." });
 
-            case 'pause-key':
             case 'pause':
+            case 'pause-key':
                 user.is_paused = true;
                 await user.save();
-                return safeJson({ success: true, message: "Key paused successfully." });
+                return safeJson({ success: true, message: "Key paused." });
 
-            case 'unpause-key':
             case 'unpause':
+            case 'unpause-key':
                 user.is_paused = false;
                 await user.save();
-                return safeJson({ success: true, message: "Key unpaused successfully." });
+                return safeJson({ success: true, message: "Key unpaused." });
 
-            case 'ban-key':
             case 'ban':
+            case 'ban-key':
                 user.is_banned = true;
                 await user.save();
-                return safeJson({ success: true, message: "Key banned successfully." });
+                return safeJson({ success: true, message: "User banned." });
 
-            case 'unban-key':
             case 'unban':
+            case 'unban-key':
                 user.is_banned = false;
                 await user.save();
-                return safeJson({ success: true, message: "User unbanned successfully." });
+                return safeJson({ success: true, message: "User unbanned." });
 
-            case 'delete-key':
             case 'delete':
+            case 'delete-key':
                 await User.deleteOne({ license_key: license_key.toUpperCase() });
-                return safeJson({ success: true, message: "Key deleted successfully." });
+                return safeJson({ success: true, message: "Key deleted." });
 
             default:
+                console.log(`[DEBUG] Received unknown action: "${action}"`);
                 return safeJson({ success: false, error: `Invalid Action: ${action}` });
         }
 });
