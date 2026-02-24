@@ -1,15 +1,16 @@
 const mongoose = require('mongoose');
 
 const userSchema = new mongoose.Schema({
-  license_key: { type: String, required: true, unique: true },
-  hwid: { type: String, default: null }, // Locked after first login
-  expiry_date: { type: Date, required: true },
-  profile_pic: { type: String, default: "https://i.imgur.com" },
-  games: { 
-    type: [String], 
-    default: ["FiveM", "GTAV", "Warzone", "CS2"] 
-  },
-  is_banned: { type: Boolean, default: false }
+    email: { type: String, required: false, unique: true, sparse: true },
+    password: { type: String, required: false },
+    license_key: { type: String, required: true, unique: true },
+    hwid: { type: String, default: null },
+    expiry_date: { type: Date, required: true },
+    is_banned: { type: Boolean, default: false },
+    is_paused: { type: Boolean, default: false },
+    games: { type: [String], default: [] },
+    profile_pic: { type: String, default: "" },
+    discord_id: { type: String, default: "" }
 });
 
-module.exports = mongoose.model('User', userSchema);
+module.exports = mongoose.model('User', userSchema); 
