@@ -76,39 +76,6 @@ app.post('/admin/create-key', verifyAdmin, async (req, res) => {
     }
 });
 
-/*
-app.post('/admin/get-key', verifyAdmin, async (req, res) => {
-    try {
-        const { license_key } = req.body;
-        if (!license_key) return res.status(400).json({ success: false, error: "No key provided" });
-
-        const upperKey = license_key.toUpperCase();
-        const user = await User.findOne({ license_key: upperKey });
-        if (!user) return res.status(404).json({ success: false, error: "Key not found" });
-
-        let pendingRequest = null;
-        try {
-            pendingRequest = await Request.findOne({ license_key: upperKey, status: "PENDING" });
-        } catch (dbErr) {
-            console.log("Request DB check failed.");
-        }
-
-        res.json({
-            success: true,
-            is_banned: user.is_banned || false,
-            is_paused: user.is_paused || false,
-            hwid: user.hwid,
-            expiry: user.expiry_date,
-            games: user.games,
-            pending_request: pendingRequest
-        });
-    } catch (err) {
-        console.error("CRASH IN GET-KEY:", err.message);
-        res.status(500).json({ success: false, error: "Internal Server Error" });
-    }
-});
-*/
-
 // --- 4. HWID RESET ---
 app.post('/admin/reset-hwid', verifyAdmin, async (req, res) => {
     try {
