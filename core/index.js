@@ -147,7 +147,7 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
         }
 
         switch (action) {
-            case 'update': // Handles 'update' or 'update-key'
+            case 'update': // Handles linking email/password
                 if (email) user.email = email.toLowerCase();
                 if (password) user.password = password;
                 await user.save();
@@ -172,7 +172,6 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                 }
 
             case 'update-pfp':
-                // Note: Ensure your User model has 'profile_pic' field
                 if (user) {
                     user.profile_pic = profile_pic;
                     await user.save();
@@ -180,17 +179,15 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                 }
                 return safeJson({ success: false, error: "User not found" });
 
-            case 'get': // Added to handle stripped '-key' suffix
+            case 'get':
             case 'get-key':
-                // Check for HWID Reset Requests to keep the Admin UI 'Approve' logic working
                 let pendingRequest = null;
                 try {
-                    // Using the Request model we defined earlier
                     pendingRequest = await mongoose.model('Request').findOne({
                         license_key: license_key.toUpperCase(),
                         status: "PENDING"
                     });
-                } catch (e) { /* ignore if collection doesn't exist */ }
+                } catch (e) { /* ignore */ }
 
                 return safeJson({
                     success: true,
@@ -204,8 +201,6 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                     pending_request: pendingRequest
                 });
 
-            // Inside your switch(action) block in index.js:
-
             case 'deny-hwid':
                 await mongoose.model('Request').findOneAndUpdate(
                     { license_key: license_key.toUpperCase(), status: "PENDING" },
@@ -216,40 +211,45 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
             case 'reset-hwid':
                 user.hwid = null;
                 await user.save();
-                // Also approve the request if one exists
+                // Approve the request so the user's loader terminal sees the update
                 await mongoose.model('Request').findOneAndUpdate(
                     { license_key: license_key.toUpperCase(), status: "PENDING" },
                     { status: "APPROVED" }
                 );
-                return safeJson({ success: true, message: "HWID Reset & Approved." }); 
+                return safeJson({ success: true, message: "HWID Reset & Approved." });
 
-            case 'pause': // Handles 'pause' or 'pause-key'
+            case 'pause-key':
+            case 'pause':
                 user.is_paused = true;
                 await user.save();
                 return safeJson({ success: true, message: "Key paused successfully." });
 
-            case 'unpause': // Handles 'unpause' or 'unpause-key'
+            case 'unpause-key':
+            case 'unpause':
                 user.is_paused = false;
                 await user.save();
                 return safeJson({ success: true, message: "Key unpaused successfully." });
 
-            case 'ban': // Handles 'ban' or 'ban-key'
+            case 'ban-key':
+            case 'ban':
                 user.is_banned = true;
                 await user.save();
                 return safeJson({ success: true, message: "Key banned successfully." });
 
-            case 'delete': // Handles 'delete' or 'delete-key'
+            case 'unban-key':
+            case 'unban':
+                user.is_banned = false;
+                await user.save();
+                return safeJson({ success: true, message: "User unbanned successfully." });
+
+            case 'delete-key':
+            case 'delete':
                 await User.deleteOne({ license_key: license_key.toUpperCase() });
                 return safeJson({ success: true, message: "Key deleted successfully." });
 
             default:
                 return safeJson({ success: false, error: `Invalid Action: ${action}` });
         }
-
-    } catch (err) {
-        console.error("Admin Route Error:", err);
-        return safeJson({ success: false, error: "Internal Server Error" });
-    }
 });
 
 // --- 6. USER LOGIN (FINAL SECURE VERSION) ---
