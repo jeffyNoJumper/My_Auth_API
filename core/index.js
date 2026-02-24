@@ -125,61 +125,60 @@ app.post('/admin/reset-hwid', verifyAdmin, async (req, res) => {
     }
 });
 
-// --- ADMIN: UNIFIED MANAGEMENT ---
+// --- ADMIN: UNIFIED MANAGEMENT (FIXED) ---
 app.post('/admin/:action', verifyAdmin, async (req, res) => {
     const safeJson = (obj) => res.json(obj);
 
     try {
         const { license_key, email, password, profile_pic } = req.body;
 
-        // Normalize action: Strips '-key' if it exists to get the base command (e.g., 'unban-key' -> 'unban')
+        // Normalize action
         const rawAction = req.params.action.toLowerCase().trim();
         const action = rawAction.replace('-key', '');
 
+        // 1. HANDLE LOAD-KEYS FIRST (No license_key required)
+        if (action === 'load-keys') {
+            try {
+                const keys = await User.find({}, 'license_key email expiry_date is_banned is_paused games').lean();
+                return safeJson({
+                    success: true,
+                    keys: keys.map(k => ({
+                        license_key: k.license_key,
+                        email: k.email || "No Email",
+                        expiry: k.expiry_date,
+                        is_banned: k.is_banned || false,
+                        is_paused: k.is_paused || false,
+                        games: k.games || []
+                    }))
+                });
+            } catch (err) {
+                return safeJson({ success: false, error: "Failed to load keys from database" });
+            }
+        }
+
+        // 2. FIND USER (Only for actions that need a specific key)
         let user = null;
         if (license_key) {
             user = await User.findOne({ license_key: license_key.toUpperCase() });
         }
 
-        // NEW FIXED LOGIC
-        if (action === 'load-keys') {
-            // Skip user check entirely for loading the list
-        } else if (!user && action !== 'delete') {
+        // 3. VALIDATE USER EXISTENCE (Except for 'delete' which we handle specifically)
+        if (!user && action !== 'delete') {
             return safeJson({ success: false, error: "Key not found" });
         }
 
+        // 4. REMAINING ACTIONS
         switch (action) {
-            case 'update': // Handles linking email/password
+            case 'update':
                 if (email) user.email = email.toLowerCase();
                 if (password) user.password = password;
                 await user.save();
                 return safeJson({ success: true, message: `Linked ${email} successfully.` });
 
-            case 'load-keys':
-                try {
-                    const keys = await User.find({}, 'license_key email expiry_date is_banned is_paused games').lean();
-                    return safeJson({
-                        success: true,
-                        keys: keys.map(k => ({
-                            license_key: k.license_key,
-                            email: k.email || "No Email",
-                            expiry: k.expiry_date,
-                            is_banned: k.is_banned || false,
-                            is_paused: k.is_paused || false,
-                            games: k.games || []
-                        }))
-                    });
-                } catch (err) {
-                    return safeJson({ success: false, error: "Failed to load keys" });
-                }
-
             case 'update-pfp':
-                if (user) {
-                    user.profile_pic = profile_pic;
-                    await user.save();
-                    return safeJson({ success: true, message: "PFP Updated" });
-                }
-                return safeJson({ success: false, error: "User not found" });
+                user.profile_pic = profile_pic;
+                await user.save();
+                return safeJson({ success: true, message: "PFP Updated" });
 
             case 'get':
             case 'get-key':
@@ -213,7 +212,6 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
             case 'reset-hwid':
                 user.hwid = null;
                 await user.save();
-                // Approve the request so the user's loader terminal sees the update
                 await mongoose.model('Request').findOneAndUpdate(
                     { license_key: license_key.toUpperCase(), status: "PENDING" },
                     { status: "APPROVED" }
@@ -241,11 +239,13 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                 return safeJson({ success: true, message: "User unbanned." });
 
             case 'delete':
-                await User.deleteOne({ license_key: license_key.toUpperCase() });
-                return safeJson({ success: true, message: "Key deleted." });
+                if (license_key) {
+                    await User.deleteOne({ license_key: license_key.toUpperCase() });
+                    return safeJson({ success: true, message: "Key deleted." });
+                }
+                return safeJson({ success: false, error: "No key provided to delete" });
 
             default:
-                console.log(`[DEBUG] Received unknown action: "${action}"`);
                 return safeJson({ success: false, error: `Invalid Action: ${action}` });
         }
     } catch (err) {
