@@ -207,17 +207,6 @@
                 </div>
             </div>
 
-            <!-- COLUMN 2: SEARCH & SELECTION -->
-            <div class="column">
-                <div class="section-label">2. Find User</div>
-                <input type="text" id="single-key-input" placeholder="Paste Key Manually...">
-                <div style="text-align:center; margin:5px 0; font-size:10px; color:#555;">— OR —</div>
-                <select id="manage-key-input" size="8" style="height:145px;">
-                    <option value="">(Refresh to load keys)</option>
-                </select>
-                <button onclick="loadKey()" style="background:#444; color:white; margin-top:5px;">Load Selected</button>
-            </div>
-
             <!-- COLUMN 3: MANAGE & ACTIONS -->
             <div class="column">
                 <div class="section-label">3. Management</div>
@@ -230,12 +219,13 @@
                         <span style="color:#888;">HWID:</span> <span id="manage-hwid" style="font-size:9px; color:#666; word-break:break-all;">None</span>
                     </div>
 
-                    <!-- Quick Link Section (New) -->
-                    <div style="margin-bottom: 10px;">
-                        <div style="font-size: 9px; color: var(--gold); margin-bottom: 4px; letter-spacing: 0.5px;">ATTACH EMAIL TO KEY</div>
-                        <div style="display:flex; gap:5px;">
-                            <input type="email" id="quick-link-email" placeholder="customer@email.com" style="margin:0; padding: 6px; font-size: 11px;">
-                            <button onclick="linkUserEmail()" style="width: 80px; margin:0; background: var(--gold); font-size: 10px; padding: 0;">LINK</button>
+                    <!-- PENDING REQUEST BOX (Hidden by default) -->
+                    <div id="request-alert-box" style="display:none; background:rgba(255, 204, 0, 0.1); border: 1px solid var(--gold); padding: 8px; border-radius: 4px; margin-bottom: 10px;">
+                        <div style="font-size: 10px; color: var(--gold); font-weight: bold; margin-bottom: 3px;">⚠️ PENDING RESET REQUEST</div>
+                        <div id="requested-hwid-text" style="font-size: 8px; color: #ccc; word-break: break-all; margin-bottom: 5px;"></div>
+                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px;">
+                            <button onclick="modifyKey('reset-hwid')" style="background:var(--gold); color:black; font-size:10px; padding:5px;">APPROVE</button>
+                            <button onclick="modifyKey('deny-hwid')" style="background:#444; color:white; font-size:10px; padding:5px;">DENY</button>
                         </div>
                     </div>
 
@@ -247,13 +237,13 @@
                         <button style="background:#222; color:var(--red); border:1px solid var(--red);" onclick="modifyKey('delete-key')">Delete</button>
                     </div>
 
-                    <button style="background:#00f2ff; color:black; margin-top:8px;" onclick="modifyKey('reset-hwid')">
+                    <!-- Standard Reset (Hidden if request-alert-box is visible) -->
+                    <button id="standard-reset-btn" style="background:#00f2ff; color:black; margin-top:8px;" onclick="modifyKey('reset-hwid')">
                         RESET HWID LOCK
                     </button>
                 </div>
             </div>
         </div>
-    </div>
 
     <script>
         const { ipcRenderer, clipboard } = require('electron');
@@ -337,10 +327,11 @@
             } catch (err) { alert("Failed to fetch keys."); }
         }
 
-        // 3. LOAD SELECTED KEY INFO
+        // 3. LOAD SELECTED KEY INFO (Updated for Live Reset Requests)
         async function loadKey() {
-            // Check both the manual input and the dropdown
-            const key = document.getElementById('single-key-input').value.trim() || document.getElementById('manage-key-input').value;
+            const keyInput = document.getElementById('single-key-input').value.trim();
+            const dropdown = document.getElementById('manage-key-input');
+            const key = keyInput || dropdown.value;
             const pass = document.getElementById('admin-pass').value;
 
             if (!key || !pass) return alert("Select a key and enter Admin Password!");
@@ -354,19 +345,39 @@
                 const data = await res.json();
 
                 if (data.success) {
-                    // updates the "User:" label in Column 3
+                    // 1. Update basic info labels
                     document.getElementById('info-email').innerText = data.email || "No Email Linked";
-
                     document.getElementById('manage-status').innerText = data.is_banned ? "BANNED" : (data.is_paused ? "PAUSED" : "ACTIVE");
                     document.getElementById('manage-hwid').innerText = data.hwid || "NOT CAPTURED";
 
                     if (document.getElementById('manage-expiry')) {
                         document.getElementById('manage-expiry').innerText = data.expiry ? new Date(data.expiry).toLocaleDateString() : "N/A";
                     }
+
+                    // 2. Toggling the Live Request UI
+                    const requestBox = document.getElementById('request-alert-box');
+                    const standardBtn = document.getElementById('standard-reset-btn');
+                    const requestedHwidText = document.getElementById('requested-hwid-text');
+
+                    // Check if there is a pending request in the API response
+                    if (data.pending_request && data.pending_request.status === "PENDING") {
+                        // Show the Gold Action Box
+                        if (requestBox) requestBox.style.display = 'block';
+                        if (standardBtn) standardBtn.style.display = 'none';
+                        if (requestedHwidText) requestedHwidText.innerText = "REQUESTED ID: " + data.pending_request.hwid;
+
+                        console.log(`[!] PENDING REQUEST DETECTED FOR: ${key}`);
+                    } else {
+                        // Hide the Gold Action Box, show standard blue button
+                        if (requestBox) requestBox.style.display = 'none';
+                        if (standardBtn) standardBtn.style.display = 'block';
+                    }
+
                 } else {
-                    alert(data.error);
+                    alert(data.error || "Failed to load key");
                 }
             } catch (err) {
+                console.error("Load Error:", err);
                 alert("Load Error: Check console for details");
             }
         }
