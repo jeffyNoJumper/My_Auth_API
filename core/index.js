@@ -96,6 +96,8 @@ app.post('/admin/reset-hwid', verifyAdmin, async (req, res) => {
 app.post('/admin/:action', verifyAdmin, async (req, res) => {
     const safeJson = (obj) => res.json(obj);
 
+    console.log(`[ADMIN] Incoming Action: ${req.params.action}`);
+
     try {
         const { license_key, email, password, profile_pic } = req.body;
 
