@@ -95,51 +95,45 @@ app.post('/admin/reset-hwid', verifyAdmin, async (req, res) => {
 // --- ADMIN: UNIFIED MANAGEMENT (UPDATED) ---
 app.post('/admin/:action', verifyAdmin, async (req, res) => {
     const safeJson = (obj) => res.json(obj);
+    const { license_key, email, password, profile_pic } = req.body;
 
-    // Track the incoming request in Railway logs
-    console.log(`[ADMIN] Incoming Action: ${req.params.action}`);
+    // 1. Get the raw action from the URL
+    const action = req.params.action.toLowerCase().trim();
+    console.log(`[ADMIN] Processing Action: ${action}`);
 
-    try {
-        const { license_key, email, password, profile_pic } = req.body;
-
-        // Normalize action name
-        const rawAction = req.params.action ? req.params.action.toLowerCase().trim() : "";
-        const action = rawAction.replace('-key', '').trim();
-
-        // 1. HANDLE LOAD-KEYS FIRST (No license_key required)
-        if (action === 'load-keys') {
-            console.log("[ADMIN] Success: Running load-keys logic...");
-            try {
-                const keys = await User.find({}, 'license_key email expiry_date is_banned is_paused games').lean();
-                return safeJson({
-                    success: true,
-                    keys: keys.map(k => ({
-                        license_key: k.license_key || "N/A",
-                        email: k.email || "No Email",
-                        expiry: k.expiry_date,
-                        is_banned: k.is_banned || false,
-                        is_paused: k.is_paused || false,
-                        games: k.games || []
-                    }))
-                });
-            } catch (err) {
-                console.error("[ADMIN] DB Error:", err);
-                return safeJson({ success: false, error: "Failed to load keys from database" });
-            }
+    // 2. HANDLE LOAD-KEYS FIRST (Before we modify the string)
+    if (action === 'load-keys') {
+        console.log("[ADMIN] Success: Running load-keys logic...");
+        try {
+            const keys = await User.find({}, 'license_key email expiry_date is_banned is_paused games').lean();
+            return safeJson({
+                success: true,
+                keys: keys.map(k => ({
+                    license_key: k.license_key || "N/A",
+                    email: k.email || "No Email",
+                    expiry: k.expiry_date,
+                    is_banned: k.is_banned || false,
+                    is_paused: k.is_paused || false,
+                    games: k.games || []
+                }))
+            });
+        } catch (err) {
+            return safeJson({ success: false, error: "Failed to load keys" });
         }
+    }
 
-        // 2. FIND USER (Only for actions that need a specific key)
-        let user = null;
-        if (license_key && typeof license_key === 'string') {
-            user = await User.findOne({ license_key: license_key.toUpperCase().trim() });
-        }
+    // 3. For other actions (ban-key, etc), strip the suffix
+    const cleanAction = action.replace('-key', '').trim();
 
-        // 3. VALIDATE USER EXISTENCE
-        // We only return "Key not found" if it's NOT a list-load and NOT a delete
-        if (!user && action !== 'delete') {
-            console.log(`[ADMIN] Error: Key "${license_key}" not found for action "${action}"`);
-            return safeJson({ success: false, error: "Key not found" });
-        }
+    // 4. Find User (Only if not loading list)
+    let user = null;
+    if (license_key) {
+        user = await User.findOne({ license_key: license_key.toUpperCase().trim() });
+    }
+
+    if (!user && cleanAction !== 'delete') {
+        return safeJson({ success: false, error: "Key not found" });
+    }
 
         // 4. REMAINING ACTIONS
         switch (action) {
