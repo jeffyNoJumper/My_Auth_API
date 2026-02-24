@@ -141,8 +141,10 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
             user = await User.findOne({ license_key: license_key.toUpperCase() });
         }
 
-        // Allow load-keys without a specific user
-        if (!user && !['delete', 'load-keys'].includes(action)) {
+        // NEW FIXED LOGIC
+        if (action === 'load-keys') {
+            // Skip user check entirely for loading the list
+        } else if (!user && action !== 'delete') {
             return safeJson({ success: false, error: "Key not found" });
         }
 
