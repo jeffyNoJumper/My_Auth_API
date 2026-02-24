@@ -92,27 +92,29 @@ app.post('/admin/reset-hwid', verifyAdmin, async (req, res) => {
     }
 });
 
-// --- ADMIN: UNIFIED MANAGEMENT (FIXED) ---
+// --- ADMIN: UNIFIED MANAGEMENT (UPDATED) ---
 app.post('/admin/:action', verifyAdmin, async (req, res) => {
     const safeJson = (obj) => res.json(obj);
 
+    // Track the incoming request in Railway logs
     console.log(`[ADMIN] Incoming Action: ${req.params.action}`);
 
     try {
         const { license_key, email, password, profile_pic } = req.body;
 
-        // Normalize action
-        const rawAction = req.params.action.toLowerCase().trim();
-        const action = rawAction.replace('-key', '');
+        // Normalize action name
+        const rawAction = req.params.action ? req.params.action.toLowerCase().trim() : "";
+        const action = rawAction.replace('-key', '').trim();
 
         // 1. HANDLE LOAD-KEYS FIRST (No license_key required)
-        if (action === 'get-keys') {
+        if (action === 'load-keys') {
+            console.log("[ADMIN] Success: Running load-keys logic...");
             try {
                 const keys = await User.find({}, 'license_key email expiry_date is_banned is_paused games').lean();
                 return safeJson({
                     success: true,
                     keys: keys.map(k => ({
-                        license_key: k.license_key,
+                        license_key: k.license_key || "N/A",
                         email: k.email || "No Email",
                         expiry: k.expiry_date,
                         is_banned: k.is_banned || false,
@@ -121,22 +123,23 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                     }))
                 });
             } catch (err) {
+                console.error("[ADMIN] DB Error:", err);
                 return safeJson({ success: false, error: "Failed to load keys from database" });
             }
         }
 
         // 2. FIND USER (Only for actions that need a specific key)
         let user = null;
-        if (license_key) {
-            user = await User.findOne({ license_key: license_key.toUpperCase() });
+        if (license_key && typeof license_key === 'string') {
+            user = await User.findOne({ license_key: license_key.toUpperCase().trim() });
         }
 
-        
-        // 3. VALIDATE USER EXISTENCE (Except for 'delete' which we handle specifically)
+        // 3. VALIDATE USER EXISTENCE
+        // We only return "Key not found" if it's NOT a list-load and NOT a delete
         if (!user && action !== 'delete') {
+            console.log(`[ADMIN] Error: Key "${license_key}" not found for action "${action}"`);
             return safeJson({ success: false, error: "Key not found" });
         }
-        
 
         // 4. REMAINING ACTIONS
         switch (action) {
@@ -211,12 +214,13 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
 
             case 'delete':
                 if (license_key) {
-                    await User.deleteOne({ license_key: license_key.toUpperCase() });
+                    await User.deleteOne({ license_key: license_key.toUpperCase().trim() });
                     return safeJson({ success: true, message: "Key deleted." });
                 }
                 return safeJson({ success: false, error: "No key provided to delete" });
 
             default:
+                console.log(`[ADMIN] Unknown action: ${action}`);
                 return safeJson({ success: false, error: `Invalid Action: ${action}` });
         }
     } catch (err) {
