@@ -38,7 +38,9 @@ function verifyAdmin(req, res, next) {
 // --- 2. CREATE KEY ---
 app.post('/admin/create-key', verifyAdmin, async (req, res) => {
     try {
-        const { days, games } = req.body;
+        const { days, games, email, password } = req.body;
+        const daysNum = parseFloat(days); // Ensure we handle decimals like 0.0416
+
         const gamePrefixMap = { "FiveM": "FIVM", "GTAV": "GTAV", "Warzone": "WARZ", "CS2": "CS2X" };
         const firstGame = (games && games.length > 0) ? games[0] : "FiveM";
         const prefix = gamePrefixMap[firstGame] || "GENR";
@@ -46,15 +48,17 @@ app.post('/admin/create-key', verifyAdmin, async (req, res) => {
         const newKey = `${prefix}-${randomPart}`;
 
         const expiry = new Date();
-        if (days < 1) {
-            // For fractional days, treat as hours
-            expiry.setTime(expiry.getTime() + days * 24 * 60 * 60 * 1000);
+        if (daysNum === 999) {
+            expiry.setFullYear(expiry.getFullYear() + 50); // Lifetime
         } else {
-            expiry.setDate(expiry.getDate() + Math.floor(days));
+            // Precise millisecond math for hours/days
+            const msToAdd = daysNum * 24 * 60 * 60 * 1000;
+            expiry.setTime(expiry.getTime() + msToAdd);
         }
 
-
         const newUser = new User({
+            email: email ? email.toLowerCase() : "unassigned@loader.com",
+            password: password || "changeme123",
             license_key: newKey,
             hwid: null,
             expiry_date: expiry,
@@ -65,6 +69,7 @@ app.post('/admin/create-key', verifyAdmin, async (req, res) => {
         await newUser.save();
         res.json({ success: true, key: newKey, expires: expiry, games: newUser.games });
     } catch (err) {
+        if (err.code === 11000) return res.status(400).json({ success: false, error: "Email already exists" });
         res.status(500).json({ success: false, error: err.message });
     }
 });
@@ -159,16 +164,17 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                     }))
                 });
 
-            case 'get': // Handles 'get' or 'get-key'
+            // Inside your index.js /admin/:action switch
+            case 'get-key':
                 return safeJson({
                     success: true,
-                    email: user.email || "No Email",
+                    email: user.email || "No Email Linked", // <--- MUST HAVE THIS LINE
                     is_banned: user.is_banned || false,
                     is_paused: user.is_paused || false,
                     hwid: user.hwid || null,
                     expiry: user.expiry_date,
                     games: user.games || []
-                });
+                })
 
             case 'reset-hwid':
                 user.hwid = null;
