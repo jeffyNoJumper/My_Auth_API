@@ -65,7 +65,7 @@ app.post('/admin/create-key', verifyAdmin, async (req, res) => {
             hwid: null,
             expiry_date: expiry,
             games: games || ["FiveM"],
-            profile_pic: "https://i.imgur.com"
+            profile_pic: ""
         });
 
         await newUser.save();
