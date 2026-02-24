@@ -272,210 +272,223 @@
 
                     <!-- Action Buttons (Stacked Hierarchy) -->
                     <div style="display:flex; flex-direction: column; gap:6px; margin-top: 10px;">
-
-                        <!-- Row 1: Positive Status (Resume / Unban) -->
                         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px;">
-                            <button style="background: #282828; color: var(--accent); border: 1px solid #333;" onclick="modifyKey('unpause-key')">UNPAUSE</button>
-                            <button style="background: #282828; color: var(--accent); border: 1px solid #333;" onclick="modifyKey('unban-key')">UNBAN</button>
+                            <button style="background: #282828; color: var(--accent); border: 1px solid #333;" onclick="modifyKey('unpause')">UNPAUSE</button>
+                            <button style="background: #282828; color: var(--accent); border: 1px solid #333;" onclick="modifyKey('unban')">UNBAN</button>
                         </div>
-
-                        <!-- Row 2: Negative Status (Pause / Ban) -->
                         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px;">
-                            <button style="background: #222; color: #ffcc00; border: 1px solid #333;" onclick="modifyKey('pause-key')">PAUSE</button>
-                            <button style="background: var(--red); color: white;" onclick="modifyKey('ban-key')">BAN USER</button>
+                            <button style="background: #222; color: #ffcc00; border: 1px solid #333;" onclick="modifyKey('pause')">PAUSE</button>
+                            <button style="background: var(--red); color: white;" onclick="modifyKey('ban')">BAN USER</button>
                         </div>
-
-                        <!-- Row 3: Dangerous Actions (Delete) -->
-                        <button style="background: transparent; color: var(--red); border: 1px solid var(--red); font-size: 10px;" onclick="modifyKey('delete-key')">DELETE PERMANENTLY</button>
-
-                        <!-- Row 4: Utility (Refresh API Sync) -->
+                        <button style="background: transparent; color: var(--red); border: 1px solid var(--red); font-size: 10px;" onclick="modifyKey('delete')">DELETE PERMANENTLY</button>
                         <button style="background: #444; color: white; margin-top: 5px;" onclick="loadKeysDropdown()">REFRESH API & DB</button>
-
-                        <!-- Row 5: Primary Action -->
-                        <button id="standard-reset-btn" style="background: #00f2ff; color: black; font-weight: 900;" onclick="modifyKey('reset-hwid')">
-                            RESET HWID LOCK
-                        </button>
+                        <button id="standard-reset-btn" style="background: #00f2ff; color: black; font-weight: 900;" onclick="modifyKey('reset-hwid')">RESET HWID LOCK</button>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
+    <script>
+        const { ipcRenderer, clipboard } = require('electron');
+        const API = 'https://sk-auth-api.up.railway.app';
 
-                    <script>
-                        const { ipcRenderer, clipboard } = require('electron');
-                        const API = 'https://sk-auth-api.up.railway.app';
+        function closeWin() { ipcRenderer.send('admin-close'); }
+        function minWin() { ipcRenderer.send('admin-min'); }
 
-                        function closeWin() { ipcRenderer.send('admin-close'); }
-                        function minWin() { ipcRenderer.send('admin-min'); }
+        // 1. GENERATE KEY & ACCOUNT
+        async function generateKey() {
+            const btn = document.getElementById('gen-btn');
+            const pass = document.getElementById('admin-pass').value;
+            const userEmail = document.getElementById('new-user-email').value;
+            const userPass = document.getElementById('new-user-pass').value;
+            const days = parseFloat(document.getElementById('key-days').value);
+            const game = document.getElementById('key-game').value;
+            const keyText = document.getElementById('key-text');
 
-                        // 1. GENERATE KEY & ACCOUNT
-                        async function generateKey() {
-                            const btn = document.getElementById('gen-btn');
-                            const pass = document.getElementById('admin-pass').value;
-                            const userEmail = document.getElementById('new-user-email').value;
-                            const userPass = document.getElementById('new-user-pass').value;
-                            const days = parseFloat(document.getElementById('key-days').value);
-                            const game = document.getElementById('key-game').value;
-                            const keyText = document.getElementById('key-text');
+            if (!pass) return alert("Enter Admin Password!");
+            if (!userEmail || !userPass) return alert("Enter User Email & Password!");
 
-                            if (!pass) return alert("Enter Admin Password!");
-                            if (!userEmail || !userPass) return alert("Enter User Email & Password!");
+            btn.disabled = true;
+            btn.innerHTML = 'GENERATING...';
 
-                            btn.disabled = true;
-                            btn.innerHTML = 'GENERATING...';
+            try {
+                const response = await fetch(`${API}/admin/create-key`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        admin_password: pass,
+                        email: userEmail,
+                        password: userPass,
+                        days: days,
+                        games: [game]
+                    })
+                });
 
-                            try {
-                                const response = await fetch(`${API}/admin/create-key`, {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({
-                                        admin_password: pass,
-                                        email: userEmail,
-                                        password: userPass,
-                                        days: days,
-                                        games: [game]
-                                    })
-                                });
+                const data = await response.json();
 
-                                const data = await response.json();
+                if (data.success) {
+                    keyText.innerText = data.key;
+                    document.getElementById('key-expiry').innerText = "Expires: " + new Date(data.expires).toLocaleString();
 
-                                if (data.success) {
-                                    keyText.innerText = data.key;
-                                    document.getElementById('key-expiry').innerText = "Expires: " + new Date(data.expires).toLocaleString();
+                    if (clipboard) clipboard.writeText(data.key);
+                    alert("Account Created & Key Copied!");
+                    loadKeysDropdown();
+                } else {
+                    alert("API Error: " + (data.error || "Access Denied"));
+                }
+            } catch (err) {
+                alert("Connection failed.");
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = 'GENERATE & SAVE';
+            }
+        }
 
-                                    if (clipboard) clipboard.writeText(data.key);
-                                    alert("Account Created & Key Copied!");
-                                    loadKeysDropdown();
-                                } else {
-                                    alert("API Error: " + (data.error || "Access Denied"));
-                                }
-                            } catch (err) {
-                                alert("Connection failed.");
-                            } finally {
-                                btn.disabled = false;
-                                btn.innerHTML = 'GENERATE & SAVE';
-                            }
-                        }
+        // 2. LOAD ALL KEYS INTO DROPDOWN (FIXED)
+        async function loadKeysDropdown() {
+            const pass = document.getElementById('admin-pass').value;
+            const select = document.getElementById('manage-key-input');
 
-                        // 2. LOAD ALL KEYS INTO DROPDOWN
-                        async function loadKeysDropdown() {
-                            const pass = document.getElementById('admin-pass').value;
-                            const select = document.getElementById('manage-key-input');
-                            if (!pass) return alert("Enter Admin Password first!");
+            if (!pass) return alert("Enter Admin Password first!");
 
-                            try {
-                                const res = await fetch(`${API}/admin/load-keys`, {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ admin_password: pass })
-                                });
-                                const data = await res.json();
-                                if (data.success) {
-                                    select.innerHTML = '';
-                                    data.keys.forEach(k => {
-                                        const opt = document.createElement('option');
-                                        opt.value = k.license_key;
-                                        const status = k.is_banned ? "🔴" : (k.is_paused ? "🟡" : "🟢");
-                                        opt.innerText = `${status} ${k.license_key}`;
-                                        select.appendChild(opt);
-                                    });
-                                }
-                            } catch (err) { alert("Failed to fetch keys."); }
-                        }
+            // Visual feedback that it's working
+            select.innerHTML = '<option value="">Connecting to API...</option>';
 
-                        // 3. LOAD SELECTED KEY INFO (Updated for Live Reset Requests)
-                        async function loadKey() {
-                            const keyInput = document.getElementById('single-key-input').value.trim();
-                            const dropdown = document.getElementById('manage-key-input');
-                            const key = keyInput || dropdown.value;
-                            const pass = document.getElementById('admin-pass').value;
+            try {
+                const res = await fetch(`${API}/admin/load-keys`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ admin_password: pass })
+                });
 
-                            if (!key || !pass) return alert("Select a key and enter Admin Password!");
+                const data = await res.json();
 
-                            try {
-                                const res = await fetch(`${API}/admin/get-key`, {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ license_key: key, admin_password: pass })
-                                });
-                                const data = await res.json();
+                if (data.success && data.keys) {
+                    select.innerHTML = ''; // Clear the "Connecting..." message
 
-                                if (data.success) {
-                                    // 1. Update basic info labels
-                                    document.getElementById('info-email').innerText = data.email || "No Email Linked";
-                                    document.getElementById('manage-status').innerText = data.is_banned ? "BANNED" : (data.is_paused ? "PAUSED" : "ACTIVE");
-                                    document.getElementById('manage-hwid').innerText = data.hwid || "NOT CAPTURED";
+                    if (data.keys.length === 0) {
+                        select.innerHTML = '<option value="">(No keys found in database)</option>';
+                        return;
+                    }
 
-                                    if (document.getElementById('manage-expiry')) {
-                                        document.getElementById('manage-expiry').innerText = data.expiry ? new Date(data.expiry).toLocaleDateString() : "N/A";
-                                    }
+                    data.keys.forEach(k => {
+                        const opt = document.createElement('option');
+                        opt.value = k.license_key;
+                        const status = k.is_banned ? "🔴" : (k.is_paused ? "🟡" : "🟢");
+                        // Fallback to k.email if license_key is missing in the object
+                        opt.innerText = `${status} ${k.license_key || k.email}`;
+                        select.appendChild(opt);
+                    });
+                    console.log("Keys loaded successfully.");
+                } else {
+                    // This captures the "Key not found" error from your server
+                    alert("Login Failed: " + (data.error || "Invalid Admin Key"));
+                    select.innerHTML = `<option value="">❌ ${data.error || "Access Denied"}</option>`;
+                }
+            } catch (err) {
+                console.error("Fetch error:", err);
+                alert("Connection failed. Check if the API is online.");
+                select.innerHTML = '<option value="">(Connection Error)</option>';
+            }
+        }
 
-                                    // 2. Toggling the Live Request UI
-                                    const requestBox = document.getElementById('request-alert-box');
-                                    const standardBtn = document.getElementById('standard-reset-btn');
-                                    const requestedHwidText = document.getElementById('requested-hwid-text');
+        // 3. LOAD SELECTED KEY INFO (Updated for Live Reset Requests)
+        async function loadKey() {
+            const keyInput = document.getElementById('single-key-input').value.trim();
+            const dropdown = document.getElementById('manage-key-input');
+            const key = keyInput || dropdown.value;
+            const pass = document.getElementById('admin-pass').value;
 
-                                    // Check if there is a pending request in the API response
-                                    if (data.pending_request && data.pending_request.status === "PENDING") {
-                                        // Show the Gold Action Box
-                                        if (requestBox) requestBox.style.display = 'block';
-                                        if (standardBtn) standardBtn.style.display = 'none';
-                                        if (requestedHwidText) requestedHwidText.innerText = "REQUESTED ID: " + data.pending_request.hwid;
+            if (!key || !pass) return alert("Select a key and enter Admin Password!");
 
-                                        console.log(`[!] PENDING REQUEST DETECTED FOR: ${key}`);
-                                    } else {
-                                        // Hide the Gold Action Box, show standard blue button
-                                        if (requestBox) requestBox.style.display = 'none';
-                                        if (standardBtn) standardBtn.style.display = 'block';
-                                    }
+            try {
+                const res = await fetch(`${API}/admin/get-key`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ license_key: key, admin_password: pass })
+                });
+                const data = await res.json();
 
-                                } else {
-                                    alert(data.error || "Failed to load key");
-                                }
-                            } catch (err) {
-                                console.error("Load Error:", err);
-                                alert("Load Error: Check console for details");
-                            }
-                        }
+                if (data.success) {
+                    // 1. Update basic info labels
+                    document.getElementById('info-email').innerText = data.email || "No Email Linked";
+                    document.getElementById('manage-status').innerText = data.is_banned ? "BANNED" : (data.is_paused ? "PAUSED" : "ACTIVE");
+                    document.getElementById('manage-hwid').innerText = data.hwid || "NOT CAPTURED";
 
-                        async function linkUserEmail() {
-                            const key = document.getElementById('manage-key-input').value || document.getElementById('single-key-input').value;
-                            const email = document.getElementById('quick-link-email').value.trim();
-                            const pass = document.getElementById('admin-pass').value;
+                    if (document.getElementById('manage-expiry')) {
+                        document.getElementById('manage-expiry').innerText = data.expiry ? new Date(data.expiry).toLocaleDateString() : "N/A";
+                    }
 
-                            if (!key || !email) return alert("Select a key and enter an email first!");
+                    // 2. Toggling the Live Request UI
+                    const requestBox = document.getElementById('request-alert-box');
+                    const standardBtn = document.getElementById('standard-reset-btn');
+                    const requestedHwidText = document.getElementById('requested-hwid-text');
 
-                            const res = await fetch(`${API}/admin/update-key`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ admin_password: pass, license_key: key, email: email })
-                            });
+                    // Check if there is a pending request in the API response
+                    if (data.pending_request && data.pending_request.status === "PENDING") {
+                        // Show the Gold Action Box
+                        if (requestBox) requestBox.style.display = 'block';
+                        if (standardBtn) standardBtn.style.display = 'none';
+                        if (requestedHwidText) requestedHwidText.innerText = "REQUESTED ID: " + data.pending_request.hwid;
 
-                            const data = await res.json();
-                            if (data.success) {
-                                alert(`Linked ${email} successfully!`);
-                                document.getElementById('quick-link-email').value = ""; // Clear the input
-                                await loadKey(); // <--- THIS REFRESHES THE USER LABEL IMMEDIATELY
-                            }
-                        }
+                        console.log(`[!] PENDING REQUEST DETECTED FOR: ${key}`);
+                    } else {
+                        // Hide the Gold Action Box, show standard blue button
+                        if (requestBox) requestBox.style.display = 'none';
+                        if (standardBtn) standardBtn.style.display = 'block';
+                    }
 
-                        // 4. GENERAL ACTIONS (BAN, PAUSE, RESET)
-                        async function modifyKey(action) {
-                            const key = document.getElementById('single-key-input').value.trim() || document.getElementById('manage-key-input').value;
-                            const pass = document.getElementById('admin-pass').value;
+                } else {
+                    alert(data.error || "Failed to load key");
+                }
+            } catch (err) {
+                console.error("Load Error:", err);
+                alert("Load Error: Check console for details");
+            }
+        }
 
-                            if (!key || !pass) return alert("Select a key!");
+        async function linkUserEmail() {
+            const key = document.getElementById('manage-key-input').value || document.getElementById('single-key-input').value;
+            const email = document.getElementById('quick-link-email').value.trim();
+            const pass = document.getElementById('admin-pass').value;
 
-                            try {
-                                const res = await fetch(`${API}/admin/${action}`, {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ license_key: key, admin_password: pass })
-                                });
-                                const data = await res.json();
-                                if (data.success) {
-                                    alert("Action Successful!");
-                                    loadKey(); // Refresh info
-                                } else { alert(data.error); }
-                            } catch (err) { alert("Action Failed"); }
-                        }
-                    </script>
+            if (!key || !email) return alert("Select a key and enter an email first!");
+
+            const res = await fetch(`${API}/admin/update-key`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ admin_password: pass, license_key: key, email: email })
+            });
+
+            const data = await res.json();
+            if (data.success) {
+                alert(`Linked ${email} successfully!`);
+                document.getElementById('quick-link-email').value = ""; // Clear the input
+                await loadKey(); // <--- THIS REFRESHES THE USER LABEL IMMEDIATELY
+            }
+        }
+
+        // 4. GENERAL ACTIONS (BAN, PAUSE, RESET)
+        async function modifyKey(action) {
+            const key = document.getElementById('single-key-input').value.trim() || document.getElementById('manage-key-input').value;
+            const pass = document.getElementById('admin-pass').value;
+
+            if (!key || !pass) return alert("Select a key!");
+
+            try {
+                const res = await fetch(`${API}/admin/${action}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ license_key: key, admin_password: pass })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    alert("Action Successful!");
+                    loadKey(); // Refresh info
+                } else { alert(data.error); }
+            } catch (err) { alert("Action Failed"); }
+        }
+    </script>
 </body>
 </html>
