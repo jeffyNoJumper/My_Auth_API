@@ -752,6 +752,43 @@ async function requestHWIDReset() {
     }
 }
 
+// --- NEW POLLING FUNCTION ---
+async function pollRequestStatus(requestId) {
+    const terminal = document.getElementById('admin-terminal');
+    
+    const addLog = (msg, color) => {
+        const entry = document.createElement('div');
+        entry.className = 'log-entry';
+        if (color) entry.style.color = color;
+        entry.innerHTML = `<span class="prompt">></span> ${msg}`;
+        terminal.appendChild(entry);
+        terminal.scrollTop = terminal.scrollHeight;
+    };
+
+    const interval = setInterval(async () => {
+        try {
+            const response = await fetch(`${API}/check-hwid-status/${requestId}`);
+            const data = await response.json();
+
+            if (data.status === "APPROVED") {
+                clearInterval(interval);
+                addLog("ADMIN APPROVED REQUEST.", "var(--cyan)");
+                addLog("HWID RESET SUCCESSFUL. PLEASE RE-LOGIN.", "var(--cyan)");
+                document.getElementById('hwid-main-status').innerText = "HWID RESET";
+                document.getElementById('hwid-main-status').className = "active";
+            } else if (data.status === "DENIED") {
+                clearInterval(interval);
+                addLog("ADMIN DENIED REQUEST.", "red");
+                addLog("REASON: REJECTED BY SERVER.", "red");
+            }
+            // If still PENDING, we just wait for the next loop...
+        } catch (err) {
+            console.error("Polling error:", err);
+        }
+    }, 5000); // Check every 5 seconds
+}
+
+// --- UPDATED SEND FUNCTION ---
 async function sendAdminRequest() {
     const terminal = document.getElementById('admin-terminal');
     const hwid = document.getElementById('hwid-id').innerText;
@@ -766,10 +803,7 @@ async function sendAdminRequest() {
         terminal.scrollTop = terminal.scrollHeight;
     };
 
-
-    if (!savedKey) {
-        return addLog("ERROR: DATA NOT FOUND. PLEASE RE-LOGIN.");
-    }
+    if (!savedKey) return addLog("ERROR: DATA NOT FOUND. PLEASE RE-LOGIN.");
 
     addLog("CONNECTING TO AUTH SERVER...");
 
@@ -784,13 +818,16 @@ async function sendAdminRequest() {
             })
         });
 
-        if (!response.ok) throw new Error("Server Error");
-
         const data = await response.json();
 
         if (data.success) {
             addLog("REQUEST SENT TO ADMIN.");
             addLog("STATUS: PENDING APPROVAL.");
+            
+            // START WATCHING FOR THE ADMIN'S CLICK
+            if (data.requestId) {
+                pollRequestStatus(data.requestId);
+            }
         } else {
             addLog(`FAILED: ${data.error || "REJECTED"}`);
         }
@@ -798,6 +835,7 @@ async function sendAdminRequest() {
         addLog("CRITICAL: API CONNECTION FAILED.");
     }
 }
+
 
 function setStatus(state) {
     const status = document.getElementById("user-status");
