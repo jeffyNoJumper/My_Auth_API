@@ -7,14 +7,16 @@
             --accent: #00ff88;
             --gold: #ffcc00;
             --bg-main: #151515;
-            --bg-input: #222;
+            --bg-input: #1a1a1a;
+            --bg-card: rgba(255, 255, 255, 0.03);
             --text: #ffffff;
             --red: #ff3e3e;
+            --cyan-glow: rgba(0, 255, 136, 0.3);
         }
 
         body {
             background: transparent;
-            font-family: 'Segoe UI', sans-serif;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -25,20 +27,19 @@
 
         .panel {
             background: var(--bg-main);
-            padding: 35px 25px 25px 25px;
+            padding: 40px 25px 25px 25px;
             border-radius: 12px;
-            /* Center it inside the 1100px window */
             width: 1050px;
             margin: auto;
             border: 1px solid var(--accent);
             color: var(--text);
-            box-shadow: 0 0 20px rgba(0, 255, 136, 0.3);
+            box-shadow: 0 0 25px var(--cyan-glow);
             position: relative;
             box-sizing: border-box;
+            backdrop-filter: blur(10px); /* Subtle glass effect */
         }
 
-
-        /* FIX: Ensure buttons sit side-by-side and don't overlap content */
+        /* Draggable Titlebar */
         .titlebar {
             position: absolute;
             top: 0;
@@ -46,30 +47,29 @@
             width: 100%;
             height: 35px;
             display: flex;
-            justify-content: flex-end; /* Align to the right */
+            justify-content: flex-end;
             align-items: center;
             padding-right: 5px;
             box-sizing: border-box;
-            -webkit-app-region: drag; /* Makes titlebar draggable in Electron */
+            -webkit-app-region: drag;
         }
 
-        /* Wrapper for the window buttons */
         .window-controls {
             display: flex;
-            flex-direction: row; /* Force horizontal alignment */
-            -webkit-app-region: no-drag; /* Buttons themselves shouldn't be draggable */
+            flex-direction: row;
+            -webkit-app-region: no-drag;
         }
 
         .control-btn {
             padding: 8px 15px;
             cursor: pointer;
-            color: #888;
-            font-size: 14px;
+            color: #666;
+            font-size: 12px;
             transition: 0.2s;
         }
 
             .control-btn:hover {
-                background: rgba(255, 255, 255, 0.1);
+                background: rgba(255, 255, 255, 0.05);
                 color: var(--text);
             }
 
@@ -78,57 +78,61 @@
             color: white !important;
         }
 
-        /* Updated Grid: Better spacing for the new wide width */
+        /* Layout Grid */
         .horizontal-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr 1fr; /* Equal columns for balance */
-            gap: 25px;
-            margin-top: 15px;
+            grid-template-columns: 1fr 1fr 1.1fr; /* Management column slightly wider */
+            gap: 20px;
+            margin-top: 10px;
         }
 
         .column {
-            background: rgba(255, 255, 255, 0.03);
+            background: var(--bg-card);
             padding: 20px;
             border-radius: 8px;
-            border: 1px solid #282828;
-            min-height: 320px; /* Keeps columns uniform */
+            border: 1px solid #222;
+            min-height: 400px;
             display: flex;
             flex-direction: column;
         }
 
         .section-label {
             font-size: 10px;
-            font-weight: bold;
+            font-weight: 800;
             color: var(--accent);
             margin-bottom: 15px;
-            letter-spacing: 1.5px;
+            letter-spacing: 2px;
             text-transform: uppercase;
-            border-left: 2px solid var(--accent);
-            padding-left: 10px;
+            border-left: 3px solid var(--accent);
+            padding-left: 12px;
         }
 
+        /* Form Elements */
         input, select, button {
             width: 100%;
-            padding: 12px;
-            margin: 6px 0;
+            padding: 10px 12px;
+            margin: 4px 0;
             border-radius: 4px;
             box-sizing: border-box;
-            font-size: 12px;
+            font-size: 11px;
             font-family: inherit;
+            outline: none;
         }
 
         input, select {
             background: var(--bg-input);
             border: 1px solid #333;
-            color: var(--text);
-            outline: none;
-            transition: border 0.2s;
+            color: #ccc;
+            transition: all 0.2s ease;
         }
 
-            input:focus {
+            input:focus, select:focus {
                 border-color: var(--accent);
+                color: var(--text);
+                box-shadow: 0 0 10px rgba(0, 255, 136, 0.1);
             }
 
+        /* Button Theming */
         button {
             background: var(--accent);
             border: none;
@@ -136,17 +140,43 @@
             font-weight: 800;
             cursor: pointer;
             text-transform: uppercase;
-            letter-spacing: 1px;
-            transition: transform 0.1s, opacity 0.2s;
+            letter-spacing: 0.5px;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
             button:hover {
-                opacity: 0.9;
+                filter: brightness(1.1);
                 transform: translateY(-1px);
+                box-shadow: 0 4px 12px rgba(0, 255, 136, 0.2);
             }
 
             button:active {
                 transform: translateY(0);
+            }
+
+        /* Custom Alert Box for Requests */
+        #request-alert-box {
+            border: 1px solid var(--gold);
+            background: rgba(255, 204, 0, 0.05);
+            box-shadow: inset 0 0 10px rgba(255, 204, 0, 0.05);
+        }
+
+        /* Scrollbar for Key List */
+        #manage-key-input::-webkit-scrollbar {
+            width: 5px;
+        }
+
+        #manage-key-input::-webkit-scrollbar-track {
+            background: #111;
+        }
+
+        #manage-key-input::-webkit-scrollbar-thumb {
+            background: #333;
+            border-radius: 10px;
+        }
+
+            #manage-key-input::-webkit-scrollbar-thumb:hover {
+                background: var(--accent);
             }
     </style>
 </head>
@@ -240,201 +270,212 @@
                         </div>
                     </div>
 
-                    <!-- Action Buttons -->
-                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px;">
-                        <button onclick="modifyKey('pause-key')">Pause</button>
-                        <button onclick="modifyKey('unpause-key')">Resume</button>
-                        <button style="background:var(--red); color:white;" onclick="modifyKey('ban-key')">Ban User</button>
-                        <button style="background:#222; color:var(--red); border:1px solid var(--red);" onclick="modifyKey('delete-key')">Delete</button>
+                    <!-- Action Buttons (Stacked Hierarchy) -->
+                    <div style="display:flex; flex-direction: column; gap:6px; margin-top: 10px;">
+
+                        <!-- Row 1: Positive Status (Resume / Unban) -->
+                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px;">
+                            <button style="background: #282828; color: var(--accent); border: 1px solid #333;" onclick="modifyKey('unpause-key')">UNPAUSE</button>
+                            <button style="background: #282828; color: var(--accent); border: 1px solid #333;" onclick="modifyKey('unban-key')">UNBAN</button>
+                        </div>
+
+                        <!-- Row 2: Negative Status (Pause / Ban) -->
+                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px;">
+                            <button style="background: #222; color: #ffcc00; border: 1px solid #333;" onclick="modifyKey('pause-key')">PAUSE</button>
+                            <button style="background: var(--red); color: white;" onclick="modifyKey('ban-key')">BAN USER</button>
+                        </div>
+
+                        <!-- Row 3: Dangerous Actions (Delete) -->
+                        <button style="background: transparent; color: var(--red); border: 1px solid var(--red); font-size: 10px;" onclick="modifyKey('delete-key')">DELETE PERMANENTLY</button>
+
+                        <!-- Row 4: Utility (Refresh API Sync) -->
+                        <button style="background: #444; color: white; margin-top: 5px;" onclick="loadKeysDropdown()">REFRESH API & DB</button>
+
+                        <!-- Row 5: Primary Action -->
+                        <button id="standard-reset-btn" style="background: #00f2ff; color: black; font-weight: 900;" onclick="modifyKey('reset-hwid')">
+                            RESET HWID LOCK
+                        </button>
                     </div>
 
-                    <!-- Standard Reset -->
-                    <button id="standard-reset-btn" style="background:#00f2ff; color:black; margin-top:8px;" onclick="modifyKey('reset-hwid')">
-                        RESET HWID LOCK
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
 
-    <script>
-        const { ipcRenderer, clipboard } = require('electron');
-        const API = 'https://sk-auth-api.up.railway.app';
+                    <script>
+                        const { ipcRenderer, clipboard } = require('electron');
+                        const API = 'https://sk-auth-api.up.railway.app';
 
-        function closeWin() { ipcRenderer.send('admin-close'); }
-        function minWin() { ipcRenderer.send('admin-min'); }
+                        function closeWin() { ipcRenderer.send('admin-close'); }
+                        function minWin() { ipcRenderer.send('admin-min'); }
 
-        // 1. GENERATE KEY & ACCOUNT
-        async function generateKey() {
-            const btn = document.getElementById('gen-btn');
-            const pass = document.getElementById('admin-pass').value;
-            const userEmail = document.getElementById('new-user-email').value;
-            const userPass = document.getElementById('new-user-pass').value;
-            const days = parseFloat(document.getElementById('key-days').value);
-            const game = document.getElementById('key-game').value;
-            const keyText = document.getElementById('key-text');
+                        // 1. GENERATE KEY & ACCOUNT
+                        async function generateKey() {
+                            const btn = document.getElementById('gen-btn');
+                            const pass = document.getElementById('admin-pass').value;
+                            const userEmail = document.getElementById('new-user-email').value;
+                            const userPass = document.getElementById('new-user-pass').value;
+                            const days = parseFloat(document.getElementById('key-days').value);
+                            const game = document.getElementById('key-game').value;
+                            const keyText = document.getElementById('key-text');
 
-            if (!pass) return alert("Enter Admin Password!");
-            if (!userEmail || !userPass) return alert("Enter User Email & Password!");
+                            if (!pass) return alert("Enter Admin Password!");
+                            if (!userEmail || !userPass) return alert("Enter User Email & Password!");
 
-            btn.disabled = true;
-            btn.innerHTML = 'GENERATING...';
+                            btn.disabled = true;
+                            btn.innerHTML = 'GENERATING...';
 
-            try {
-                const response = await fetch(`${API}/admin/create-key`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        admin_password: pass,
-                        email: userEmail,
-                        password: userPass,
-                        days: days,
-                        games: [game]
-                    })
-                });
+                            try {
+                                const response = await fetch(`${API}/admin/create-key`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                        admin_password: pass,
+                                        email: userEmail,
+                                        password: userPass,
+                                        days: days,
+                                        games: [game]
+                                    })
+                                });
 
-                const data = await response.json();
+                                const data = await response.json();
 
-                if (data.success) {
-                    keyText.innerText = data.key;
-                    document.getElementById('key-expiry').innerText = "Expires: " + new Date(data.expires).toLocaleString();
+                                if (data.success) {
+                                    keyText.innerText = data.key;
+                                    document.getElementById('key-expiry').innerText = "Expires: " + new Date(data.expires).toLocaleString();
 
-                    if (clipboard) clipboard.writeText(data.key);
-                    alert("Account Created & Key Copied!");
-                    loadKeysDropdown();
-                } else {
-                    alert("API Error: " + (data.error || "Access Denied"));
-                }
-            } catch (err) {
-                alert("Connection failed.");
-            } finally {
-                btn.disabled = false;
-                btn.innerHTML = 'GENERATE & SAVE';
-            }
-        }
+                                    if (clipboard) clipboard.writeText(data.key);
+                                    alert("Account Created & Key Copied!");
+                                    loadKeysDropdown();
+                                } else {
+                                    alert("API Error: " + (data.error || "Access Denied"));
+                                }
+                            } catch (err) {
+                                alert("Connection failed.");
+                            } finally {
+                                btn.disabled = false;
+                                btn.innerHTML = 'GENERATE & SAVE';
+                            }
+                        }
 
-        // 2. LOAD ALL KEYS INTO DROPDOWN
-        async function loadKeysDropdown() {
-            const pass = document.getElementById('admin-pass').value;
-            const select = document.getElementById('manage-key-input');
-            if (!pass) return alert("Enter Admin Password first!");
+                        // 2. LOAD ALL KEYS INTO DROPDOWN
+                        async function loadKeysDropdown() {
+                            const pass = document.getElementById('admin-pass').value;
+                            const select = document.getElementById('manage-key-input');
+                            if (!pass) return alert("Enter Admin Password first!");
 
-            try {
-                const res = await fetch(`${API}/admin/load-keys`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ admin_password: pass })
-                });
-                const data = await res.json();
-                if (data.success) {
-                    select.innerHTML = '';
-                    data.keys.forEach(k => {
-                        const opt = document.createElement('option');
-                        opt.value = k.license_key;
-                        const status = k.is_banned ? "🔴" : (k.is_paused ? "🟡" : "🟢");
-                        opt.innerText = `${status} ${k.license_key}`;
-                        select.appendChild(opt);
-                    });
-                }
-            } catch (err) { alert("Failed to fetch keys."); }
-        }
+                            try {
+                                const res = await fetch(`${API}/admin/load-keys`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ admin_password: pass })
+                                });
+                                const data = await res.json();
+                                if (data.success) {
+                                    select.innerHTML = '';
+                                    data.keys.forEach(k => {
+                                        const opt = document.createElement('option');
+                                        opt.value = k.license_key;
+                                        const status = k.is_banned ? "🔴" : (k.is_paused ? "🟡" : "🟢");
+                                        opt.innerText = `${status} ${k.license_key}`;
+                                        select.appendChild(opt);
+                                    });
+                                }
+                            } catch (err) { alert("Failed to fetch keys."); }
+                        }
 
-        // 3. LOAD SELECTED KEY INFO (Updated for Live Reset Requests)
-        async function loadKey() {
-            const keyInput = document.getElementById('single-key-input').value.trim();
-            const dropdown = document.getElementById('manage-key-input');
-            const key = keyInput || dropdown.value;
-            const pass = document.getElementById('admin-pass').value;
+                        // 3. LOAD SELECTED KEY INFO (Updated for Live Reset Requests)
+                        async function loadKey() {
+                            const keyInput = document.getElementById('single-key-input').value.trim();
+                            const dropdown = document.getElementById('manage-key-input');
+                            const key = keyInput || dropdown.value;
+                            const pass = document.getElementById('admin-pass').value;
 
-            if (!key || !pass) return alert("Select a key and enter Admin Password!");
+                            if (!key || !pass) return alert("Select a key and enter Admin Password!");
 
-            try {
-                const res = await fetch(`${API}/admin/get-key`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ license_key: key, admin_password: pass })
-                });
-                const data = await res.json();
+                            try {
+                                const res = await fetch(`${API}/admin/get-key`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ license_key: key, admin_password: pass })
+                                });
+                                const data = await res.json();
 
-                if (data.success) {
-                    // 1. Update basic info labels
-                    document.getElementById('info-email').innerText = data.email || "No Email Linked";
-                    document.getElementById('manage-status').innerText = data.is_banned ? "BANNED" : (data.is_paused ? "PAUSED" : "ACTIVE");
-                    document.getElementById('manage-hwid').innerText = data.hwid || "NOT CAPTURED";
+                                if (data.success) {
+                                    // 1. Update basic info labels
+                                    document.getElementById('info-email').innerText = data.email || "No Email Linked";
+                                    document.getElementById('manage-status').innerText = data.is_banned ? "BANNED" : (data.is_paused ? "PAUSED" : "ACTIVE");
+                                    document.getElementById('manage-hwid').innerText = data.hwid || "NOT CAPTURED";
 
-                    if (document.getElementById('manage-expiry')) {
-                        document.getElementById('manage-expiry').innerText = data.expiry ? new Date(data.expiry).toLocaleDateString() : "N/A";
-                    }
+                                    if (document.getElementById('manage-expiry')) {
+                                        document.getElementById('manage-expiry').innerText = data.expiry ? new Date(data.expiry).toLocaleDateString() : "N/A";
+                                    }
 
-                    // 2. Toggling the Live Request UI
-                    const requestBox = document.getElementById('request-alert-box');
-                    const standardBtn = document.getElementById('standard-reset-btn');
-                    const requestedHwidText = document.getElementById('requested-hwid-text');
+                                    // 2. Toggling the Live Request UI
+                                    const requestBox = document.getElementById('request-alert-box');
+                                    const standardBtn = document.getElementById('standard-reset-btn');
+                                    const requestedHwidText = document.getElementById('requested-hwid-text');
 
-                    // Check if there is a pending request in the API response
-                    if (data.pending_request && data.pending_request.status === "PENDING") {
-                        // Show the Gold Action Box
-                        if (requestBox) requestBox.style.display = 'block';
-                        if (standardBtn) standardBtn.style.display = 'none';
-                        if (requestedHwidText) requestedHwidText.innerText = "REQUESTED ID: " + data.pending_request.hwid;
+                                    // Check if there is a pending request in the API response
+                                    if (data.pending_request && data.pending_request.status === "PENDING") {
+                                        // Show the Gold Action Box
+                                        if (requestBox) requestBox.style.display = 'block';
+                                        if (standardBtn) standardBtn.style.display = 'none';
+                                        if (requestedHwidText) requestedHwidText.innerText = "REQUESTED ID: " + data.pending_request.hwid;
 
-                        console.log(`[!] PENDING REQUEST DETECTED FOR: ${key}`);
-                    } else {
-                        // Hide the Gold Action Box, show standard blue button
-                        if (requestBox) requestBox.style.display = 'none';
-                        if (standardBtn) standardBtn.style.display = 'block';
-                    }
+                                        console.log(`[!] PENDING REQUEST DETECTED FOR: ${key}`);
+                                    } else {
+                                        // Hide the Gold Action Box, show standard blue button
+                                        if (requestBox) requestBox.style.display = 'none';
+                                        if (standardBtn) standardBtn.style.display = 'block';
+                                    }
 
-                } else {
-                    alert(data.error || "Failed to load key");
-                }
-            } catch (err) {
-                console.error("Load Error:", err);
-                alert("Load Error: Check console for details");
-            }
-        }
+                                } else {
+                                    alert(data.error || "Failed to load key");
+                                }
+                            } catch (err) {
+                                console.error("Load Error:", err);
+                                alert("Load Error: Check console for details");
+                            }
+                        }
 
-        async function linkUserEmail() {
-            const key = document.getElementById('manage-key-input').value || document.getElementById('single-key-input').value;
-            const email = document.getElementById('quick-link-email').value.trim();
-            const pass = document.getElementById('admin-pass').value;
+                        async function linkUserEmail() {
+                            const key = document.getElementById('manage-key-input').value || document.getElementById('single-key-input').value;
+                            const email = document.getElementById('quick-link-email').value.trim();
+                            const pass = document.getElementById('admin-pass').value;
 
-            if (!key || !email) return alert("Select a key and enter an email first!");
+                            if (!key || !email) return alert("Select a key and enter an email first!");
 
-            const res = await fetch(`${API}/admin/update-key`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ admin_password: pass, license_key: key, email: email })
-            });
+                            const res = await fetch(`${API}/admin/update-key`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ admin_password: pass, license_key: key, email: email })
+                            });
 
-            const data = await res.json();
-            if (data.success) {
-                alert(`Linked ${email} successfully!`);
-                document.getElementById('quick-link-email').value = ""; // Clear the input
-                await loadKey(); // <--- THIS REFRESHES THE USER LABEL IMMEDIATELY
-            }
-        }
+                            const data = await res.json();
+                            if (data.success) {
+                                alert(`Linked ${email} successfully!`);
+                                document.getElementById('quick-link-email').value = ""; // Clear the input
+                                await loadKey(); // <--- THIS REFRESHES THE USER LABEL IMMEDIATELY
+                            }
+                        }
 
-        // 4. GENERAL ACTIONS (BAN, PAUSE, RESET)
-        async function modifyKey(action) {
-            const key = document.getElementById('single-key-input').value.trim() || document.getElementById('manage-key-input').value;
-            const pass = document.getElementById('admin-pass').value;
+                        // 4. GENERAL ACTIONS (BAN, PAUSE, RESET)
+                        async function modifyKey(action) {
+                            const key = document.getElementById('single-key-input').value.trim() || document.getElementById('manage-key-input').value;
+                            const pass = document.getElementById('admin-pass').value;
 
-            if (!key || !pass) return alert("Select a key!");
+                            if (!key || !pass) return alert("Select a key!");
 
-            try {
-                const res = await fetch(`${API}/admin/${action}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ license_key: key, admin_password: pass })
-                });
-                const data = await res.json();
-                if (data.success) {
-                    alert("Action Successful!");
-                    loadKey(); // Refresh info
-                } else { alert(data.error); }
-            } catch (err) { alert("Action Failed"); }
-        }
-    </script>
+                            try {
+                                const res = await fetch(`${API}/admin/${action}`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ license_key: key, admin_password: pass })
+                                });
+                                const data = await res.json();
+                                if (data.success) {
+                                    alert("Action Successful!");
+                                    loadKey(); // Refresh info
+                                } else { alert(data.error); }
+                            } catch (err) { alert("Action Failed"); }
+                        }
+                    </script>
 </body>
 </html>
