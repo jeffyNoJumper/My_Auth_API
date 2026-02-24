@@ -122,8 +122,11 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
     const safeJson = (obj) => res.json(obj);
 
     try {
-        const { license_key } = req.body;
-        const action = req.params.action.toLowerCase();
+        const { license_key, email, password } = req.body;
+
+        // Normalize action: remove "-key" suffix and trim spaces
+        const rawAction = req.params.action.toLowerCase().trim();
+        const action = rawAction.endsWith('-key') ? rawAction.replace('-key', '') : rawAction;
 
         let user = null;
         if (license_key) {
@@ -131,33 +134,35 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
         }
 
         // Allow load-keys without a user
-        if (!user && !['delete-key', 'load-keys'].includes(action)) {
+        if (!user && !['delete', 'load-keys'].includes(action)) {
             return safeJson({ success: false, error: "Key not found" });
         }
 
         switch (action) {
+            case 'update': // Handles 'update' or 'update-key'
+                if (email) user.email = email.toLowerCase();
+                if (password) user.password = password;
+                await user.save();
+                return safeJson({ success: true, message: `Linked ${email} successfully.` });
 
             case 'load-keys':
-                try {
-                    const keys = await User.find({}, 'license_key expiry_date is_banned is_paused games').lean();
-                    // Lean ensures plain JS objects, safe for JSON
-                    return safeJson({
-                        success: true, keys: keys.map(k => ({
-                            license_key: k.license_key,
-                            expiry: k.expiry_date,
-                            is_banned: k.is_banned || false,
-                            is_paused: k.is_paused || false,
-                            games: k.games || []
-                        }))
-                    });
-                } catch (err) {
-                    console.error("Load keys error:", err);
-                    return safeJson({ success: false, keys: [], error: "Failed to fetch keys" });
-                }
-
-            case 'get-key':
+                const keys = await User.find({}, 'license_key email expiry_date is_banned is_paused games').lean();
                 return safeJson({
                     success: true,
+                    keys: keys.map(k => ({
+                        license_key: k.license_key,
+                        email: k.email || "No Email",
+                        expiry: k.expiry_date,
+                        is_banned: k.is_banned || false,
+                        is_paused: k.is_paused || false,
+                        games: k.games || []
+                    }))
+                });
+
+            case 'get': // Handles 'get' or 'get-key'
+                return safeJson({
+                    success: true,
+                    email: user.email || "No Email",
                     is_banned: user.is_banned || false,
                     is_paused: user.is_paused || false,
                     hwid: user.hwid || null,
@@ -166,36 +171,31 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                 });
 
             case 'reset-hwid':
-                // 1. Wipe the user's HWID
                 user.hwid = null;
                 await user.save();
                 try {
                     await mongoose.connection.collection('requests').deleteMany({
                         license_key: license_key.toUpperCase()
                     });
-                    console.log(`[!] Cleared pending requests for: ${license_key}`);
-                } catch (err) {
-                    console.error("Failed to clear request table:", err);
-                }
+                } catch (err) { console.error("Request clear failed:", err); }
+                return safeJson({ success: true, message: "HWID reset successfully." });
 
-                return safeJson({ success: true, message: "HWID reset and request cleared." });
-
-            case 'pause-key':
+            case 'pause': // Handles 'pause' or 'pause-key'
                 user.is_paused = true;
                 await user.save();
                 return safeJson({ success: true, message: "Key paused successfully." });
 
-            case 'unpause-key':
+            case 'unpause': // Handles 'unpause' or 'unpause-key'
                 user.is_paused = false;
                 await user.save();
                 return safeJson({ success: true, message: "Key unpaused successfully." });
 
-            case 'ban-key':
+            case 'ban': // Handles 'ban' or 'ban-key'
                 user.is_banned = true;
                 await user.save();
                 return safeJson({ success: true, message: "Key banned successfully." });
 
-            case 'delete-key':
+            case 'delete': // Handles 'delete' or 'delete-key'
                 await User.deleteOne({ license_key: license_key.toUpperCase() });
                 return safeJson({ success: true, message: "Key deleted successfully." });
 
@@ -212,26 +212,49 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
 // --- 6. USER LOGIN ---
 app.post('/login', async (req, res) => {
     try {
-        const { license_key, hwid } = req.body;
-        const user = await User.findOne({ license_key: license_key.toUpperCase() });
+        const { email, password, license_key, hwid } = req.body;
 
-        if (!user) return res.json({ error: "Invalid Key" });
-        if (user.is_banned) return res.json({ error: "Key Banned" });
-        if (user.is_paused) return res.json({ error: "Key Paused" });
-        if (new Date() > user.expiry_date) return res.json({ error: "Key Expired" });
+        // 1. Find user by Email and Key
+        // Note: In production, use bcrypt to compare the password instead of plain text
+        const user = await User.findOne({
+            email: email.toLowerCase(),
+            license_key: license_key.toUpperCase()
+        });
 
-        if (!user.hwid || user.hwid === "null") {
+        // 2. Initial Validations
+        if (!user) return res.json({ error: "Invalid Email or License Key" });
+
+        // Simple password check (Match this to how you store them in MongoDB)
+        if (user.password !== password) return res.json({ error: "Invalid Password" });
+
+        if (user.is_banned) return res.json({ error: "Account Banned" });
+        if (user.is_paused) return res.json({ error: "Subscription Paused" });
+        if (new Date() > user.expiry_date) return res.json({ error: "Subscription Expired" });
+
+        // 3. HWID Management
+        if (!user.hwid || user.hwid === "null" || user.hwid === null) {
+            // Link HWID on first login
             user.hwid = hwid;
+            await user.save();
         } else if (user.hwid !== hwid) {
-            return res.json({ error: "HWID Mismatch" });
+            // Block if HWID doesn't match
+            return res.json({ error: "HWID Mismatch. Please request a reset." });
         }
 
-        await user.save();
-        res.json({ token: "VALID", profile_pic: user.profile_pic, expiry: user.expiry_date });
+        // 4. Success Response
+        res.json({
+            token: "VALID",
+            expiry: user.expiry_date,
+            profile_pic: user.profile_pic || 'imgs/default-profile.png',
+            games: user.games || []
+        });
+
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error("Login Error:", err);
+        res.status(500).json({ error: "Internal Server Error" });
     }
 });
+
 
 app.post('/request-hwid-reset', async (req, res) => {
     try {
@@ -244,6 +267,8 @@ app.post('/request-hwid-reset', async (req, res) => {
         const upperKey = license_key.toUpperCase();
         console.log(`[!] RESET REQUEST | Key: ${upperKey} | HWID: ${hwid}`);
 
+        // --- 1. SAVE TO DATABASE (THE MISSING PIECE) ---
+        // Using insertOne talks directly to the 'requests' collection in your DB
         await mongoose.connection.collection('requests').insertOne({
             hwid: hwid,
             license_key: upperKey,
@@ -254,7 +279,7 @@ app.post('/request-hwid-reset', async (req, res) => {
         console.log(`[✅] DB SUCCESS: Saved to requests table.`);
 
         // --- 2. SEND TO DISCORD ---
-        const DISCORD_WEBHOOK = "https://discord.com/api/webhooks/1425286348767494226/_m59BOeX0TUuX0orLktYwnzObJ8CVtvMFStBU-YyDZJhdI5CXkcLx9QIiYtO9hf0TPH8";
+        const DISCORD_WEBHOOK = "YOUR_DISCORD_WEBHOOK_URL";
         if (DISCORD_WEBHOOK.includes("discord.com")) {
             await fetch(DISCORD_WEBHOOK, {
                 method: 'POST',
@@ -274,8 +299,6 @@ app.post('/request-hwid-reset', async (req, res) => {
         }
     }
 });
-
-
 
 app.get('/', (req, res) => res.send('API Online & Connected.'));
 
