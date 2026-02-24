@@ -92,51 +92,58 @@ app.post('/admin/reset-hwid', verifyAdmin, async (req, res) => {
     }
 });
 
-// --- ADMIN: UNIFIED MANAGEMENT (UPDATED) ---
+// --- ADMIN: UNIFIED MANAGEMENT (FULLY FIXED) ---
 app.post('/admin/:action', verifyAdmin, async (req, res) => {
     const safeJson = (obj) => res.json(obj);
-    const { license_key, email, password, profile_pic } = req.body;
 
-    // 1. Get the raw action from the URL
-    const action = req.params.action.toLowerCase().trim();
-    console.log(`[ADMIN] Processing Action: ${action}`);
+    try {
+        const { license_key, email, password, profile_pic } = req.body;
 
-    // 2. HANDLE LOAD-KEYS FIRST (Before we modify the string)
-    if (action === 'load-keys') {
-        console.log("[ADMIN] Success: Running load-keys logic...");
-        try {
-            const keys = await User.find({}, 'license_key email expiry_date is_banned is_paused games').lean();
-            return safeJson({
-                success: true,
-                keys: keys.map(k => ({
-                    license_key: k.license_key || "N/A",
-                    email: k.email || "No Email",
-                    expiry: k.expiry_date,
-                    is_banned: k.is_banned || false,
-                    is_paused: k.is_paused || false,
-                    games: k.games || []
-                }))
-            });
-        } catch (err) {
-            return safeJson({ success: false, error: "Failed to load keys" });
+        // 1. Get the raw action from the URL and clean it
+        const rawAction = req.params.action ? req.params.action.toLowerCase().trim() : "";
+        console.log(`[ADMIN] Incoming Action: ${rawAction}`);
+
+        // 2. HANDLE LOAD-KEYS FIRST (Check this BEFORE stripping '-key')
+        // This prevents "load-keys" from becoming "load-s"
+        if (rawAction === 'load-keys') {
+            console.log("[ADMIN] Success: Running load-keys logic...");
+            try {
+                const keys = await User.find({}, 'license_key email expiry_date is_banned is_paused games').lean();
+                return safeJson({
+                    success: true,
+                    keys: keys.map(k => ({
+                        license_key: k.license_key || "N/A",
+                        email: k.email || "No Email",
+                        expiry: k.expiry_date,
+                        is_banned: k.is_banned || false,
+                        is_paused: k.is_paused || false,
+                        games: k.games || []
+                    }))
+                });
+            } catch (err) {
+                console.error("[ADMIN] DB Error:", err);
+                return safeJson({ success: false, error: "Failed to load keys from database" });
+            }
         }
-    }
 
-    // 3. For other actions (ban-key, etc), strip the suffix
-    const cleanAction = action.replace('-key', '').trim();
+        // 3. For all other actions (ban-key, pause-key, etc), strip the suffix
+        const cleanAction = rawAction.replace('-key', '').trim();
 
-    // 4. Find User (Only if not loading list)
-    let user = null;
-    if (license_key) {
-        user = await User.findOne({ license_key: license_key.toUpperCase().trim() });
-    }
+        // 4. FIND USER (Only for actions that need a specific key)
+        let user = null;
+        if (license_key) {
+            user = await User.findOne({ license_key: license_key.toUpperCase().trim() });
+        }
 
-    if (!user && cleanAction !== 'delete') {
-        return safeJson({ success: false, error: "Key not found" });
-    }
+        // 5. VALIDATE USER EXISTENCE
+        // We only return "Key not found" if it's NOT a delete action
+        if (!user && cleanAction !== 'delete') {
+            console.log(`[ADMIN] Error: Key not found for action "${cleanAction}"`);
+            return safeJson({ success: false, error: "Key not found" });
+        }
 
-        // 4. REMAINING ACTIONS
-        switch (action) {
+        // 6. REMAINING ACTIONS (Using cleanAction)
+        switch (cleanAction) {
             case 'update':
                 if (email) user.email = email.toLowerCase();
                 if (password) user.password = password;
@@ -214,8 +221,8 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                 return safeJson({ success: false, error: "No key provided to delete" });
 
             default:
-                console.log(`[ADMIN] Unknown action: ${action}`);
-                return safeJson({ success: false, error: `Invalid Action: ${action}` });
+                console.log(`[ADMIN] Unknown clean action: ${cleanAction}`);
+                return safeJson({ success: false, error: `Invalid Action: ${cleanAction}` });
         }
     } catch (err) {
         console.error("Admin Route Error:", err);
