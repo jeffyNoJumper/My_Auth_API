@@ -1,5 +1,5 @@
 {
-  "version": "1.1.0",
-  "url": "https://github.com/jeffyNoJumper/My_Auth_API/releases/download/v1.1.0/SK.ALL-IN-ONE.Setup.1.1.0.exe",
-  "message": "> FINAL RELEASE v1.1.0\n> \n> • Optimized HWID spoofing for better reliability\n> • Refined UI layout for cleaner navigation\n> • Improved overall stability\n> • Minor bug fixes for smoother experience\n> \n> Tip: Use the Spoofer panel to check your HWID status and toggle modes for optimal performance."
+  "version": "1.1.1",
+  "url": "https://github.com/jeffyNoJumper/My_Auth_API/releases/download/v1.1.1/SK.ALL-IN-ONE.Setup.1.1.1.exe",
+  "message": "> CRITICAL UPDATE v1.1.1\n> \n> • Fixed Admin Panel 'Key Not Found' error on API connect\n> • Resolved C++ compilation errors in native loader (binding.cpp)\n> • Fixed Registry Spoofing syntax and function scope in main.c\n> • Optimized HWID Reset Request flow with Discord notifications\n> • Restored 'load-keys' dropdown functionality for Admin Dashboard\n> \n> Note: This update is required for Admin Panel stability and Cheat Launching authorization."
 }
