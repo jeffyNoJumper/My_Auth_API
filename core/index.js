@@ -331,6 +331,23 @@ app.post('/request-hwid-reset', async (req, res) => {
     }
 });
 
+app.get('/check-hwid-status/:id', async (req, res) => {
+    try {
+        // Query the MongoDB requests collection
+        const request = await db.collection('requests').findOne({ 
+            _id: new ObjectId(req.params.id) 
+        });
+        
+        if (!request) return res.status(404).json({ error: "Not found" });
+        
+        // Return the status (PENDING, APPROVED, or DENIED)
+        res.json({ status: request.status });
+    } catch (err) {
+        res.status(500).json({ error: "DB Error" });
+    }
+});
+
+
 app.get('/', (req, res) => res.send('API Online & Connected.'));
 
 const PORT = process.env.PORT || 8080;
