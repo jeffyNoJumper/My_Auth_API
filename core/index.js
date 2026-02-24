@@ -59,7 +59,7 @@ app.post('/admin/create-key', verifyAdmin, async (req, res) => {
         }
 
         const newUser = new User({
-            email: email ? email.toLowerCase() : "unassigned@loader.com",
+            email: email ? email.toLowerCase() : "skuser@loader.com",
             password: password || "changeme123",
             license_key: newKey,
             hwid: null,
@@ -76,6 +76,7 @@ app.post('/admin/create-key', verifyAdmin, async (req, res) => {
     }
 });
 
+/*
 app.post('/admin/get-key', verifyAdmin, async (req, res) => {
     try {
         const { license_key } = req.body;
@@ -106,7 +107,7 @@ app.post('/admin/get-key', verifyAdmin, async (req, res) => {
         res.status(500).json({ success: false, error: "Internal Server Error" });
     }
 });
-
+*/
 
 // --- 4. HWID RESET ---
 app.post('/admin/reset-hwid', verifyAdmin, async (req, res) => {
@@ -129,7 +130,7 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
     const safeJson = (obj) => res.json(obj);
 
     try {
-        const { license_key, email, password } = req.body;
+        const { license_key, email, password, profile_pic } = req.body;
 
         // Normalize action: remove "-key" suffix and trim spaces
         const rawAction = req.params.action.toLowerCase().trim();
@@ -153,48 +154,62 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                 return safeJson({ success: true, message: `Linked ${email} successfully.` });
 
             case 'load-keys':
-                const keys = await User.find({}, 'license_key email expiry_date is_banned is_paused games').lean();
-                return safeJson({
-                    success: true,
-                    keys: keys.map(k => ({
-                        license_key: k.license_key,
-                        email: k.email || "No Email",
-                        expiry: k.expiry_date,
-                        is_banned: k.is_banned || false,
-                        is_paused: k.is_paused || false,
-                        games: k.games || []
-                    }))
-                });
+                try {
+                    const keys = await User.find({}, 'license_key email expiry_date is_banned is_paused games').lean();
+                    return safeJson({
+                        success: true,
+                        keys: keys.map(k => ({
+                            license_key: k.license_key,
+                            email: k.email || "No Email",
+                            expiry: k.expiry_date,
+                            is_banned: k.is_banned || false,
+                            is_paused: k.is_paused || false,
+                            games: k.games || []
+                        }))
+                    });
+                } catch (err) {
+                    return safeJson({ success: false, error: "Failed to load keys" });
+                }
 
             case 'update-pfp':
-                // No admin_password check here because it's called by the USER loader
-                if (license_key) {
-                    const user = await User.findOneAndUpdate(
-                        { license_key: license_key.toUpperCase() },
-                        { profile_pic: req.body.profile_pic },
-                        { new: true }
-                    );
-                    if (user) return safeJson({ success: true, message: "PFP Updated" });
+                // Note: Ensure your User model has 'profile_pic' field
+                if (user) {
+                    user.profile_pic = profile_pic;
+                    await user.save();
+                    return safeJson({ success: true, message: "PFP Updated" });
                 }
-                return safeJson({ success: false, error: "Failed to update PFP" });
+                return safeJson({ success: false, error: "User not found" });
 
-            // Inside your index.js /admin/:action switch
+            case 'get': // Added to handle stripped '-key' suffix
             case 'get-key':
+                // Check for HWID Reset Requests to keep the Admin UI 'Approve' logic working
+                let pendingRequest = null;
+                try {
+                    // Using the Request model we defined earlier
+                    pendingRequest = await mongoose.model('Request').findOne({
+                        license_key: license_key.toUpperCase(),
+                        status: "PENDING"
+                    });
+                } catch (e) { /* ignore if collection doesn't exist */ }
+
                 return safeJson({
                     success: true,
-                    email: user.email || "No Email Linked", // <--- MUST HAVE THIS LINE
+                    email: user.email || "No Email Linked",
                     is_banned: user.is_banned || false,
                     is_paused: user.is_paused || false,
-                    hwid: user.hwid || null,
+                    hwid: user.hwid || "NOT CAPTURED",
                     expiry: user.expiry_date,
-                    games: user.games || []
-                })
+                    games: user.games || [],
+                    profile_pic: user.profile_pic || "",
+                    pending_request: pendingRequest
+                });
 
             case 'reset-hwid':
                 user.hwid = null;
                 await user.save();
                 try {
-                    await mongoose.connection.collection('requests').deleteMany({
+                    // Wipe pending requests for this key upon reset
+                    await mongoose.model('Request').deleteMany({
                         license_key: license_key.toUpperCase()
                     });
                 } catch (err) { console.error("Request clear failed:", err); }
@@ -330,23 +345,6 @@ app.post('/request-hwid-reset', async (req, res) => {
         }
     }
 });
-
-app.get('/check-hwid-status/:id', async (req, res) => {
-    try {
-        // Query the MongoDB requests collection
-        const request = await db.collection('requests').findOne({ 
-            _id: new ObjectId(req.params.id) 
-        });
-        
-        if (!request) return res.status(404).json({ error: "Not found" });
-        
-        // Return the status (PENDING, APPROVED, or DENIED)
-        res.json({ status: request.status });
-    } catch (err) {
-        res.status(500).json({ error: "DB Error" });
-    }
-});
-
 
 app.get('/', (req, res) => res.send('API Online & Connected.'));
 
