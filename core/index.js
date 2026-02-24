@@ -132,16 +132,16 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
     try {
         const { license_key, email, password, profile_pic } = req.body;
 
-        // Normalize action: remove "-key" suffix and trim spaces
+        // Normalize action: Strips '-key' if it exists to get the base command (e.g., 'unban-key' -> 'unban')
         const rawAction = req.params.action.toLowerCase().trim();
-        const action = rawAction.endsWith('-key') ? rawAction.replace('-key', '') : rawAction;
+        const action = rawAction.replace('-key', '');
 
         let user = null;
         if (license_key) {
             user = await User.findOne({ license_key: license_key.toUpperCase() });
         }
 
-        // Allow load-keys without a user
+        // Allow load-keys without a specific user
         if (!user && !['delete', 'load-keys'].includes(action)) {
             return safeJson({ success: false, error: "Key not found" });
         }
@@ -219,31 +219,26 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                 return safeJson({ success: true, message: "HWID Reset & Approved." });
 
             case 'pause':
-            case 'pause-key':
                 user.is_paused = true;
                 await user.save();
                 return safeJson({ success: true, message: "Key paused." });
 
             case 'unpause':
-            case 'unpause-key':
                 user.is_paused = false;
                 await user.save();
                 return safeJson({ success: true, message: "Key unpaused." });
 
             case 'ban':
-            case 'ban-key':
                 user.is_banned = true;
                 await user.save();
                 return safeJson({ success: true, message: "User banned." });
 
             case 'unban':
-            case 'unban-key':
                 user.is_banned = false;
                 await user.save();
                 return safeJson({ success: true, message: "User unbanned." });
 
             case 'delete':
-            case 'delete-key':
                 await User.deleteOne({ license_key: license_key.toUpperCase() });
                 return safeJson({ success: true, message: "Key deleted." });
 
@@ -251,6 +246,9 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                 console.log(`[DEBUG] Received unknown action: "${action}"`);
                 return safeJson({ success: false, error: `Invalid Action: ${action}` });
         }
+    } catch (err) {
+        console.error("Admin Route Error:", err);
+        return res.status(500).json({ success: false, error: "Internal Server Error" });
     }
 });
 
