@@ -204,29 +204,24 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                     pending_request: pendingRequest
                 });
 
+            // Inside your switch(action) block in index.js:
+
+            case 'deny-hwid':
+                await mongoose.model('Request').findOneAndUpdate(
+                    { license_key: license_key.toUpperCase(), status: "PENDING" },
+                    { status: "DENIED" }
+                );
+                return safeJson({ success: true, message: "Request Denied." });
+
             case 'reset-hwid':
-                // 1. Wipe the user's current HWID to allow a new capture
                 user.hwid = null;
                 await user.save();
-
-                try {
-                    // 2. Instead of deleting, mark the LATEST pending request as APPROVED
-                    // This is what the loader's terminal is "listening" for
-                    await mongoose.model('Request').findOneAndUpdate(
-                        {
-                            license_key: license_key.toUpperCase(),
-                            status: "PENDING"
-                        },
-                        { status: "APPROVED" },
-                        { sort: { date: -1 } } // Targets the most recent request
-                    );
-
-                    console.log(`[!] HWID Reset & Request APPROVED for: ${license_key}`);
-                } catch (err) {
-                    console.error("Request update failed:", err);
-                }
-
-                return safeJson({ success: true, message: "HWID reset and user notified." });
+                // Also approve the request if one exists
+                await mongoose.model('Request').findOneAndUpdate(
+                    { license_key: license_key.toUpperCase(), status: "PENDING" },
+                    { status: "APPROVED" }
+                );
+                return safeJson({ success: true, message: "HWID Reset & Approved." }); 
 
             case 'pause': // Handles 'pause' or 'pause-key'
                 user.is_paused = true;
