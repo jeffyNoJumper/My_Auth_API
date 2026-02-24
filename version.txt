@@ -1,5 +1,5 @@
 {
   "version": "1.1.0",
-  "url": "https://github.com/jeffyNoJumper/My_Auth_API/releases/download/v1.0.9/SK.ALL-IN-ONE.Setup.1.1.0.exe",
+  "url": "https://github.com/jeffyNoJumper/My_Auth_API/releases/download/v1.1.0/SK.ALL-IN-ONE.Setup.1.1.0.exe",
   "message": "> FINAL RELEASE v1.1.0\n> \n> • Optimized HWID spoofing for better reliability\n> • Refined UI layout for cleaner navigation\n> • Improved overall stability\n> • Minor bug fixes for smoother experience\n> \n> Tip: Use the Spoofer panel to check your HWID status and toggle modes for optimal performance."
 }
