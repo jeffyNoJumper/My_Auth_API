@@ -332,7 +332,7 @@ async function handleLogin() {
     try {
         const realHWID = await window.api.getMachineID();
 
-        // 1. Send all credentials to Railway API
+        // 1. Fetch the data
         const response = await fetch('https://sk-auth-api.up.railway.app/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -344,64 +344,72 @@ async function handleLogin() {
             })
         });
 
+        // 2. Initialize data ONCE
         const data = await response.json();
 
-        // 2. If the API returns a token (Success)
-        if (data.token) {
-            // Handle "Remember Me" logic
+        // 3. Check for Success
+        if (data.token === "VALID") {
+
+            // Handle "Remember Me"
             if (rememberMe) {
                 localStorage.setItem('remembered_email', email);
-                localStorage.setItem('remembered_password', password); // Use caution storing plain passwords
+                localStorage.setItem('remembered_password', password);
                 localStorage.setItem('license_key', key);
             } else {
                 localStorage.removeItem('remembered_email');
                 localStorage.removeItem('remembered_password');
-                // We usually keep the key saved regardless for convenience
                 localStorage.setItem('license_key', key);
             }
 
+            // Sync Access & Prefix (CS2X, etc)
             setSessionAccess(key);
 
+            // Handle Profile Picture
+            const userPic = document.getElementById('user-pic');
             if (data.profile_pic) {
                 localStorage.setItem('saved_profile_pic', data.profile_pic);
+                if (userPic) userPic.src = data.profile_pic;
+            } else if (userPic) {
+                userPic.src = 'imgs/default-profile.png';
             }
 
-            const data = await response.json();
-
-            if (data.status === "NEED_REGISTRATION") {
-                const confirmPass = confirm("No password set for this key. Use the password you just entered as your permanent password?");
-                if (confirmPass) {
-                    await fetch(`${API}/register-password`, {
-                        method: 'POST',
-                        body: JSON.stringify({ key, password, email })
-                    });
-                    alert("Account registered! Logging in...");
-                    handleLogin(); 
-                }
-                return;
+            // Display Expiry
+            if (data.expiry) {
+                document.getElementById('user-expiry').innerText = "EXP: " + new Date(data.expiry).toLocaleDateString();
             }
 
-            const userPic = document.getElementById('user-pic');
-            if (userPic) userPic.src = data.profile_pic || 'imgs/default-profile.png';
-
-            document.getElementById('user-expiry').innerText = "EXP: " + new Date(data.expiry).toLocaleDateString();
-
-            // Success Transition
+            // Transition to Dashboard
             switchScreen('login-screen', 'main-dashboard');
             updateUIForAccess();
 
         } else {
-            alert("Login Failed: " + (data.error || "Check your credentials or key status."));
+            // If data.token is not "VALID", show the error from the server
+            alert("Login Failed: " + (data.error || "Unknown Error"));
             btn.innerHTML = "VALIDATE & LOGIN";
             btn.disabled = false;
         }
     } catch (err) {
-        console.error(err);
+        console.error("Login Error:", err);
         alert("API Connection Error. Ensure your Loader is connected to a server & is live.");
         btn.innerHTML = "VALIDATE & LOGIN";
         btn.disabled = false;
     }
 }
+
+function updateProfileDisplay(base64Data) {
+    const userPic = document.getElementById('user-pic');
+    if (!userPic) return;
+
+    // 1. Check if the string actually contains image data
+    if (base64Data && base64Data.startsWith('data:image')) {
+        userPic.src = base64Data;
+        localStorage.setItem('saved_profile_pic', base64Data);
+    } else {
+        // 2. Fallback to default if string is broken or empty
+        userPic.src = 'imgs/default-profile.png';
+    }
+}
+
 
 // 4. Auto-Fill logic for when the Loader starts up
 window.addEventListener('DOMContentLoaded', () => {
@@ -670,7 +678,6 @@ function updateSpoofStatus(state) {
     }
 }
 
-/*
 // SPOOF EXECUTION
 function startSpoofing() {
 
@@ -690,7 +697,7 @@ function startSpoofing() {
 
     }, 2500);
 }
-*/
+
 
 // INITIALIZE ON TAB LOAD
 document.addEventListener("DOMContentLoaded", function () {
@@ -752,52 +759,20 @@ async function requestHWIDReset() {
     }
 }
 
-// --- NEW POLLING FUNCTION ---
-async function pollRequestStatus(requestId) {
-    const terminal = document.getElementById('admin-terminal');
-    
-    const addLog = (msg, color) => {
-        const entry = document.createElement('div');
-        entry.className = 'log-entry';
-        if (color) entry.style.color = color;
-        entry.innerHTML = `<span class="prompt">></span> ${msg}`;
-        terminal.appendChild(entry);
-        terminal.scrollTop = terminal.scrollHeight;
-    };
-
-    const interval = setInterval(async () => {
-        try {
-            const response = await fetch(`${API}/check-hwid-status/${requestId}`);
-            const data = await response.json();
-
-            if (data.status === "APPROVED") {
-                clearInterval(interval);
-                addLog("ADMIN APPROVED REQUEST.", "var(--cyan)");
-                addLog("HWID RESET SUCCESSFUL. PLEASE RE-LOGIN.", "var(--cyan)");
-                document.getElementById('hwid-main-status').innerText = "HWID RESET";
-                document.getElementById('hwid-main-status').className = "active";
-            } else if (data.status === "DENIED") {
-                clearInterval(interval);
-                addLog("ADMIN DENIED REQUEST.", "red");
-                addLog("REASON: REJECTED BY SERVER.", "red");
-            }
-            // If still PENDING, we just wait for the next loop...
-        } catch (err) {
-            console.error("Polling error:", err);
-        }
-    }, 5000); // Check every 5 seconds
-}
-
-// --- UPDATED SEND FUNCTION ---
 async function sendAdminRequest() {
     const terminal = document.getElementById('admin-terminal');
-    const hwid = document.getElementById('hwid-id').innerText;
-    const savedKey = localStorage.getItem('license_key'); 
+    const hwidEl = document.getElementById('hwid-id');
+    const hwid = hwidEl ? hwidEl.innerText : "UNKNOWN";
+    const savedKey = localStorage.getItem('license_key');
 
     const addLog = (msg) => {
         const entry = document.createElement('div');
         entry.className = 'log-entry';
+        // Sexy color coding
         if (msg.includes("PENDING")) entry.style.color = "var(--gold)";
+        if (msg.includes("APPROVED")) entry.style.color = "var(--accent)";
+        if (msg.includes("DENIED")) entry.style.color = "var(--red)";
+
         entry.innerHTML = `<span class="prompt">></span> ${msg}`;
         terminal.appendChild(entry);
         terminal.scrollTop = terminal.scrollHeight;
@@ -811,11 +786,7 @@ async function sendAdminRequest() {
         const response = await fetch(`${API}/request-hwid-reset`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                hwid: hwid,
-                license_key: savedKey,
-                type: "MANUAL_RESET"
-            })
+            body: JSON.stringify({ hwid, license_key: savedKey, type: "MANUAL_RESET" })
         });
 
         const data = await response.json();
@@ -823,11 +794,31 @@ async function sendAdminRequest() {
         if (data.success) {
             addLog("REQUEST SENT TO ADMIN.");
             addLog("STATUS: PENDING APPROVAL.");
-            
-            // START WATCHING FOR THE ADMIN'S CLICK
-            if (data.requestId) {
-                pollRequestStatus(data.requestId);
-            }
+
+            // --- START LIVE POLLING ---
+            const pollInterval = setInterval(async () => {
+                try {
+                    // This hits a new route we will add to index.js
+                    const statusCheck = await fetch(`${API}/check-reset-status?key=${savedKey}`);
+                    const statusData = await statusCheck.json();
+
+                    if (statusData.status === "APPROVED") {
+                        addLog("STATUS: APPROVED!");
+                        addLog("HWID RESET SUCCESSFUL. RE-LOGGING...");
+                        clearInterval(pollInterval);
+
+                        // Auto-reload to let them log in after 3 seconds
+                        setTimeout(() => { location.reload(); }, 3000);
+                    }
+                    else if (statusData.status === "DENIED") {
+                        addLog("STATUS: DENIED BY ADMIN.");
+                        clearInterval(pollInterval);
+                    }
+                } catch (e) {
+                    console.error("Polling error...");
+                }
+            }, 5000); // Check every 5 seconds
+
         } else {
             addLog(`FAILED: ${data.error || "REJECTED"}`);
         }
@@ -835,7 +826,6 @@ async function sendAdminRequest() {
         addLog("CRITICAL: API CONNECTION FAILED.");
     }
 }
-
 
 function setStatus(state) {
     const status = document.getElementById("user-status");
