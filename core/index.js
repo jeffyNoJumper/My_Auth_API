@@ -104,7 +104,7 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
         const action = rawAction.replace('-key', '');
 
         // 1. HANDLE LOAD-KEYS FIRST (No license_key required)
-        if (action === 'load-keys') {
+        if (action === 'get-keys') {
             try {
                 const keys = await User.find({}, 'license_key email expiry_date is_banned is_paused games').lean();
                 return safeJson({
