@@ -129,10 +129,12 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
             user = await User.findOne({ license_key: license_key.toUpperCase() });
         }
 
+        
         // 3. VALIDATE USER EXISTENCE (Except for 'delete' which we handle specifically)
         if (!user && action !== 'delete') {
             return safeJson({ success: false, error: "Key not found" });
         }
+        
 
         // 4. REMAINING ACTIONS
         switch (action) {
