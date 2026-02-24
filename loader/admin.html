@@ -207,6 +207,17 @@
                 </div>
             </div>
 
+            <!-- COLUMN 2: SEARCH & SELECTION -->
+            <div class="column">
+                <div class="section-label">2. Find User</div>
+                <input type="text" id="single-key-input" placeholder="Paste Key Manually...">
+                <div style="text-align:center; margin:5px 0; font-size:10px; color:#555;">— OR —</div>
+                <select id="manage-key-input" size="8" style="height:145px; background: #111; border: 1px solid #333; color: white;">
+                    <option value="">(Connect to load keys)</option>
+                </select>
+                <button onclick="loadKey()" style="background:#444; color:white; margin-top:5px;">Load Selected</button>
+            </div>
+
             <!-- COLUMN 3: MANAGE & ACTIONS -->
             <div class="column">
                 <div class="section-label">3. Management</div>
@@ -219,7 +230,7 @@
                         <span style="color:#888;">HWID:</span> <span id="manage-hwid" style="font-size:9px; color:#666; word-break:break-all;">None</span>
                     </div>
 
-                    <!-- PENDING REQUEST BOX (Hidden by default) -->
+                    <!-- PENDING REQUEST BOX -->
                     <div id="request-alert-box" style="display:none; background:rgba(255, 204, 0, 0.1); border: 1px solid var(--gold); padding: 8px; border-radius: 4px; margin-bottom: 10px;">
                         <div style="font-size: 10px; color: var(--gold); font-weight: bold; margin-bottom: 3px;">⚠️ PENDING RESET REQUEST</div>
                         <div id="requested-hwid-text" style="font-size: 8px; color: #ccc; word-break: break-all; margin-bottom: 5px;"></div>
@@ -237,13 +248,14 @@
                         <button style="background:#222; color:var(--red); border:1px solid var(--red);" onclick="modifyKey('delete-key')">Delete</button>
                     </div>
 
-                    <!-- Standard Reset (Hidden if request-alert-box is visible) -->
+                    <!-- Standard Reset -->
                     <button id="standard-reset-btn" style="background:#00f2ff; color:black; margin-top:8px;" onclick="modifyKey('reset-hwid')">
                         RESET HWID LOCK
                     </button>
                 </div>
             </div>
         </div>
+    </div>
 
     <script>
         const { ipcRenderer, clipboard } = require('electron');
