@@ -5,11 +5,10 @@
     <style>
         :root {
             --accent: #00ff88;
-            --gold: #ffcc00; /* New color for Admin Requests */
+            --gold: #ffcc00;
             --bg-main: #151515;
             --bg-input: #222;
             --text: #ffffff;
-            --text-dim: #888;
             --red: #ff3e3e;
         }
 
@@ -26,31 +25,20 @@
 
         .panel {
             background: var(--bg-main);
-            padding: 25px 25px 20px 25px;
+            padding: 35px 25px 25px 25px;
             border-radius: 12px;
-            width: 420px;
-            max-height: 95vh;
-            overflow-y: auto;
-            text-align: center;
-            position: relative;
+            /* Center it inside the 1100px window */
+            width: 1050px;
+            margin: auto;
             border: 1px solid var(--accent);
             color: var(--text);
-            box-shadow: 0 0 15px rgba(0, 255, 136, 0.2);
-            animation: glow-pulse 3s infinite ease-in-out;
+            box-shadow: 0 0 20px rgba(0, 255, 136, 0.3);
+            position: relative;
             box-sizing: border-box;
-            margin-top: 20px;
         }
 
-            /* HIDE SCROLLBARS */
-            .panel::-webkit-scrollbar {
-                display: none;
-            }
 
-        .panel {
-            -ms-overflow-style: none;
-            scrollbar-width: none;
-        }
-
+        /* FIX: Ensure buttons sit side-by-side and don't overlap content */
         .titlebar {
             position: absolute;
             top: 0;
@@ -58,183 +46,108 @@
             width: 100%;
             height: 35px;
             display: flex;
-            justify-content: flex-end;
+            justify-content: flex-end; /* Align to the right */
             align-items: center;
-            -webkit-app-region: drag;
-            z-index: 10000;
+            padding-right: 5px;
+            box-sizing: border-box;
+            -webkit-app-region: drag; /* Makes titlebar draggable in Electron */
         }
 
+        /* Wrapper for the window buttons */
         .window-controls {
             display: flex;
-            -webkit-app-region: no-drag;
-            padding-right: 10px;
+            flex-direction: row; /* Force horizontal alignment */
+            -webkit-app-region: no-drag; /* Buttons themselves shouldn't be draggable */
         }
 
         .control-btn {
-            padding: 8px 12px;
+            padding: 8px 15px;
             cursor: pointer;
+            color: #888;
             font-size: 14px;
             transition: 0.2s;
-            color: #555;
         }
 
             .control-btn:hover {
-                color: var(--accent);
+                background: rgba(255, 255, 255, 0.1);
+                color: var(--text);
             }
 
         .close-btn:hover {
-            color: var(--red);
-        }
-
-        h2 {
-            color: var(--accent);
-            letter-spacing: 3px;
-            margin: 15px 0 20px;
-            font-size: 1.1rem;
-            text-transform: uppercase;
-        }
-
-        /* NEW: PENDING REQUEST STYLING */
-        #pending-request-box {
-            display: none;
-            background: rgba(255, 204, 0, 0.05);
-            border: 1px solid var(--gold);
-            padding: 12px;
-            border-radius: 6px;
-            margin-bottom: 15px;
-            text-align: left;
-            animation: glow-pulse-gold 2s infinite ease-in-out;
-        }
-
-        #requested-hwid {
-            font-family: 'Consolas', monospace;
-            font-size: 10px;
-            color: var(--text);
-            background: rgba(0,0,0,0.3);
-            padding: 5px;
-            margin-top: 8px;
-            border-radius: 3px;
-            word-break: break-all;
-            display: block;
-        }
-
-        input, select {
-            width: 100%;
-            padding: 10px;
-            margin: 5px 0;
-            background: var(--bg-input);
-            border: 1px solid #333;
-            color: var(--text);
-            border-radius: 4px;
-            box-sizing: border-box;
-            outline: none;
-            font-size: 13px;
-            transition: border 0.2s;
-        }
-
-            input:focus, select:focus {
-                border-color: var(--accent);
-            }
-
-        button {
-            width: 100%;
-            padding: 10px;
-            background: var(--accent);
-            border: none;
-            color: black;
-            font-weight: bold;
-            cursor: pointer;
-            border-radius: 4px;
-            transition: 0.3s;
-            margin-top: 8px;
-            font-size: 11px;
-            text-transform: uppercase;
-        }
-
-            button:hover {
-                background: #00cc6e;
-                box-shadow: 0 0 10px rgba(0, 255, 136, 0.3);
-            }
-
-            /* CUSTOM RESET BUTTON COLOR */
-            button[onclick*="reset-hwid"] {
-                background: #00f2ff; /* Cyan variant for reset */
-            }
-
-        #manage-info {
-            margin-top: 10px;
-            background: #0a0a0a;
-            padding: 15px;
-            border-radius: 8px;
-            border: 1px solid #222;
-        }
-
-        .btn-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 8px;
-            margin-top: 10px;
-        }
-
-        .ban-btn {
             background: var(--red) !important;
             color: white !important;
         }
 
-        .del-btn {
-            background: #444 !important;
-            color: white !important;
+        /* Updated Grid: Better spacing for the new wide width */
+        .horizontal-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr; /* Equal columns for balance */
+            gap: 25px;
+            margin-top: 15px;
         }
 
-        /* ANIMATIONS */
-        @keyframes glow-pulse {
-            0%, 100% {
-                border-color: var(--accent);
-                box-shadow: 0 0 10px rgba(0,255,136,0.1);
-            }
-
-            50% {
-                border-color: #00ffaa;
-                box-shadow: 0 0 20px rgba(0,255,136,0.3);
-            }
+        .column {
+            background: rgba(255, 255, 255, 0.03);
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #282828;
+            min-height: 320px; /* Keeps columns uniform */
+            display: flex;
+            flex-direction: column;
         }
 
-        @keyframes glow-pulse-gold {
-            0%, 100% {
-                border-color: var(--gold);
-                box-shadow: 0 0 5px rgba(255, 204, 0, 0.1);
-            }
-
-            50% {
-                border-color: #ffe600;
-                box-shadow: 0 0 15px rgba(255, 204, 0, 0.3);
-            }
-        }
-
-        #manage-info {
-            position: relative;
-            overflow: visible;
-        }
-
-        /* Notification Badge for the 'LOAD ALL KEYS' button */
-        .req-count {
-            background: var(--gold);
-            color: black;
-            font-size: 9px;
-            padding: 2px 6px;
-            border-radius: 10px;
-            margin-left: 5px;
+        .section-label {
+            font-size: 10px;
             font-weight: bold;
-            display: none; /* Only show when requests > 0 */
+            color: var(--accent);
+            margin-bottom: 15px;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            border-left: 2px solid var(--accent);
+            padding-left: 10px;
         }
 
-        /* Highlight the Reset HWID button when a request is active */
-        .btn-highlight-gold {
-            background: var(--gold) !important;
-            color: black !important;
-            box-shadow: 0 0 15px rgba(255, 204, 0, 0.4) !important;
+        input, select, button {
+            width: 100%;
+            padding: 12px;
+            margin: 6px 0;
+            border-radius: 4px;
+            box-sizing: border-box;
+            font-size: 12px;
+            font-family: inherit;
         }
 
+        input, select {
+            background: var(--bg-input);
+            border: 1px solid #333;
+            color: var(--text);
+            outline: none;
+            transition: border 0.2s;
+        }
+
+            input:focus {
+                border-color: var(--accent);
+            }
+
+        button {
+            background: var(--accent);
+            border: none;
+            color: #000;
+            font-weight: 800;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: transform 0.1s, opacity 0.2s;
+        }
+
+            button:hover {
+                opacity: 0.9;
+                transform: translateY(-1px);
+            }
+
+            button:active {
+                transform: translateY(0);
+            }
     </style>
 </head>
 <body>
@@ -247,96 +160,106 @@
             </div>
         </div>
 
-        <h2>SK ADMIN PANEL</h2>
+        <h2 style="color:var(--accent); letter-spacing:3px; margin: 0 0 10px 0;">SK ADMIN PANEL</h2>
 
-        <input type="password" id="admin-pass" placeholder="Admin Password">
-
-        <!-- CREATE KEY -->
-        <div style="margin-top:10px;border-top:1px solid #222;padding-top:15px;">
-            <div style="font-size:12px;color:#888;text-align:left;">CREATE KEY</div>
-
-            <select id="key-days">
-                <option value="0.0417">1 Hour</option>
-                <option value="1">1 Day</option>
-                <option value="7">7 Days</option>
-                <option value="30" selected>30 Days</option>
-                <option value="999">Lifetime</option>
-            </select>
-
-            <select id="key-game">
-                <option value="FiveM">FiveM</option>
-                <option value="GTAV">GTAV</option>
-                <option value="Warzone">Warzone</option>
-                <option value="CS2">CS2</option>
-            </select>
-
-            <button id="gen-btn" onclick="generateKey()">GENERATE KEY</button>
-
-            <div id="key-display">
-                <div style="font-size:12px;color:#888;">KEY GENERATED</div>
-                <div id="key-text" style="font-size:1.1em;font-weight:bold;margin:6px 0;"></div>
-
-                <div style="text-align:left;font-size:13px;">
-                    <div><span style="color:#888;">Duration:</span> <span id="key-days-display"></span></div>
-                    <div><span style="color:#888;">Expires:</span> <span id="key-expiry"></span></div>
-                    <div><span style="color:#888;">Games:</span> <span id="key-games"></span></div>
-                </div>
-            </div>
+        <!-- Admin Auth Row -->
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:15px;">
+            <input type="password" id="admin-pass" placeholder="Admin Secret Key" style="width: 200px; margin:0;">
+            <button onclick="loadKeysDropdown()" style="width:120px; margin:0; background:#333; color:white;">Connect API</button>
         </div>
 
-        <!-- MANAGE KEY SECTION -->
-        <div style="margin-top:20px;border-top:1px solid #222;padding-top:15px;">
-            <div style="font-size:12px;color:#888;text-align:left;">MANAGE KEY</div>
+        <div class="horizontal-grid">
 
-            <input type="text" id="single-key-input" placeholder="Enter License Key" style="margin-bottom:5px;">
-
-            <!-- Dropdown -->
-            <select id="manage-key-input">
-                <option value="">-- Select License Key --</option>
-            </select>
-
-            <div style="display:flex; gap:5px; margin-top:5px;">
-                <!-- Load Buttons -->
-                <button onclick="loadKeysDropdown()" style="flex:1; background:#444;color:white;">LOAD ALL KEYS</button>
-                <button id="load-btn" onclick="loadKey()" style="flex:1;">LOAD KEY</button>
-            </div>
-
-            <div id="manage-info" style="margin-top:10px;">
-                <!-- NEW: REQUEST NOTIFICATION BOX -->
-                <div id="pending-request-box" style="display:none; background: rgba(255, 204, 0, 0.1); border: 1px solid #ffcc00; padding: 10px; border-radius: 4px; margin-bottom: 15px; animation: glow-pulse-gold 2s infinite;">
-                    <div style="color: #ffcc00; font-size: 11px; font-weight: bold; letter-spacing: 1px;">⚠️ PENDING RESET REQUEST</div>
-                    <div id="requested-hwid" style="color: #fff; font-size: 9px; margin-top: 5px; word-break: break-all; opacity: 0.8;"></div>
-                </div>
-
-                <div style="margin-bottom:10px; border-bottom:1px solid #222; padding-bottom:10px;">
-                    <div><span style="color:#888;">Status:</span> <span id="manage-status"></span></div>
-                    <div>
-                        <span style="color:#888;">HWID:</span>
-                        <span id="manage-hwid" style="font-size:10px; word-break:break-all;"></span>
-                    </div>
-                    <div><span style="color:#888;">Expiry:</span> <span id="manage-expiry"></span></div>
-                    <div><span style="color:#888;">Games:</span> <span id="manage-games"></span></div>
-                </div>
-
-                <div style="display:flex; gap:5px; margin-bottom:5px;">
-                    <button onclick="modifyKey('pause')" style="flex:1;">PAUSE</button>
-                    <button onclick="modifyKey('unpause')" style="flex:1;">UNPAUSE</button>
-                </div>
-
-                <button style="background:#00f2ff;color:black;width:100%;margin:5px 0;"
-                        onclick="modifyKey('reset-hwid')">
-                    RESET HWID
-                </button>
+            <!-- COLUMN 1: CREATE ACCOUNT & KEY -->
+            <div class="column">
+                <div class="section-label">1. Create Account</div>
+                <input type="email" id="new-user-email" placeholder="User Email">
+                <input type="text" id="new-user-pass" placeholder="User Password">
 
                 <div style="display:flex; gap:5px;">
-                    <button style="background:#ff3e3e;color:white;flex:1;" onclick="modifyKey('ban')">BAN</button>
-                    <button style="background:#444;color:white;flex:1;" onclick="modifyKey('delete')">DELETE</button>
+                    <select id="key-days">
+                        <optgroup label="Hours">
+                            <option value="0.0416">1 Hour</option>
+                            <option value="0.0833">2 Hours</option>
+                            <option value="0.25">6 Hours</option>
+                            <option value="0.5">12 Hours</option>
+                        </optgroup>
+                        <optgroup label="Days">
+                            <option value="1">1 Day</option>
+                            <option value="7">7 Days</option>
+                            <option value="30" selected>30 Days</option>
+                            <option value="999">Lifetime</option>
+                        </optgroup>
+                    </select>
+                    <select id="key-game">
+                        <option value="CS2">CS2</option>
+                        <option value="FiveM">FiveM</option>
+                        <option value="GTAV">GTAV</option>
+                        <option value="Warzone">Warzone</option>
+                    </select>
+                    <select id="key-game">
+                        <option value="CS2">CS2</option>
+                        <option value="FiveM">FiveM</option>
+                        <option value="GTAV">GTAV</option>
+                        <option value="Warzone">Warzone</option>
+                    </select>
+                </div>
+
+                <button id="gen-btn" onclick="generateKey()">Generate & Save</button>
+
+                <div id="key-display" style="margin-top:10px; padding:10px; background:#111; border-radius:4px; border:1px dashed #444;">
+                    <div id="key-text" style="color:var(--accent); font-weight:bold; font-size:13px; cursor:pointer;" title="Click to Copy">---</div>
+                    <div id="key-expiry" style="font-size:10px; color:#888;">No key generated</div>
+                </div>
+            </div>
+
+            <!-- COLUMN 2: SEARCH & SELECTION -->
+            <div class="column">
+                <div class="section-label">2. Find User</div>
+                <input type="text" id="single-key-input" placeholder="Paste Key Manually...">
+                <div style="text-align:center; margin:5px 0; font-size:10px; color:#555;">— OR —</div>
+                <select id="manage-key-input" size="8" style="height:145px;">
+                    <option value="">(Refresh to load keys)</option>
+                </select>
+                <button onclick="loadKey()" style="background:#444; color:white; margin-top:5px;">Load Selected</button>
+            </div>
+
+            <!-- COLUMN 3: MANAGE & ACTIONS -->
+            <div class="column">
+                <div class="section-label">3. Management</div>
+                <div id="manage-info" style="background:rgba(0,0,0,0.3); padding:10px; border-radius:4px; min-height:190px;">
+
+                    <!-- User Info Display -->
+                    <div style="font-size:11px; margin-bottom:10px; line-height:1.6; border-bottom: 1px solid #333; padding-bottom: 8px;">
+                        <span style="color:#888;">User:</span> <span id="info-email" style="color:var(--accent)">---</span><br>
+                        <span style="color:#888;">Status:</span> <span id="manage-status" style="font-weight:bold;">Offline</span><br>
+                        <span style="color:#888;">HWID:</span> <span id="manage-hwid" style="font-size:9px; color:#666; word-break:break-all;">None</span>
+                    </div>
+
+                    <!-- Quick Link Section (New) -->
+                    <div style="margin-bottom: 10px;">
+                        <div style="font-size: 9px; color: var(--gold); margin-bottom: 4px; letter-spacing: 0.5px;">ATTACH EMAIL TO KEY</div>
+                        <div style="display:flex; gap:5px;">
+                            <input type="email" id="quick-link-email" placeholder="customer@email.com" style="margin:0; padding: 6px; font-size: 11px;">
+                            <button onclick="linkUserEmail()" style="width: 80px; margin:0; background: var(--gold); font-size: 10px; padding: 0;">LINK</button>
+                        </div>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px;">
+                        <button onclick="modifyKey('pause-key')">Pause</button>
+                        <button onclick="modifyKey('unpause-key')">Resume</button>
+                        <button style="background:var(--red); color:white;" onclick="modifyKey('ban-key')">Ban User</button>
+                        <button style="background:#222; color:var(--red); border:1px solid var(--red);" onclick="modifyKey('delete-key')">Delete</button>
+                    </div>
+
+                    <button style="background:#00f2ff; color:black; margin-top:8px;" onclick="modifyKey('reset-hwid')">
+                        RESET HWID LOCK
+                    </button>
                 </div>
             </div>
         </div>
     </div>
-
-
 
     <script>
         const { ipcRenderer, clipboard } = require('electron');
@@ -345,20 +268,21 @@
         function closeWin() { ipcRenderer.send('admin-close'); }
         function minWin() { ipcRenderer.send('admin-min'); }
 
-        // GENERATE KEY
+        // 1. GENERATE KEY & ACCOUNT
         async function generateKey() {
             const btn = document.getElementById('gen-btn');
             const pass = document.getElementById('admin-pass').value;
+            const userEmail = document.getElementById('new-user-email').value;
+            const userPass = document.getElementById('new-user-pass').value;
             const days = parseFloat(document.getElementById('key-days').value);
             const game = document.getElementById('key-game').value;
-            const display = document.getElementById('key-display');
             const keyText = document.getElementById('key-text');
 
             if (!pass) return alert("Enter Admin Password!");
+            if (!userEmail || !userPass) return alert("Enter User Email & Password!");
 
             btn.disabled = true;
-            btn.innerHTML = '<div class="loader"></div>';
-            display.style.display = 'none';
+            btn.innerHTML = 'GENERATING...';
 
             try {
                 const response = await fetch(`${API}/admin/create-key`, {
@@ -366,60 +290,66 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         admin_password: pass,
+                        email: userEmail,
+                        password: userPass,
                         days: days,
                         games: [game]
                     })
                 });
 
-                if (!response.ok && response.status !== 401) throw new Error(`Server returned ${response.status}`);
-
                 const data = await response.json();
 
                 if (data.success) {
-                    display.style.display = 'block';
                     keyText.innerText = data.key;
-
-                    let displayText;
-                    if (days === 999) displayText = "Lifetime";
-                    else if (days < 1) displayText = `${Math.round(days * 24)} Hour(s)`;
-                    else displayText = `${days} Day(s)`;
-                    document.getElementById('key-days-display').innerText = displayText;
-
-                    const expiryDate = new Date(data.expires);
-                    const formattedExpiry =
-                        `${expiryDate.getMonth() + 1}/${expiryDate.getDate()}/${expiryDate.getFullYear()}, ` +
-                        `${expiryDate.getHours().toString().padStart(2, '0')}:` +
-                        `${expiryDate.getMinutes().toString().padStart(2, '0')}:` +
-                        `${expiryDate.getSeconds().toString().padStart(2, '0')}`;
-                    document.getElementById('key-expiry').innerText = formattedExpiry;
-
-                    document.getElementById('key-games').innerText = data.games.join(", ");
+                    document.getElementById('key-expiry').innerText = "Expires: " + new Date(data.expires).toLocaleString();
 
                     if (clipboard) clipboard.writeText(data.key);
+                    alert("Account Created & Key Copied!");
+                    loadKeysDropdown();
                 } else {
                     alert("API Error: " + (data.error || "Access Denied"));
                 }
             } catch (err) {
-                console.error(err);
-                alert("Failed to connect to server.");
+                alert("Connection failed.");
             } finally {
                 btn.disabled = false;
-                btn.innerHTML = 'GENERATE KEY';
+                btn.innerHTML = 'GENERATE & SAVE';
             }
         }
 
+        // 2. LOAD ALL KEYS INTO DROPDOWN
+        async function loadKeysDropdown() {
+            const pass = document.getElementById('admin-pass').value;
+            const select = document.getElementById('manage-key-input');
+            if (!pass) return alert("Enter Admin Password first!");
 
+            try {
+                const res = await fetch(`${API}/admin/load-keys`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ admin_password: pass })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    select.innerHTML = '';
+                    data.keys.forEach(k => {
+                        const opt = document.createElement('option');
+                        opt.value = k.license_key;
+                        const status = k.is_banned ? "🔴" : (k.is_paused ? "🟡" : "🟢");
+                        opt.innerText = `${status} ${k.license_key}`;
+                        select.appendChild(opt);
+                    });
+                }
+            } catch (err) { alert("Failed to fetch keys."); }
+        }
+
+        // 3. LOAD SELECTED KEY INFO
         async function loadKey() {
-            const keyInput = document.getElementById('single-key-input').value.trim();
-            const dropdown = document.getElementById('manage-key-input');
-            const key = keyInput || dropdown.value.trim();
+            // Check both the manual input and the dropdown
+            const key = document.getElementById('single-key-input').value.trim() || document.getElementById('manage-key-input').value;
+            const pass = document.getElementById('admin-pass').value;
 
-            const pass = document.getElementById('admin-pass').value.trim();
-            const infoDiv = document.getElementById('manage-info');
-            const requestBox = document.getElementById('pending-request-box');
-            const requestedHwidEl = document.getElementById('requested-hwid');
-
-            if (!key || !pass) return alert("Enter Key and Admin Password!");
+            if (!key || !pass) return alert("Select a key and enter Admin Password!");
 
             try {
                 const res = await fetch(`${API}/admin/get-key`, {
@@ -427,211 +357,66 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ license_key: key, admin_password: pass })
                 });
-
                 const data = await res.json();
 
                 if (data.success) {
-                    infoDiv.style.display = 'block';
+                    // updates the "User:" label in Column 3
+                    document.getElementById('info-email').innerText = data.email || "No Email Linked";
 
-                    // 1. Update basic info
                     document.getElementById('manage-status').innerText = data.is_banned ? "BANNED" : (data.is_paused ? "PAUSED" : "ACTIVE");
-                    document.getElementById('manage-hwid').innerText = (!data.hwid || data.hwid === "null") ? "READY FOR CAPTURE" : data.hwid;
-                    document.getElementById('manage-expiry').innerText = data.expiry ? new Date(data.expiry).toLocaleString() : "N/A";
-                    document.getElementById('manage-games').innerText = data.games && data.games.length > 0 ? data.games.join(", ") : "None";
+                    document.getElementById('manage-hwid').innerText = data.hwid || "NOT CAPTURED";
 
-                    const resetBtn = document.querySelector('button[onclick*="reset-hwid"]');
-
-                    if (data.pending_request && data.pending_request.status === "PENDING") {
-                        requestBox.style.display = 'block';
-                        requestedHwidEl.innerText = "REQUESTED HWID: " + data.pending_request.hwid;
-
-                        if (resetBtn) {
-                            resetBtn.style.background = "var(--gold)";
-                            resetBtn.style.color = "black";
-                            resetBtn.style.boxShadow = "0 0 15px #ffcc00";
-                            resetBtn.innerText = "APPROVE & RESET HWID";
-                        }
-                    } else {
-                        requestBox.style.display = 'none';
-                        if (resetBtn) {
-                            resetBtn.style.background = "#00f2ff";
-                            resetBtn.style.color = "black";
-                            resetBtn.style.boxShadow = "none";
-                            resetBtn.innerText = "RESET HWID";
-                        }
-                    }
-
-                    // 3. Sync Dropdown UI
-                    for (let i = 0; i < dropdown.options.length; i++) {
-                        if (dropdown.options[i].value === key) {
-                            if (data.is_banned) {
-                                dropdown.options[i].style.color = "#ff3e3e";
-                                dropdown.options[i].textContent = `${key} (BANNED)`;
-                            } else if (data.is_paused) {
-                                dropdown.options[i].style.color = "#ffcc00";
-                                dropdown.options[i].textContent = `${key} (PAUSED)`;
-                            } else {
-                                dropdown.options[i].style.color = "#00ff88";
-                                dropdown.options[i].textContent = key;
-                            }
-                            break;
-                        }
+                    if (document.getElementById('manage-expiry')) {
+                        document.getElementById('manage-expiry').innerText = data.expiry ? new Date(data.expiry).toLocaleDateString() : "N/A";
                     }
                 } else {
-                    alert(data.error || "Failed to load key");
+                    alert(data.error);
                 }
             } catch (err) {
-                console.error("Load Error:", err);
-                alert("Connection failed: Check Railway Logs.");
+                alert("Load Error: Check console for details");
             }
         }
 
+        async function linkUserEmail() {
+            const key = document.getElementById('manage-key-input').value || document.getElementById('single-key-input').value;
+            const email = document.getElementById('quick-link-email').value.trim();
+            const pass = document.getElementById('admin-pass').value;
 
+            if (!key || !email) return alert("Select a key and enter an email first!");
 
-        async function resetHWID() {
-            const key = document.getElementById('manage-key-input').value.trim();
-            const pass = document.getElementById('admin-pass').value.trim();
+            const res = await fetch(`${API}/admin/update-key`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ admin_password: pass, license_key: key, email: email })
+            });
 
-            if (!key || !pass) return alert("Enter Key and Admin Password!");
-            if (!confirm(`Are you sure you want to reset HWID for ${key}?`)) return;
+            const data = await res.json();
+            if (data.success) {
+                alert(`Linked ${email} successfully!`);
+                document.getElementById('quick-link-email').value = ""; // Clear the input
+                await loadKey(); // <--- THIS REFRESHES THE USER LABEL IMMEDIATELY
+            }
+        }
+
+        // 4. GENERAL ACTIONS (BAN, PAUSE, RESET)
+        async function modifyKey(action) {
+            const key = document.getElementById('single-key-input').value.trim() || document.getElementById('manage-key-input').value;
+            const pass = document.getElementById('admin-pass').value;
+
+            if (!key || !pass) return alert("Select a key!");
 
             try {
-                const res = await fetch(`${API}/admin/reset-hwid`, {
+                const res = await fetch(`${API}/admin/${action}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ license_key: key, admin_password: pass })
                 });
-
                 const data = await res.json();
                 if (data.success) {
-                    alert("HWID Reset Successful!");
-                    loadKey(); // refresh panel
-                } else {
-                    alert(data.error || "Failed to reset HWID");
-                }
-            } catch (err) {
-                console.error(err);
-                alert("Connection failed. Check API.");
-            }
-        }
-
-
-        async function modifyKey(action) {
-            const key = (document.getElementById('single-key-input').value.trim() ||
-                document.getElementById('manage-key-input').value.trim());
-            const pass = document.getElementById('admin-pass').value.trim();
-            const dropdown = document.getElementById('manage-key-input');
-            const keyInput = document.getElementById('single-key-input');
-
-            if (!key || !pass) return alert("Enter Key and Admin Password!");
-
-            let endpoint = (action === "reset-hwid") ? "reset-hwid" : `${action}-key`;
-
-            const payload = { license_key: key, admin_password: pass };
-
-            try {
-                const res = await fetch(`${API}/admin/${endpoint}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-
-                const data = await res.json();
-
-                if (data.success) {
-                    alert(`Key ${action.toUpperCase()} successful`);
-
-                    if (["pause", "unpause"].includes(action)) {
-                        for (let i = 0; i < dropdown.options.length; i++) {
-                            if (dropdown.options[i].value === key) {
-                                dropdown.options[i].style.color = action === "pause" ? "#ff3e3e" : "white";
-                                dropdown.options[i].textContent = key + (action === "pause" ? " (PAUSED)" : "");
-                                break;
-                            }
-                        }
-                    }
-
-                    if (action === "delete") {
-                        for (let i = 0; i < dropdown.options.length; i++) {
-                            if (dropdown.options[i].value === key) {
-                                dropdown.remove(i);
-                                break;
-                            }
-                        }
-                        if (keyInput.value.trim() === key) keyInput.value = "";
-                    }
-
-                    loadKey();
-                } else {
-                    alert(data.error || `Failed to ${action} key`);
-                }
-            } catch (err) {
-                console.error(err);
-                alert("Connection failed. Make sure API is awake and reachable.");
-            }
-        }
-
-        // LOAD ALL KEYS INTO DROPDOWN
-        async function loadKeysDropdown() {
-            const pass = document.getElementById('admin-pass').value;
-            const dropdown = document.getElementById('manage-key-input');
-
-            if (!pass) return alert("Enter Admin Password!");
-
-            dropdown.innerHTML = '<option value="">Loading keys...</option>';
-
-            try {
-                // Matches the 'load-keys' case in your index.js switch
-                const res = await fetch(`${API}/admin/load-keys`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ admin_password: pass })
-                });
-
-                console.log("Fetch status:", res.status);
-
-                let data;
-                try {
-                    data = await res.json();
-                } catch (jsonErr) {
-                    const text = await res.text();
-                    console.error("Failed to parse JSON, raw response:", text);
-                    alert("Server returned invalid JSON. Check console.");
-                    dropdown.innerHTML = '<option value="">-- Select License Key --</option>';
-                    return;
-                }
-
-                if (data.success && Array.isArray(data.keys)) {
-                    dropdown.innerHTML = '<option value="">-- Select License Key --</option>';
-
-                    data.keys.forEach(k => {
-                        const option = document.createElement("option");
-                        option.value = k.license_key;
-
-                        // Show paused or banned status in dropdown
-                        if (k.is_banned) {
-                            option.textContent = `${k.license_key} (BANNED)`;
-                            option.style.color = "#eb3434"; // red
-                        } else if (k.is_paused) {
-                            option.textContent = `${k.license_key} (PAUSED)`;
-                            option.style.color = "#ebe834"; // yellow
-                        } else {
-                            option.textContent = k.license_key;
-                            option.style.color = "#34eb3a"; // active
-                        }
-
-                        dropdown.appendChild(option);
-                    });
-                } else {
-                    dropdown.innerHTML = '<option value="">-- Select License Key --</option>';
-                    alert(data.error || "Failed to load keys");
-                }
-
-            } catch (err) {
-                console.error("Fetch error:", err);
-                alert("Connection failed. Make sure your API is reachable and not asleep.");
-                dropdown.innerHTML = '<option value="">-- Select License Key --</option>';
-            }
+                    alert("Action Successful!");
+                    loadKey(); // Refresh info
+                } else { alert(data.error); }
+            } catch (err) { alert("Action Failed"); }
         }
     </script>
 </body>
