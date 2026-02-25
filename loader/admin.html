@@ -484,7 +484,7 @@
 
             try {
                 // 2. Use the DIRECT URL to ensure the request goes out
-                const res = await fetch(`https://sk-auth-api.up.railway.app{action}`, {
+                const res = await fetch(`${API}/admin/${action}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
