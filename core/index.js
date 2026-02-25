@@ -180,35 +180,25 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
 
             case 'reset-hwid':
                 try {
-                    // 1. Wipe the HWID on the user profile (This part works)
+                    // 1. Clear the HWID lock (Working)
                     user.hwid = null;
                     await user.save();
 
-                    // 2. Find the LATEST pending request
-                    const pendingList = await mongoose.connection.collection('requests')
-                        .find({ license_key: license_key.toUpperCase(), status: "PENDING" })
-                        .sort({ date: -1 })
-                        .limit(1)
-                        .toArray();
+                    // 2. Find and Update the status (THE PART THAT IS CURRENTLY BEING SKIPPED)
+                    const result = await mongoose.connection.collection('requests').updateOne(
+                        { license_key: license_key.toUpperCase(), status: "PENDING" },
+                        { $set: { status: "APPROVED" } },
+                        { sort: { date: -1 } }
+                    );
 
-                    // 3. THE CRITICAL FIX: Use index [0] because toArray() returns a list
-                    if (pendingList && pendingList.length > 0) {
-                        const targetId = pendingList[0]._id;
+                    console.log(`[ADMIN] HWID Reset & Approved for ${license_key}`);
 
-                        // This is what makes the box disappear on the next loadKey() call
-                        await mongoose.connection.collection('requests').updateOne(
-                            { _id: targetId },
-                            { $set: { status: "APPROVED" } }
-                        );
-                        console.log(`[SUCCESS] Request ${targetId} set to APPROVED`);
-                    }
-
-                    // 4. Return success so modifyKey() can hide the box immediately
+                    // 3. Return this SPECIFIC message so we know it worked
                     return res.json({ success: true, message: "Approved" });
 
                 } catch (err) {
                     console.error("Reset Error:", err);
-                    return res.json({ success: false, error: "Database Sync Failed" });
+                    return res.json({ success: false, error: "Database sync failed" });
                 }
 
             case 'deny-hwid':
