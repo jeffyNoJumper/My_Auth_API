@@ -20,21 +20,20 @@
     </div>
 
     <!-- AUTO-UPDATER OVERLAY -->
-    <div id="update-overlay" class="overlay hidden">
+    <div id="update-overlay">
         <div class="update-card">
             <h2 class="glow-text-cyan">SYSTEM UPDATE</h2>
-            <p id="update-version">New version detected</p>
+            <p id="update-version">Checking for updates...</p>
             <div id="update-news-prev" class="news-preview"></div>
-            <div class="progress-container">
-                <div id="update-progress" class="progress-bar"></div>
-            </div>
-            <p id="update-status">Click below to begin download</p>
-            <button id="update-btn" class="action-btn update-confirm" onclick="startUpdateDownload()">DOWNLOAD & INSTALL</button>
+            <p id="update-status">Waiting for update check...</p>
+            <div id="update-terminal"></div>
+            <button id="update-btn" class="action-btn update-confirm" disabled>DOWNLOAD & INSTALL</button>
         </div>
     </div>
 
+
     <!-- 1. BOOT SCREEN -->
-    <div id="boot-screen" class="active">
+    <div id="boot-screen">
         <div class="boot-container">
             <h1 id="boot-status">Initializing...</h1>
             <div class="spinner-container">
@@ -52,15 +51,41 @@
         <div class="login-card">
             <div class="card-header">
                 <h2 class="glow-text-cyan">AUTHENTICATION</h2>
-                <p>Enter your license key below</p>
+                <p>Enter your credentials to access the loader</p>
             </div>
+
+            <!-- NEW: Email & Password Fields -->
             <div class="input-group">
+                <label for="login-email">EMAIL ADDRESS</label>
+                <input type="email" id="login-email" placeholder="user@example.com">
+            </div>
+
+            <div class="input-group password-wrapper">
+                <label for="login-password">PASSWORD</label>
+                <div class="input-relative">
+                    <input type="password" id="login-password" placeholder="••••••••">
+                    <span id="toggle-password" class="eye-icon">SHOW</span>
+                </div>
+            </div>
+
+            <div class="input-group">
+                <label for="license-key">LICENSE KEY</label>
                 <input type="text" id="license-key" placeholder="ENTER-LICENSE-KEY-HERE-XXX">
             </div>
-            <button onclick="handleLogin()" id="login-btn">VALIDATE LICENSE</button>
+
+            <!-- NEW: Remember Me Checkbox -->
+            <div class="login-options">
+                <label class="remember-me">
+                    <input type="checkbox" id="remember-me">
+                    <span>REMEMBER ME</span>
+                </label>
+            </div>
+
+            <button onclick="handleLogin()" id="login-btn">VALIDATE & LOGIN</button>
             <div id="login-loader" class="spinner hidden"></div>
         </div>
     </div>
+
 
     <!-- 3. MAIN DASHBOARD -->
     <div id="main-dashboard" class="screen">
@@ -88,7 +113,9 @@
 
             <!-- Tab: Home -->
             <div id="home-tab" class="tab-content active">
-                <div class="welcome-panel">
+                <div id="particles-js" style="position:absolute; width:100%; height:100%; top:0; left:0; z-index:0;"></div>
+
+                <div class="welcome-panel" style="position:relative; z-index:1;">
                     <h2 class="glow-text-cyan">WELCOME TO SK ALL-IN-ONE</h2>
                     <p>Select a module from the navigation bar to begin.</p>
                     <div class="terminal-box">
@@ -289,60 +316,63 @@
         </div>
 
 
-            <!-- Tab: Settings -->
-            <div id="settings-tab" class="tab-content">
-                <div class="settings-layout">
-                    <!-- New Revamped Terminal Section -->
-                    <div class="news-section">
-                        <h3 class="glow-text-cyan">SYSTEM_TERMINAL</h3>
-                        <div class="terminal-box" id="main-terminal">
-                            <div id="news-feed-text" class="typewriter">> [STATUS] System operational...</div>
-                            <div class="terminal-line">> [LOG] Injection module standby.</div>
-                        </div>
-                        <div class="terminal-input-area">
-                            <span class="prompt">SK-USER:~$</span>
-                            <input type="text" id="terminal-cmd" placeholder="Enter command...">
-                        </div>
+        <!-- Tab: Settings -->
+        <div id="settings-tab" class="tab-content">
+            <div class="settings-layout">
+                <!-- New Revamped Terminal Section -->
+                <div class="news-section">
+                    <h3 class="glow-text-cyan">SYSTEM_TERMINAL</h3>
+                    <div class="terminal-box" id="main-terminal">
+                        <div id="news-feed-text" class="typewriter">> [STATUS] System operational...</div>
+                        <div class="terminal-line">> [LOG] Injection module standby.</div>
                     </div>
-
-                    <!-- Expanded Settings Panel -->
-                    <div class="settings-panel">
-                        <h3 class="glow-text-cyan">CLIENT_SETTINGS</h3>
-                        <p class="desc">Build: 1.0.4-Beta | Auth: Verified</p>
-
-                        <div class="settings-group">
-                            <label class="switch-container">
-                                <input type="checkbox" id="auto-launch">
-                                <span class="slider"></span> Auto-Launch on Start
-                            </label>
-
-                            <!-- NEW: Auto-Close Feature -->
-                            <label class="switch-container">
-                                <input type="checkbox" id="auto-close-launcher" checked>
-                                <span class="slider"></span> Auto-Close Launcher on Inject
-                            </label>
-
-                            <!-- NEW: Discord RPC Feature -->
-                            <label class="switch-container">
-                                <input type="checkbox" id="discord-rpc">
-                                <span class="slider"></span> Enable Discord Rich Presence
-                            </label>
-
-                            <!-- NEW: Stream Proof Feature -->
-                            <label class="switch-container">
-                                <input type="checkbox" id="stream-proof">
-                                <span class="slider"></span> Stream Proof (Hide Visuals)
-                            </label>
-                        </div>
-
-                        <div class="action-buttons">
-                            <button class="btn-small" onclick="clearLogs()">CLEAR_LOGS</button>
-                            <button class="btn-small danger" onclick="resetConfig()">RESET_ALL</button>
-                        </div>
+                    <div class="terminal-input-area">
+                        <span class="prompt">SK-USER:~$</span>
+                        <input type="text" id="terminal-cmd" placeholder="Enter command...">
                     </div>
                 </div>
-            </div> <!-- End Content Area -->
 
-            <script src="ui.js"></script>
+                <!-- Expanded Settings Panel -->
+                <div class="settings-panel">
+                    <h3 class="glow-text-cyan">CLIENT_SETTINGS</h3>
+                    <p class="desc">Build: 1.0.4-Beta | Auth: Verified</p>
+
+                    <div class="settings-group">
+                        <label class="switch-container">
+                            <input type="checkbox" id="auto-launch">
+                            <span class="slider"></span> Auto-Launch on Start
+                        </label>
+
+                        <!-- NEW: Auto-Close Feature -->
+                        <label class="switch-container">
+                            <input type="checkbox" id="auto-close-launcher" checked>
+                            <span class="slider"></span> Auto-Close Launcher on Inject
+                        </label>
+
+                        <!-- NEW: Discord RPC Feature -->
+                        <label class="switch-container">
+                            <input type="checkbox" id="discord-rpc">
+                            <span class="slider"></span> Enable Discord Rich Presence
+                        </label>
+
+                        <!-- NEW: Stream Proof Feature -->
+                        <label class="switch-container">
+                            <input type="checkbox" id="stream-proof">
+                            <span class="slider"></span> Stream Proof (Hide Visuals)
+                        </label>
+                    </div>
+
+                    <div class="action-buttons">
+                        <button class="btn-small" onclick="clearLogs()">CLEAR_LOGS</button>
+                        <button class="btn-small danger" onclick="resetConfig()">RESET_ALL</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div> <!-- End Content Area -->
+
+    <script src="https://cdn.jsdelivr.net/npm/particles.js@2.0.0/particles.min.js"></script>
+
+    <script src="./ui.js"></script>
 </body>
 </html>
