@@ -41,7 +41,7 @@ function verifyAdmin(req, res, next) {
 app.post('/admin/create-key', verifyAdmin, async (req, res) => {
     try {
         const { days, games, email, password } = req.body;
-        const daysNum = parseFloat(days); // Ensure we handle decimals like 0.0416
+        const daysNum = parseFloat(days);
 
         const gamePrefixMap = { "FiveM": "FIVM", "GTAV": "GTAV", "Warzone": "WARZ", "CS2": "CS2X" };
         const firstGame = (games && games.length > 0) ? games[0] : "FiveM";
@@ -49,27 +49,25 @@ app.post('/admin/create-key', verifyAdmin, async (req, res) => {
         const randomPart = crypto.randomBytes(6).toString('hex').toUpperCase().match(/.{4}/g).join('-');
         const newKey = `${prefix}-${randomPart}`;
 
-        const expiry = new Date();
-        if (daysNum === 999) {
-            expiry.setFullYear(expiry.getFullYear() + 50); // Lifetime
-        } else {
-            // Precise millisecond math for hours/days
-            const msToAdd = daysNum * 24 * 60 * 60 * 1000;
-            expiry.setTime(expiry.getTime() + msToAdd);
-        }
-
         const newUser = new User({
             email: email ? email.toLowerCase() : "skuser@loader.com",
             password: password || "changeme123",
             license_key: newKey,
             hwid: null,
-            expiry_date: expiry,
+            expiry_date: null,
+            duration_days: daysNum,
             games: games || ["FiveM"],
             profile_pic: ""
         });
 
         await newUser.save();
-        res.json({ success: true, key: newKey, expires: expiry, games: newUser.games });
+
+        res.json({
+            success: true,
+            key: newKey,
+            expires: "Pending Activation",
+            games: newUser.games
+        });
     } catch (err) {
         if (err.code === 11000) return res.status(400).json({ success: false, error: "Email already exists" });
         res.status(500).json({ success: false, error: err.message });
@@ -240,7 +238,7 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
     }
 });
 
-// --- 6. USER LOGIN (FINAL SECURE VERSION) ---
+// --- 6. USER LOGIN (UPDATED: ACTIVATES ON FIRST LOGIN) ---
 app.post('/login', async (req, res) => {
     try {
         const { email, password, license_key, hwid } = req.body;
@@ -253,37 +251,48 @@ app.post('/login', async (req, res) => {
         const cleanKey = license_key.toUpperCase().trim();
         const cleanPass = password.trim();
 
-        // 1. Find user by email and key
         const user = await User.findOne({ email: cleanEmail, license_key: cleanKey });
 
         if (!user) return res.json({ error: "Invalid Email or License Key" });
 
-        // 2. AUTO-REGISTRATION: If password field is missing, null, or empty string
         if (!user.password || user.password === "" || user.password === null) {
             user.password = cleanPass;
             await user.save();
             console.log(`[AUTH] First-time registration success for: ${cleanEmail}`);
         }
-        // 3. VALIDATION: Standard check
         else if (user.password !== cleanPass) {
             return res.json({ error: "Invalid Password" });
         }
 
-        // 4. STATUS CHECKS
         if (user.is_banned) return res.json({ error: "Account Banned" });
         if (user.is_paused) return res.json({ error: "Subscription Paused" });
+
+        if (!user.expiry_date || user.expiry_date === null) {
+            const now = new Date();
+            const expiry = new Date();
+
+            const days = user.duration_days || 30;
+
+            if (days === 999) {
+                expiry.setFullYear(expiry.getFullYear() + 50); // Lifetime
+            } else {
+                expiry.setTime(now.getTime() + (days * 24 * 60 * 60 * 1000));
+            }
+
+            user.expiry_date = expiry;
+            await user.save();
+            console.log(`[AUTH] Key ${cleanKey} activated for ${days} days starting NOW.`);
+        }
+
         if (new Date() > user.expiry_date) return res.json({ error: "Subscription Expired" });
 
-        // 5. HWID LOCKING
         if (!user.hwid || user.hwid === "null" || user.hwid === null) {
             user.hwid = hwid;
             await user.save();
         } else if (user.hwid !== hwid) {
-            // Using your existing HWID logic
             return res.json({ error: "HWID Mismatch. Please request a reset." });
         }
 
-        // 6. SUCCESS RESPONSE
         res.json({
             token: "VALID",
             expiry: user.expiry_date,
