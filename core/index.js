@@ -370,7 +370,7 @@ app.post('/request-hwid-reset', async (req, res) => {
     try {
         const { hwid, license_key, type } = req.body;
 
-        if (!hwid || !license_key || type !== "MANUAL_RESET") {
+        if (!hwid || !license_key || type !== "ADMIN-PANEL_RESET") {
             return res.status(400).json({ success: false, error: "Invalid Request Format" });
         }
 
