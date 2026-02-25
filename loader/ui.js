@@ -1,35 +1,35 @@
 const API = 'https://sk-auth-api.up.railway.app';
 
-// App Entry Point
 window.onload = async () => {
-    updateHWIDDisplay();
+    await updateHWIDDisplay();
 
-    particlesJS("particles-js", {
-        particles: {
-            number: { value: 60 },
-            color: { value: "#00ffff" },
-            shape: {
-                type: ["circle", "square"]
+    // 1. Initialize with a slight delay to ensure DOM is ready
+    setTimeout(() => {
+        particlesJS("particles-js", {
+            particles: {
+                number: { value: 60 },
+                color: { value: "#00ffff" },
+                shape: { type: ["circle", "square"] },
+                opacity: { value: 0.5 },
+                size: { value: 3 },
+                move: {
+                    enable: true,
+                    speed: 1,
+                    direction: "none",
+                    out_mode: "out"
+                }
             },
-            opacity: { value: 0.5 },
-            size: { value: 3 },
-            move: {
-                enable: true,
-                speed: 1,
-                direction: "none",
-                out_mode: "out"
+            interactivity: {
+                events: {
+                    onhover: { enable: true, mode: "repulse" }
+                }
             }
-        },
-        interactivity: {
-            events: {
-                onhover: { enable: true, mode: "repulse" }
-            }
-        }
-    });
+        });
+        window.dispatchEvent(new Event('resize'));
+        console.log("✨ Particles Initialized & Painted");
+    }, 100);
 
     checkServer();
-
-    window.dispatchEvent(new Event('resize'));
 
     const overlay = document.getElementById('update-overlay');
 
@@ -346,13 +346,11 @@ async function handleLogin() {
             })
         });
 
-        // 2. Initialize data ONCE
         const data = await response.json();
 
         // 3. Check for Success
         if (data.token === "VALID") {
 
-            // Handle "Remember Me"
             if (rememberMe) {
                 localStorage.setItem('remembered_email', email);
                 localStorage.setItem('remembered_password', password);
@@ -363,10 +361,8 @@ async function handleLogin() {
                 localStorage.setItem('license_key', key);
             }
 
-            // Sync Access & Prefix (CS2X, etc)
             setSessionAccess(key);
 
-            // Handle Profile Picture
             const userPic = document.getElementById('user-pic');
             if (data.profile_pic) {
                 localStorage.setItem('saved_profile_pic', data.profile_pic);
@@ -375,17 +371,17 @@ async function handleLogin() {
                 userPic.src = 'imgs/default-profile.png';
             }
 
-            // Display Expiry
             if (data.expiry) {
-                document.getElementById('user-expiry').innerText = "EXP: " + new Date(data.expiry).toLocaleDateString();
+                const expiryDate = new Date(data.expiry);
+                document.getElementById('user-expiry').innerText = "EXP: " + expiryDate.toLocaleDateString();
+
+                updateSubscriptionStatus(data.expiry);
             }
 
-            // Transition to Dashboard
             switchScreen('login-screen', 'main-dashboard');
             updateUIForAccess();
 
         } else {
-            // If data.token is not "VALID", show the error from the server
             alert("Login Failed: " + (data.error || "Unknown Error"));
             btn.innerHTML = "VALIDATE & LOGIN";
             btn.disabled = false;
@@ -395,6 +391,40 @@ async function handleLogin() {
         alert("API Connection Error. Ensure your Loader is connected to a server & is live.");
         btn.innerHTML = "VALIDATE & LOGIN";
         btn.disabled = false;
+    }
+}
+
+// Function to handle the visual status dot and expiry colors
+function updateSubscriptionStatus(expiryDate) {
+    const dot = document.getElementById('status-dot');
+    const expiryText = document.getElementById('user-expiry');
+    if (!dot || !expiryText) return;
+
+    const now = new Date();
+    const expire = new Date(expiryDate);
+    const diffMs = expire - now;
+    const diffDays = diffMs / (1000 * 60 * 60 * 24);
+
+    // Reset classes
+    dot.classList.remove('dot-online', 'dot-warning', 'dot-offline');
+
+    if (diffMs <= 0) {
+        // RED - Expired
+        dot.classList.add('dot-offline');
+        expiryText.style.color = "#ff4444";
+        expiryText.innerText = "EXP: EXPIRED";
+        // Disable launch buttons for expired users
+        document.querySelectorAll('.launch-btn').forEach(btn => btn.disabled = true);
+    }
+    else if (diffDays <= 3) {
+        // YELLOW - Expiring Soon (3 Days or less)
+        dot.classList.add('dot-warning');
+        expiryText.style.color = "#ffcc00";
+    }
+    else {
+        // GREEN - Active
+        dot.classList.add('dot-online');
+        expiryText.style.color = "#00ff88";
     }
 }
 
@@ -829,16 +859,67 @@ async function sendAdminRequest() {
     }
 }
 
-function setStatus(state) {
+function setStatus(expiryDate) {
     const status = document.getElementById("user-status");
-    if (!status) return;
+    const dot = document.getElementById("status-dot");
+    if (!status || !dot) return;
 
-    status.classList.remove(
-        "status-online",
-        "status-offline",
-        "status-expired"
-    );
-    status.classList.add(`status-${state}`);
+    // 1. Calculate time difference
+    const now = new Date();
+    const expire = new Date(expiryDate);
+    const diffMs = expire - now;
+    const diffDays = diffMs / (1000 * 60 * 60 * 24); // Convert ms to days
+
+    // 2. Clear old classes
+    status.classList.remove("status-active", "status-warning", "status-expired");
+    dot.classList.remove("dot-online", "dot-warning", "dot-offline");
+
+    // 3. Determine State based on Time Left
+    if (diffMs <= 0) {
+        // EXPIRED (RED)
+        status.innerText = "SUBSCRIPTION EXPIRED";
+        status.classList.add("status-expired");
+        dot.classList.add("dot-offline");
+        showNotification("Your license has expired. Please renew.", "red");
+    }
+    else if (diffDays <= 3) {
+        // EXPIRING SOON - Less than 3 days (YELLOW)
+        status.innerText = "EXPIRING SOON";
+        status.classList.add("status-warning");
+        dot.classList.add("dot-warning");
+        showNotification("Warning: License expires in less than 3 days!", "gold");
+    }
+    else {
+        // ACTIVE (GREEN)
+        status.innerText = "SUBSCRIPTION ACTIVE";
+        status.classList.add("status-active");
+        dot.classList.add("dot-online");
+    }
+}
+
+// Helper to show a pop-up or overlay if needed
+function showNotification(msg, color) {
+    const alertBox = document.getElementById("subscription-alert");
+    if (alertBox) {
+        alertBox.innerText = msg;
+        alertBox.style.color = color;
+        alertBox.style.display = "block";
+    }
+}
+
+function setStatus(status) {
+    const dot = document.getElementById('status-dot');
+    if (!dot) return;
+
+    if (status === "online") {
+        dot.classList.remove('dot-offline');
+        dot.classList.add('dot-online');
+        console.log("System Online");
+    } else {
+        dot.classList.remove('dot-online');
+        dot.classList.add('dot-offline');
+        console.log("System Offline");
+    }
 }
 
 async function checkServer() {
