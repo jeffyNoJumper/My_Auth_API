@@ -6,7 +6,7 @@ const userSchema = new mongoose.Schema({
     license_key: { type: String, required: true, unique: true },
     hwid: { type: String, default: null },
 
-    expiry_date: { type: Date, required: false, default: null },
+    expiry_date: { type: Date, default: null },
 
     duration_days: { type: Number, default: 30 },
 
@@ -15,6 +15,6 @@ const userSchema = new mongoose.Schema({
     games: { type: [String], default: [] },
     profile_pic: { type: String, default: "" },
     discord_id: { type: String, default: "" }
-}, { timestamps: true });
+});
 
 module.exports = mongoose.model('User', userSchema);
