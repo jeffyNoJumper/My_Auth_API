@@ -14,9 +14,23 @@ app.use(express.urlencoded({ limit: '75mb', extended: true }));
 // Middleware
 app.use(cors());
 
-// MongoDB Connection
+// MongoDB Connection (UPDATED: CLEAN INDEXES)
 mongoose.connect(process.env.MONGO_URL)
-    .then(() => console.log("✅ Connected to MongoDB"))
+    .then(async () => {
+        console.log("✅ Connected to MongoDB");
+
+        try {
+            // This is the CRITICAL part: It deletes the "Must Have a Value" rule in the DB
+            const collections = await mongoose.connection.db.listCollections({ name: 'users' }).toArray();
+            if (collections.length > 0) {
+                // Drop the index that forces every user to have an expiry_date
+                await mongoose.connection.collection('users').dropIndex("expiry_date_1");
+                console.log("🗑️ Database Restriction Cleared: Expiry is no longer required.");
+            }
+        } catch (err) {
+            console.log("ℹ️ Index already clean or not found.");
+        }
+    })
     .catch(err => console.error("❌ MongoDB Error:", err));
 
 const Request = mongoose.models.Request || mongoose.model('Request', new mongoose.Schema({
