@@ -54,7 +54,7 @@ app.post('/admin/create-key', verifyAdmin, async (req, res) => {
             password: password || null,
             license_key: newKey,
             hwid: null,
-            expiry_date: null,
+            //expiry_date: null,
             duration_days: daysNum,
             games: games || ["FiveM"]
         });
