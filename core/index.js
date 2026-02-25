@@ -50,14 +50,13 @@ app.post('/admin/create-key', verifyAdmin, async (req, res) => {
         const newKey = `${prefix}-${randomPart}`;
 
         const newUser = new User({
-            email: email ? email.toLowerCase() : "skuser@loader.com",
-            password: password || "changeme123",
+            email: email ? email.toLowerCase() : `pending_${randomPart}@auth.com`,
+            password: password || null,
             license_key: newKey,
             hwid: null,
             expiry_date: null,
             duration_days: daysNum,
-            games: games || ["FiveM"],
-            profile_pic: ""
+            games: games || ["FiveM"]
         });
 
         await newUser.save();
@@ -238,7 +237,7 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
     }
 });
 
-// --- 6. USER LOGIN (UPDATED: ACTIVATES ON FIRST LOGIN) ---
+// --- 6. USER LOGIN ---
 app.post('/login', async (req, res) => {
     try {
         const { email, password, license_key, hwid } = req.body;
@@ -251,37 +250,48 @@ app.post('/login', async (req, res) => {
         const cleanKey = license_key.toUpperCase().trim();
         const cleanPass = password.trim();
 
-        const user = await User.findOne({ email: cleanEmail, license_key: cleanKey });
+        const user = await User.findOne({ license_key: cleanKey });
 
-        if (!user) return res.json({ error: "Invalid Email or License Key" });
+        if (!user) return res.json({ error: "Invalid License Key" });
 
-        if (!user.password || user.password === "" || user.password === null) {
+        const isNewUser = !user.password || user.email.includes('pending_');
+
+        if (isNewUser) {
+
+            const emailCheck = await User.findOne({ email: cleanEmail });
+            if (emailCheck && emailCheck.license_key !== cleanKey) {
+                return res.json({ error: "This email is already registered to another key." });
+            }
+
+            user.email = cleanEmail;
             user.password = cleanPass;
             await user.save();
-            console.log(`[AUTH] First-time registration success for: ${cleanEmail}`);
+            console.log(`[AUTH] Key ${cleanKey} registered to: ${cleanEmail}`);
         }
-        else if (user.password !== cleanPass) {
-            return res.json({ error: "Invalid Password" });
+
+        else {
+            if (user.email !== cleanEmail || user.password !== cleanPass) {
+                return res.json({ error: "Invalid Email or Password for this key." });
+            }
         }
 
         if (user.is_banned) return res.json({ error: "Account Banned" });
         if (user.is_paused) return res.json({ error: "Subscription Paused" });
 
-        if (!user.expiry_date || user.expiry_date === null) {
+        if (!user.expiry_date) {
             const now = new Date();
             const expiry = new Date();
-
             const days = user.duration_days || 30;
 
             if (days === 999) {
-                expiry.setFullYear(expiry.getFullYear() + 50); // Lifetime
+                expiry.setFullYear(expiry.getFullYear() + 50);
             } else {
                 expiry.setTime(now.getTime() + (days * 24 * 60 * 60 * 1000));
             }
 
             user.expiry_date = expiry;
             await user.save();
-            console.log(`[AUTH] Key ${cleanKey} activated for ${days} days starting NOW.`);
+            console.log(`[AUTH] Key ${cleanKey} activated for ${days} days.`);
         }
 
         if (new Date() > user.expiry_date) return res.json({ error: "Subscription Expired" });
