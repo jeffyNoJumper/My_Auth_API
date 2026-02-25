@@ -180,33 +180,35 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
 
             case 'reset-hwid':
                 try {
-                    // 1. Clear the HWID on the user profile first
+                    // 1. Wipe the HWID on the user profile (This part works)
                     user.hwid = null;
                     await user.save();
-                    console.log(`[ADMIN] HWID cleared for ${license_key}`);
 
-                    // 2. Find the PENDING request to approve
-                    const latestApprove = await mongoose.connection.collection('requests')
+                    // 2. Find the LATEST pending request
+                    const pendingList = await mongoose.connection.collection('requests')
                         .find({ license_key: license_key.toUpperCase(), status: "PENDING" })
                         .sort({ date: -1 })
                         .limit(1)
                         .toArray();
 
-                    if (latestApprove && latestApprove.length > 0) {
-                        // 3. Update the request status so the LOADER terminal updates
+                    // 3. THE CRITICAL FIX: Use index [0] because toArray() returns a list
+                    if (pendingList && pendingList.length > 0) {
+                        const targetId = pendingList[0]._id;
+
+                        // This is what makes the box disappear on the next loadKey() call
                         await mongoose.connection.collection('requests').updateOne(
-                            { _id: latestApprove[0]._id },
+                            { _id: targetId },
                             { $set: { status: "APPROVED" } }
                         );
-                        console.log(`[ADMIN] Request status set to APPROVED for ${license_key}`);
+                        console.log(`[SUCCESS] Request ${targetId} set to APPROVED`);
                     }
 
-                    // 4. Return success to the Admin Panel
-                    return safeJson({ success: true, message: "HWID Reset & Approved" });
+                    // 4. Return success so modifyKey() can hide the box immediately
+                    return res.json({ success: true, message: "Approved" });
 
                 } catch (err) {
-                    console.error("[ADMIN] Reset-HWID Error:", err);
-                    return safeJson({ success: false, error: "Database update failed" });
+                    console.error("Reset Error:", err);
+                    return res.json({ success: false, error: "Database Sync Failed" });
                 }
 
             case 'deny-hwid':
