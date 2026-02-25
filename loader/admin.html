@@ -464,28 +464,39 @@
             const data = await res.json();
             if (data.success) {
                 alert(`Linked ${email} successfully!`);
-                document.getElementById('quick-link-email').value = ""; // Clear the input
-                await loadKey(); // <--- THIS REFRESHES THE USER LABEL IMMEDIATELY
+                document.getElementById('quick-link-email').value = "";
+                await loadKey();
             }
         }
 
         // 4. GENERAL ACTIONS (BAN, PAUSE, RESET)
         async function modifyKey(action) {
-            const key = document.getElementById('single-key-input').value.trim() || document.getElementById('manage-key-input').value;
+            // 1. Better key detection
+            const manualKey = document.getElementById('single-key-input').value.trim();
+            const dropdownKey = document.getElementById('manage-key-input').value;
+            const key = manualKey || dropdownKey;
+
             const pass = document.getElementById('admin-pass').value;
 
-            if (!key || !pass) return alert("Select a key!");
+            console.log(`[DEBUG] Attempting ${action} for Key: ${key}`);
+
+            if (!key) return alert("Error: No User/Key Selected!");
+            if (!pass) return alert("Error: Admin Password Required!");
 
             try {
                 const res = await fetch(`${API}/admin/${action}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ license_key: key, admin_password: pass })
+                    body: JSON.stringify({
+                        license_key: key,
+                        admin_password: pass
+                    })
                 });
 
                 const data = await res.json();
 
                 if (data.success) {
+                    // Instant UI Cleanup
                     const requestBox = document.getElementById('request-alert-box');
                     const standardBtn = document.getElementById('standard-reset-btn');
 
@@ -494,16 +505,16 @@
                         if (standardBtn) standardBtn.style.display = 'block';
                     }
 
-                    console.log(`Action [${action}] successful for key: ${key}`);
+                    console.log(`[SUCCESS] Action ${action} completed.`);
 
-                    // Refresh all data labels to match new DB state
+                    // Re-load the user info to confirm HWID is cleared
                     await loadKey();
                 } else {
-                    alert("Error: " + data.error);
+                    alert("API Error: " + data.error);
                 }
             } catch (err) {
-                console.error("Action Error:", err);
-                alert("Action Failed: Check console for details");
+                console.error("Fetch Error:", err);
+                alert("Connection Failed: Check if API is online.");
             }
         }
     </script>
