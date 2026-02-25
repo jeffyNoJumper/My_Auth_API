@@ -257,7 +257,8 @@
                     <div style="font-size:11px; margin-bottom:10px; line-height:1.6; border-bottom: 1px solid #333; padding-bottom: 8px;">
                         <span style="color:#888;">User:</span> <span id="info-email" style="color:var(--accent)">---</span><br>
                         <span style="color:#888;">Status:</span> <span id="manage-status" style="font-weight:bold;">Offline</span><br>
-                        <span style="color:#888;">HWID:</span> <span id="manage-hwid" style="font-size:9px; color:#666; word-break:break-all;">None</span>
+                        <span style="color:#888;">HWID:</span> <span id="manage-hwid" style="font-size:9px; color:#666; word-break:break-all;">None</span><br>
+                        <span style="color:#888;">Time Left:</span> <span id="info-timer" style="color:#ffcc00; font-family: monospace;">--:--:--</span>
                     </div>
 
                     <!-- PENDING REQUEST BOX -->
@@ -295,19 +296,20 @@
 
         function closeWin() { ipcRenderer.send('admin-close'); }
         function minWin() { ipcRenderer.send('admin-min'); }
-
-        // 1. GENERATE KEY & ACCOUNT
+        
         async function generateKey() {
             const btn = document.getElementById('gen-btn');
             const pass = document.getElementById('admin-pass').value;
-            const userEmail = document.getElementById('new-user-email').value;
-            const userPass = document.getElementById('new-user-pass').value;
+
+            const userEmail = document.getElementById('new-user-email').value.trim();
+            const userPass = document.getElementById('new-user-pass').value.trim();
+
             const days = parseFloat(document.getElementById('key-days').value);
+            const days = parseFloat(daysValue) || 30;
             const game = document.getElementById('key-game').value;
             const keyText = document.getElementById('key-text');
 
             if (!pass) return alert("Enter Admin Password!");
-            if (!userEmail || !userPass) return alert("Enter User Email & Password!");
 
             btn.disabled = true;
             btn.innerHTML = 'GENERATING...';
@@ -318,8 +320,8 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         admin_password: pass,
-                        email: userEmail,
-                        password: userPass,
+                        email: userEmail || null,
+                        password: userPass || null,
                         days: days,
                         games: [game]
                     })
@@ -329,10 +331,11 @@
 
                 if (data.success) {
                     keyText.innerText = data.key;
-                    document.getElementById('key-expiry').innerText = "Expires: " + new Date(data.expires).toLocaleString();
+
+                    document.getElementById('key-expiry').innerText = "Status: Pending Activation";
 
                     if (clipboard) clipboard.writeText(data.key);
-                    alert("Account Created & Key Copied!");
+                    alert("Key Generated! User can register email/pass on login.");
                     loadKeysDropdown();
                 } else {
                     alert("API Error: " + (data.error || "Access Denied"));
@@ -345,14 +348,13 @@
             }
         }
 
-        // 2. LOAD ALL KEYS INTO DROPDOWN (FIXED)
+        // LOAD ALL KEYS INTO DROPDOWN
         async function loadKeysDropdown() {
             const pass = document.getElementById('admin-pass').value;
             const select = document.getElementById('manage-key-input');
 
             if (!pass) return alert("Enter Admin Password first!");
 
-            // Visual feedback that it's working
             select.innerHTML = '<option value="">Connecting to API...</option>';
 
             try {
@@ -365,7 +367,7 @@
                 const data = await res.json();
 
                 if (data.success && data.keys) {
-                    select.innerHTML = ''; // Clear the "Connecting..." message
+                    select.innerHTML = '';
 
                     if (data.keys.length === 0) {
                         select.innerHTML = '<option value="">(No keys found in database)</option>';
@@ -376,13 +378,11 @@
                         const opt = document.createElement('option');
                         opt.value = k.license_key;
                         const status = k.is_banned ? "🔴" : (k.is_paused ? "🟡" : "🟢");
-                        // Fallback to k.email if license_key is missing in the object
                         opt.innerText = `${status} ${k.license_key || k.email}`;
                         select.appendChild(opt);
                     });
                     console.log("Keys loaded successfully.");
                 } else {
-                    // This captures the "Key not found" error from your server
                     alert("Login Failed: " + (data.error || "Invalid Admin Key"));
                     select.innerHTML = `<option value="">❌ ${data.error || "Access Denied"}</option>`;
                 }
@@ -393,7 +393,7 @@
             }
         }
 
-        // 3. LOAD SELECTED KEY INFO (Updated for Live Reset Requests)
+        // LOAD SELECTED KEY INFO
         async function loadKey() {
             const keyInput = document.getElementById('single-key-input').value.trim();
             const dropdown = document.getElementById('manage-key-input');
@@ -411,30 +411,32 @@
                 const data = await res.json();
 
                 if (data.success) {
-                    // 1. Update basic info labels
                     document.getElementById('info-email').innerText = data.email || "No Email Linked";
                     document.getElementById('manage-status').innerText = data.is_banned ? "BANNED" : (data.is_paused ? "PAUSED" : "ACTIVE");
                     document.getElementById('manage-hwid').innerText = data.hwid || "NOT CAPTURED";
+
+                    if (data.expiry) {
+                        startCountdown(data.expiry);
+                    } else {
+                        document.getElementById('info-timer').innerText = "LIFETIME";
+                    }
 
                     if (document.getElementById('manage-expiry')) {
                         document.getElementById('manage-expiry').innerText = data.expiry ? new Date(data.expiry).toLocaleDateString() : "N/A";
                     }
 
-                    // 2. Toggling the Live Request UI
                     const requestBox = document.getElementById('request-alert-box');
                     const standardBtn = document.getElementById('standard-reset-btn');
                     const requestedHwidText = document.getElementById('requested-hwid-text');
 
-                    // Check if there is a pending request in the API response
                     if (data.pending_request && data.pending_request.status === "PENDING") {
-                        // Show the Gold Action Box
+
                         if (requestBox) requestBox.style.display = 'block';
                         if (standardBtn) standardBtn.style.display = 'none';
                         if (requestedHwidText) requestedHwidText.innerText = "REQUESTED ID: " + data.pending_request.hwid;
 
                         console.log(`[!] PENDING REQUEST DETECTED FOR: ${key}`);
                     } else {
-                        // Hide the Gold Action Box, show standard blue button
                         if (requestBox) requestBox.style.display = 'none';
                         if (standardBtn) standardBtn.style.display = 'block';
                     }
@@ -470,7 +472,6 @@
         }
 
         async function modifyKey(action) {
-            // 1. Force find the key and password at the moment of click
             const inputKey = document.getElementById('single-key-input').value.trim();
             const dropKey = document.getElementById('manage-key-input').value;
             const key = inputKey || dropKey;
@@ -483,7 +484,7 @@
             }
 
             try {
-                // 2. Use the DIRECT URL to ensure the request goes out
+
                 const res = await fetch(`${API}/admin/${action}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -497,7 +498,7 @@
                 console.log("[DEBUG] Server Response:", data);
 
                 if (data.success) {
-                    // 3. Force hide the Gold Box immediately
+
                     const requestBox = document.getElementById('request-alert-box');
                     const standardBtn = document.getElementById('standard-reset-btn');
 
@@ -517,6 +518,39 @@
                 console.error("Fetch Error:", err);
                 alert("Connection Failed. Check Console (F12).");
             }
+        }
+
+        let countdownInterval;
+
+        function startCountdown(expiryDate) {
+            const timerDisplay = document.getElementById('info-timer');
+            if (!expiryDate || !timerDisplay) return;
+
+            // Clear any existing timer first
+            if (countdownInterval) clearInterval(countdownInterval);
+
+            const targetDate = new Date(expiryDate).getTime();
+
+            countdownInterval = setInterval(() => {
+                const now = new Date().getTime();
+                const distance = targetDate - now;
+
+                if (distance < 0) {
+                    clearInterval(countdownInterval);
+                    timerDisplay.innerText = "EXPIRED";
+                    timerDisplay.style.color = "var(--red)";
+                    return;
+                }
+
+                // Calculations for days, hours, minutes and seconds
+                const days = Math.floor(distance / (1000 * 60 * 60 * 24));
+                const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+                const seconds = Math.floor((distance % (1000 * 60)) / 1000);
+
+                // Format: 00d 00h 00m 00s
+                timerDisplay.innerText = `${days}d ${hours}h ${minutes}m ${seconds}s`;
+            }, 1000);
         }
     </script>
 </body>
