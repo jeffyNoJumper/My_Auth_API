@@ -2,6 +2,8 @@ const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const { execSync } = require('child_process');
+const fs = require('fs');
+const os = require('os');
 
 let mainWindow
 let spoofer
@@ -52,6 +54,7 @@ function createWindow() {
         height: 720,
         frame: false,
         resizable: false,
+        icon: path.join(__dirname, 'imgs/SK.ico'),
         backgroundColor: '#050505',
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
@@ -69,8 +72,7 @@ function createWindow() {
     });
 }
 
-// --- 2. IPC HANDLERS ---
-
+// --- IPC HANDLERS ---
 ipcMain.on('window-close', () => {
     app.quit();
 });
@@ -80,21 +82,20 @@ ipcMain.on('window-minimize', () => {
 });
 
 // --- 3. AUTO-UPDATER LOGIC ---
-
 autoUpdater.autoDownload = false;
+
+ipcMain.on('check-for-updates', () => {
+    autoUpdater.checkForUpdates();
+});
 
 autoUpdater.on('update-available', (info) => {
     mainWindow.webContents.send('update-available', {
         version: info.version,
-        news: info.releaseNotes
+        news: typeof info.releaseNotes === 'string' ? info.releaseNotes : "Stability and performance improvements."
     });
 });
 
-autoUpdater.on('update-not-available', () => {
-    mainWindow.webContents.send('update-not-available');
-});
-
-ipcMain.handle('start-update-download', () => {
+ipcMain.on('start-update-download', () => {
     autoUpdater.downloadUpdate();
 });
 
@@ -102,6 +103,7 @@ autoUpdater.on('download-progress', (progressObj) => {
     mainWindow.webContents.send('download-progress', progressObj.percent);
 });
 
+// Download finished: Notify user & prepare for installation
 autoUpdater.on('update-downloaded', () => {
     mainWindow.webContents.send('update-ready');
     setTimeout(() => {
@@ -109,11 +111,23 @@ autoUpdater.on('update-downloaded', () => {
     }, 6000);
 });
 
-// Spoofing ----
+autoUpdater.on('update-not-available', () => {
+    mainWindow.webContents.send('update-not-available');
+});
 
-ipcMain.handle('start-spoof', async (event, options) => { // Accept options from UI
+autoUpdater.on('error', (err) => {
+    mainWindow.webContents.send('update-error', err.message || 'Check connection.');
+});
+
+ipcMain.on('log-to-terminal', (event, message) => {
+    console.log('[UPDATE LOG]', message);
+});
+
+
+// Spoofing ----
+ipcMain.handle('start-spoof', async (event, options) => {
     return new Promise((resolve) => {
-        // Pass options as the first argument, and the callback as the second
+
         spoofer.runSpoofer(options, (err, results) => {
             if (err) {
                 console.error("[MAIN] C++ Worker Error:", err);
@@ -126,11 +140,11 @@ ipcMain.handle('start-spoof', async (event, options) => { // Accept options from
     });
 });
 
-
-ipcMain.handle('launch-game', async (event, gameName, autoClose) => { // Added autoClose arg
+ipcMain.handle('launch-game', async (event, gameName, autoClose, licenseKey) => {
     let injectionType = "default";
     let cheatPath = "";
 
+    // Logic for CS2 (DLL vs External)
     if (gameName.toLowerCase() === 'cs2') {
         const { response } = await dialog.showMessageBox({
             type: 'question',
@@ -144,42 +158,49 @@ ipcMain.handle('launch-game', async (event, gameName, autoClose) => { // Added a
 
         if (response === 2) return { status: "Cancelled", message: "Injection aborted." };
 
-        injectionType = response === 0 ? "dll" : "external";
+        injectionType = (response === 0) ? "dll" : "external";
 
-        // Updated filenames to match your project
-        const fileName = injectionType === "dll" ? "Ai cheat.dll" : "ZELDAv2.exe";
+        // Logic for filenames
+        const fileName = (injectionType === "dll") ? "Ai cheat.dll" : "Noxen.exe";
         cheatPath = path.join(__dirname, 'assets', fileName);
     }
+    else {
 
-    console.log(`[MAIN] Initializing ${injectionType} from: ${cheatPath}`);
+        const fileName = `${gameName.toLowerCase()}.exe`;
+        cheatPath = path.join(__dirname, 'assets', fileName);
+        injectionType = "external";
+    }
 
-    // Pass arguments to the C++ binding
-    const success = spoofer.launchCheat(gameName, injectionType, cheatPath);
+    console.log(`[MAIN] Initializing ${injectionType} for ${gameName} using key prefix...`);
 
-    if (success) {
-        // Handle the Auto-Close feature from your settings tab
-        if (autoClose) {
-            console.log("[MAIN] Auto-close enabled. Exiting in 3 seconds...");
-            setTimeout(() => {
-                app.quit();
-            }, 3000);
+    try {
+        const success = spoofer.launchCheat(gameName.toUpperCase(), injectionType, cheatPath, licenseKey);
+
+        if (success) {
+            if (autoClose) {
+                console.log("[MAIN] Auto-close enabled. Exiting in 3 seconds...");
+                setTimeout(() => { app.quit(); }, 3000);
+            }
+            return { status: "Success", message: `${gameName} launched successfully!` };
+        } else {
+            return { status: "Error", message: `Access Denied Key is NOT VALID for ${gameName}.` };
         }
-
-        return { status: "Success", message: `${gameName} launched successfully!` };
-    } else {
-        return { status: "Error", message: `Failed to launch ${gameName}.` };
+    } catch (err) {
+        console.error("[C++ Error]", err);
+        return { status: "Error", message: "You Dont Have Access To This Game." };
     }
 });
+
+
 
 ipcMain.on('toggle-stream-proof', (event, enabled) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (win) {
-        // Native Electron feature to hide window from screen capture
+
         win.setContentProtection(enabled);
     }
 });
 
-// Discord RPC Placeholder
 ipcMain.on('toggle-discord', (event, enabled) => {
     if (enabled) {
         console.log("[MAIN] Discord RPC Enabled");
@@ -201,7 +222,7 @@ ipcMain.handle('get-machine-id', async () => {
 // Listener for Baseboard Serial
 ipcMain.handle('get-baseboard', async () => {
     try {
-        // If you spoofed 'LastConfig' or similar in Registry, read that here.
+        // If spoofed 'LastConfig' or similar in Registry, read that here.
         // Otherwise, return a cached spoofed value.
         return spoofer.getBaseboard();
     } catch (e) { return "SERIAL-ERROR"; }
@@ -213,19 +234,16 @@ ipcMain.handle('get-gpuid', async () => {
 });
 
 
-/* News Terminal */
-
-// Inside main.js
+// News Terminal
 ipcMain.handle('get-news', async () => {
     return [
-        "> [v1.0.4] Added CS2 DLL & External support.",
+        "> [v1.1.1] Added CS2 DLL & External support.",
         "> [SECURITY] Spoofer kernel module updated.",
         "> [INFO] New terminal interface integrated."
-    ].join('\n'); // Join with a newline
+    ].join('\n');
 });
 
 // --- 4. APP LIFECYCLE ---
-
 app.disableHardwareAcceleration();
 
 app.on('window-all-closed', () => {
