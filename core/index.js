@@ -186,20 +186,24 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                     console.log(`[ADMIN] HWID cleared for ${license_key}`);
 
                     // 2. Find the SPECIFIC latest pending request
-                    const pendingRequests = await mongoose.connection.collection('requests')
+                    const pendingList = await mongoose.connection.collection('requests')
                         .find({ license_key: license_key.toUpperCase(), status: "PENDING" })
                         .sort({ date: -1 })
                         .limit(1)
                         .toArray();
 
                     // 3. Update by ID only if found
-                    if (pendingRequests.length > 0) {
-                        const requestId = pendingRequests[0]._id;
+                    if (pendingList && pendingList.length > 0) {
+                        const requestId = pendingList[0]._id;
+
+                        // --- ADDED MISSING AWAIT HERE ---
                         await mongoose.connection.collection('requests').updateOne(
                             { _id: requestId },
                             { $set: { status: "APPROVED" } }
                         );
                         console.log(`[ADMIN] Request ${requestId} set to APPROVED`);
+                    } else {
+                        console.log(`[ADMIN] No pending request found for ${license_key}`);
                     }
 
                     // 4. Return success so the Admin UI hides the Gold Box
