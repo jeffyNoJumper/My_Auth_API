@@ -180,40 +180,37 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
 
             case 'reset-hwid':
                 try {
-                    // 1. Clear the actual HWID lock on the user profile
+                    // 1. Clear the HWID lock on the user (Works correctly)
                     user.hwid = null;
                     await user.save();
-                    console.log(`[1/2] User HWID Cleared for: ${license_key}`);
+                    console.log(`[1/2] User HWID Cleared: ${license_key}`);
 
-                    // 2. Find the PENDING request (Using toArray() returns an array)
+                    // 2. Find the LATEST pending request
                     const latestRequest = await mongoose.connection.collection('requests')
                         .find({ license_key: license_key.toUpperCase(), status: "PENDING" })
                         .sort({ date: -1 })
                         .limit(1)
                         .toArray();
 
-                    // 3. Update the request status so the LOADER sees it
+                    // 3. TARGETING FIX: Must use latestRequest[0]
                     if (latestRequest && latestRequest.length > 0) {
-                        // MUST use [0] because toArray() always returns a list
-                        const targetId = latestRequest[0]._id;
+                        const targetId = latestRequest[0]._id; // <--- The crucial fix
 
-                        const result = await mongoose.connection.collection('requests').updateOne(
+                        const updateResult = await mongoose.connection.collection('requests').updateOne(
                             { _id: targetId },
                             { $set: { status: "APPROVED" } }
                         );
-
                         console.log(`[2/2] Request Status -> APPROVED (ID: ${targetId})`);
                     } else {
-                        console.log("[!] No pending request found in 'requests' collection to approve.");
+                        console.log("[!] No pending request found in DB to approve.");
                     }
 
-                    // 4. Send success back to Admin Panel to hide the Gold Box
+                    // Success sends response to Admin UI to hide the Gold Box
                     return safeJson({ success: true, message: "Approved" });
 
-                } catch (innerErr) {
-                    console.error("[CRASH] reset-hwid failed:", innerErr);
-                    // If it crashes here, the Admin Panel sees 'success: false' and won't hide the box
-                    return safeJson({ success: false, error: "Database Sync Failed" });
+                } catch (err) {
+                    console.error("[❌] CRASH in reset-hwid:", err);
+                    return safeJson({ success: false, error: "Database Update Failed" });
                 }
 
             case 'deny-hwid':
