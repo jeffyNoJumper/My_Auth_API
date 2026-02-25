@@ -31,7 +31,7 @@ window.onload = async () => {
 
     const overlay = document.getElementById('update-overlay');
 
-    const currentVersion = localStorage.getItem('installedVersion') || '1.1.0';
+    const currentVersion = localStorage.getItem('installedVersion') || '1.1.1';
 
     const updateNeeded = await checkForUpdateAndPrompt(currentVersion);
 
@@ -855,7 +855,7 @@ async function checkServer() {
 checkServer();
 
 async function checkForUpdateAndPrompt() {
-    const currentVersion = '1.0.8';
+    const currentVersion = '1.1.1';
     const overlay = document.getElementById('update-overlay');
     const status = document.getElementById('update-status');
     const btn = document.getElementById('update-btn');
@@ -867,7 +867,7 @@ async function checkForUpdateAndPrompt() {
         const line = document.createElement('div');
         line.style.marginBottom = '2px';
         line.style.color = isHeader ? 'var(--cyan)' : '#e0e0e0';
-        line.innerText = isHeader ? `> ${msg}` : `  ${msg}`; // Indent non-headers
+        line.innerText = isHeader ? `> ${msg}` : `  ${msg}`;
         terminal.appendChild(line);
         terminal.scrollTop = terminal.scrollHeight;
     };
