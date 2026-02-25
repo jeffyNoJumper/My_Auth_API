@@ -842,14 +842,19 @@ function setStatus(state) {
 }
 
 async function checkServer() {
+    const API_URL = "https://sk-auth-api.up.railway.app";
+
     try {
-        const res = await fetch("/api/health");
+        const res = await fetch(`${API_URL}/health`);
+
         if (res.ok) {
             setStatus("online");
+            console.log("System Sync: OK");
         } else {
             setStatus("offline");
         }
-    } catch {
+    } catch (err) {
+        console.error("Connection Failed:", err);
         setStatus("offline");
     }
 }
