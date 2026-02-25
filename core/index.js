@@ -76,22 +76,6 @@ app.post('/admin/create-key', verifyAdmin, async (req, res) => {
     }
 });
 
-// --- 4. HWID RESET ---
-app.post('/admin/reset-hwid', verifyAdmin, async (req, res) => {
-    try {
-        const { license_key } = req.body;
-        const user = await User.findOneAndUpdate(
-            { license_key: license_key.toUpperCase() },
-            { hwid: null },
-            { new: true }
-        );
-        if (!user) return res.status(404).json({ success: false, error: "Key not found" });
-        res.json({ success: true, message: "HWID cleared successfully." });
-    } catch (error) {
-        res.status(500).json({ success: false, error: "Internal Server Error" });
-    }
-});
-
 // --- ADMIN: UNIFIED MANAGEMENT (FULLY FIXED) ---
 app.post('/admin/:action', verifyAdmin, async (req, res) => {
     const safeJson = (obj) => res.json(obj);
