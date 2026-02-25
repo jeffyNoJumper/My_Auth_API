@@ -482,12 +482,29 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ license_key: key, admin_password: pass })
                 });
+
                 const data = await res.json();
+
                 if (data.success) {
-                    alert("Action Successful!");
-                    loadKey(); // Refresh info
-                } else { alert(data.error); }
-            } catch (err) { alert("Action Failed"); }
+                    const requestBox = document.getElementById('request-alert-box');
+                    const standardBtn = document.getElementById('standard-reset-btn');
+
+                    if (requestBox && (action === 'reset-hwid' || action === 'deny-hwid')) {
+                        requestBox.style.display = 'none';
+                        if (standardBtn) standardBtn.style.display = 'block';
+                    }
+
+                    console.log(`Action [${action}] successful for key: ${key}`);
+
+                    // Refresh all data labels to match new DB state
+                    await loadKey();
+                } else {
+                    alert("Error: " + data.error);
+                }
+            } catch (err) {
+                console.error("Action Error:", err);
+                alert("Action Failed: Check console for details");
+            }
         }
     </script>
 </body>
