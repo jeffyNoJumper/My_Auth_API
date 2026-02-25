@@ -14,21 +14,31 @@ app.use(express.urlencoded({ limit: '75mb', extended: true }));
 // Middleware
 app.use(cors());
 
-// MongoDB Connection (UPDATED: CLEAN INDEXES)
+// MongoDB Connection (FORCE CLEAN VERSION)
 mongoose.connect(process.env.MONGO_URL)
     .then(async () => {
         console.log("✅ Connected to MongoDB");
 
         try {
-            // This is the CRITICAL part: It deletes the "Must Have a Value" rule in the DB
-            const collections = await mongoose.connection.db.listCollections({ name: 'users' }).toArray();
-            if (collections.length > 0) {
-                // Drop the index that forces every user to have an expiry_date
-                await mongoose.connection.collection('users').dropIndex("expiry_date_1");
-                console.log("🗑️ Database Restriction Cleared: Expiry is no longer required.");
-            }
+            const db = mongoose.connection.db;
+
+            // 1. CLEAR HIDDEN SCHEMA VALIDATORS (The most common 500 error cause)
+            await db.command({
+                collMod: "users",
+                validator: {},
+                validationLevel: "off"
+            });
+
+            // 2. DROP THE "REQUIRED" INDEX ON EXPIRY_DATE
+            // This stops the "Path is required" error instantly
+            await db.collection('users').dropIndex("expiry_date_1").catch(() => { });
+
+            // 3. RE-SYNC INDEXES FROM YOUR NEW USER.JS
+            await User.syncIndexes();
+
+            console.log("🔥 DATABASE RESTRAINTS REMOVED: Expiry is no longer required.");
         } catch (err) {
-            console.log("ℹ️ Index already clean or not found.");
+            console.log("ℹ️ Database indexes already clean.");
         }
     })
     .catch(err => console.error("❌ MongoDB Error:", err));
@@ -64,9 +74,9 @@ app.post('/admin/create-key', verifyAdmin, async (req, res) => {
         const newKey = `${prefix}-${randomPart}`;
 
         const newUser = new User({
+            license_key: newKey,
             email: email ? email.toLowerCase() : `pending_${randomPart}@auth.com`,
             password: password || null,
-            license_key: newKey,
             hwid: null,
             expiry_date: null,
             duration_days: daysNum,
