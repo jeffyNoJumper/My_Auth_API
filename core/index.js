@@ -177,21 +177,24 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                     pending_request: pendingRequest
                 });
 
-            case 'deny-hwid':
-                await mongoose.model('Request').findOneAndUpdate(
-                    { license_key: license_key.toUpperCase(), status: "PENDING" },
-                    { status: "DENIED" }
-                );
-                return safeJson({ success: true, message: "Request Denied." });
-
+            // Inside your app.post('/admin/:action'...)
             case 'reset-hwid':
                 user.hwid = null;
                 await user.save();
-                await mongoose.model('Request').findOneAndUpdate(
+                // Update request to APPROVED
+                await mongoose.connection.collection('requests').updateOne(
                     { license_key: license_key.toUpperCase(), status: "PENDING" },
-                    { status: "APPROVED" }
+                    { $set: { status: "APPROVED" } }
                 );
-                return safeJson({ success: true, message: "HWID Reset & Approved." });
+                return safeJson({ success: true, message: "Approved" });
+
+            case 'deny-hwid':
+                // Update request to DENIED
+                await mongoose.connection.collection('requests').updateOne(
+                    { license_key: license_key.toUpperCase(), status: "PENDING" },
+                    { $set: { status: "DENIED" } }
+                );
+                return safeJson({ success: true, message: "Denied" });
 
             case 'pause':
                 user.is_paused = true;
@@ -287,22 +290,31 @@ app.post('/login', async (req, res) => {
     }
 });
 
+// --- LOADER STATUS CHECK ---
 app.get('/check-reset-status', async (req, res) => {
     try {
         const { key } = req.query;
         if (!key) return res.json({ status: "NONE" });
 
-        // Look for the latest request for this specific key
-        const request = await mongoose.model('Request').findOne({
-            license_key: key.toUpperCase()
-        }).sort({ date: -1 });
+        // Find the LATEST entry in the 'requests' collection for this key
+        const request = await mongoose.connection.collection('requests')
+            .find({ license_key: key.toUpperCase() })
+            .sort({ date: -1 })
+            .limit(1)
+            .toArray();
 
-        // Returns "PENDING", "APPROVED", or "DENIED"
-        res.json({ status: request ? request.status : "NONE" });
+        if (request.length === 0) {
+            return res.json({ status: "NONE" });
+        }
+
+        // Return only the status (PENDING, APPROVED, or DENIED)
+        res.json({ status: request[0].status });
     } catch (err) {
+        console.error("Polling Error:", err);
         res.status(500).json({ status: "ERROR" });
     }
 });
+
 
 app.post('/request-hwid-reset', async (req, res) => {
     try {
