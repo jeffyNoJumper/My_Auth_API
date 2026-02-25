@@ -27,6 +27,8 @@ window.onload = async () => {
         }
     });
 
+    checkServer();
+
     window.dispatchEvent(new Event('resize'));
 
     const overlay = document.getElementById('update-overlay');
@@ -807,7 +809,7 @@ async function sendAdminRequest() {
                         addLog("HWID RESET SUCCESSFUL. RE-LOGGING...");
                         clearInterval(pollInterval);
 
-                        // Auto-reload to let them log in after 3 seconds
+                        // Auto-reload to let users log in after 3 seconds
                         setTimeout(() => { location.reload(); }, 3000);
                     }
                     else if (statusData.status === "DENIED") {
@@ -851,8 +853,6 @@ async function checkServer() {
         setStatus("offline");
     }
 }
-
-checkServer();
 
 async function checkForUpdateAndPrompt() {
     const currentVersion = '1.1.1';
