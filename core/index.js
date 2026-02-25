@@ -366,6 +366,13 @@ app.post('/request-hwid-reset', async (req, res) => {
     }
 });
 
+app.get('/health', (req, res) => {
+    res.json({
+        status: "online",
+        database: mongoose.connection.readyState === 1 ? "connected" : "disconnected"
+    });
+});
+
 app.get('/', (req, res) => res.send('API Online & Connected.'));
 
 const PORT = process.env.PORT || 8080;
