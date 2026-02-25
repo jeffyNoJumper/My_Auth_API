@@ -180,38 +180,33 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
 
             case 'reset-hwid':
                 try {
-                    // 1. Clear HWID on User (This part works)
+                    // 1. Clear the HWID on the user profile first
                     user.hwid = null;
                     await user.save();
                     console.log(`[ADMIN] HWID cleared for ${license_key}`);
 
-                    // 2. Find the SPECIFIC latest pending request
-                    const pendingList = await mongoose.connection.collection('requests')
+                    // 2. Find the PENDING request to approve
+                    const latestApprove = await mongoose.connection.collection('requests')
                         .find({ license_key: license_key.toUpperCase(), status: "PENDING" })
                         .sort({ date: -1 })
                         .limit(1)
                         .toArray();
 
-                    // 3. Update by ID only if found
-                    if (pendingList && pendingList.length > 0) {
-                        const requestId = pendingList[0]._id;
-
-                        // --- ADDED MISSING AWAIT HERE ---
+                    if (latestApprove && latestApprove.length > 0) {
+                        // 3. Update the request status so the LOADER terminal updates
                         await mongoose.connection.collection('requests').updateOne(
-                            { _id: requestId },
+                            { _id: latestApprove[0]._id },
                             { $set: { status: "APPROVED" } }
                         );
-                        console.log(`[ADMIN] Request ${requestId} set to APPROVED`);
-                    } else {
-                        console.log(`[ADMIN] No pending request found for ${license_key}`);
+                        console.log(`[ADMIN] Request status set to APPROVED for ${license_key}`);
                     }
 
-                    // 4. Return success so the Admin UI hides the Gold Box
-                    return safeJson({ success: true, message: "Approved" });
+                    // 4. Return success to the Admin Panel
+                    return safeJson({ success: true, message: "HWID Reset & Approved" });
 
                 } catch (err) {
-                    console.error("[ADMIN] Reset Error:", err);
-                    return safeJson({ success: false, error: "Sync failed" });
+                    console.error("[ADMIN] Reset-HWID Error:", err);
+                    return safeJson({ success: false, error: "Database update failed" });
                 }
 
             case 'deny-hwid':
