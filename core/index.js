@@ -175,26 +175,63 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                     expiry: user.expiry_date,
                     games: user.games || [],
                     profile_pic: user.profile_pic || "",
-                    pending_request: pendingRequest // If this is null, the gold box hides
+                    pending_request: pendingRequest
                 });
 
-            // Inside your app.post('/admin/:action'...)
             case 'reset-hwid':
-                user.hwid = null;
-                await user.save();
-                // Update request to APPROVED
-                await mongoose.connection.collection('requests').updateOne(
-                    { license_key: license_key.toUpperCase(), status: "PENDING" },
-                    { $set: { status: "APPROVED" } }
-                );
-                return safeJson({ success: true, message: "Approved" });
+                try {
+                    // 1. Clear the actual HWID lock on the user profile
+                    user.hwid = null;
+                    await user.save();
+                    console.log(`[1/2] User HWID Cleared for: ${license_key}`);
+
+                    // 2. Find the PENDING request (Using toArray() returns an array)
+                    const latestRequest = await mongoose.connection.collection('requests')
+                        .find({ license_key: license_key.toUpperCase(), status: "PENDING" })
+                        .sort({ date: -1 })
+                        .limit(1)
+                        .toArray();
+
+                    // 3. Update the request status so the LOADER sees it
+                    if (latestRequest && latestRequest.length > 0) {
+                        // MUST use [0] because toArray() always returns a list
+                        const targetId = latestRequest[0]._id;
+
+                        const result = await mongoose.connection.collection('requests').updateOne(
+                            { _id: targetId },
+                            { $set: { status: "APPROVED" } }
+                        );
+
+                        console.log(`[2/2] Request Status -> APPROVED (ID: ${targetId})`);
+                    } else {
+                        console.log("[!] No pending request found in 'requests' collection to approve.");
+                    }
+
+                    // 4. Send success back to Admin Panel to hide the Gold Box
+                    return safeJson({ success: true, message: "Approved" });
+
+                } catch (innerErr) {
+                    console.error("[CRASH] reset-hwid failed:", innerErr);
+                    // If it crashes here, the Admin Panel sees 'success: false' and won't hide the box
+                    return safeJson({ success: false, error: "Database Sync Failed" });
+                }
 
             case 'deny-hwid':
-                // Update request to DENIED
-                await mongoose.connection.collection('requests').updateOne(
-                    { license_key: license_key.toUpperCase(), status: "PENDING" },
-                    { $set: { status: "DENIED" } }
-                );
+                // 1. Find the LATEST pending request
+                const latestDeny = await mongoose.connection.collection('requests')
+                    .find({ license_key: license_key.toUpperCase(), status: "PENDING" })
+                    .sort({ date: -1 })
+                    .limit(1)
+                    .toArray();
+
+                if (latestDeny.length > 0) {
+                    // 2. Update it to DENIED
+                    await mongoose.connection.collection('requests').updateOne(
+                        { _id: latestDeny[0]._id },
+                        { $set: { status: "DENIED" } }
+                    );
+                    console.log(`[❌] ADMIN PANEL: Denied Request for ${license_key}`);
+                }
                 return safeJson({ success: true, message: "Denied" });
 
             case 'pause':
