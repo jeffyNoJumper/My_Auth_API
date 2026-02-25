@@ -159,11 +159,12 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
             case 'get-key':
                 let pendingRequest = null;
                 try {
-                    pendingRequest = await mongoose.model('Request').findOne({
+                    // Using raw connection to match the 'reset-hwid' collection exactly
+                    pendingRequest = await mongoose.connection.collection('requests').findOne({
                         license_key: license_key.toUpperCase(),
                         status: "PENDING"
                     });
-                } catch (e) { /* ignore */ }
+                } catch (e) { console.log("Request fetch failed"); }
 
                 return safeJson({
                     success: true,
@@ -174,7 +175,7 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                     expiry: user.expiry_date,
                     games: user.games || [],
                     profile_pic: user.profile_pic || "",
-                    pending_request: pendingRequest
+                    pending_request: pendingRequest // If this is null, the gold box hides
                 });
 
             // Inside your app.post('/admin/:action'...)
