@@ -101,10 +101,11 @@
 
             <div class="nav-right user-box">
                 <div class="user-meta">
+                    <!-- Status dot first, then the expiry -->
+                    <span id="status-dot" class="status-dot dot-offline"></span>
                     <span id="user-expiry">EXP: --</span>
-                    <span class="status-dot"></span>
                 </div>
-                <img src="./imgs/default-profile.png" id="user-pic" class="glow-border">
+                <img src="./imgs/default-profile.png" id="user-pic" class="glow-border" onclick="document.getElementById('profile-upload').click();">
                 <input type="file" id="profile-upload" style="display: none;" accept="image/*">
             </div>
         </nav>
