@@ -356,7 +356,7 @@
             select.innerHTML = '<option value="">Connecting to API...</option>';
 
             try {
-                const res = await fetch(`${API}/admin/get-keys`, {
+                const res = await fetch(`${API}/admin/load-keys`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ admin_password: pass })
