@@ -469,22 +469,22 @@
             }
         }
 
-        // 4. GENERAL ACTIONS (BAN, PAUSE, RESET)
         async function modifyKey(action) {
-            // 1. Better key detection
-            const manualKey = document.getElementById('single-key-input').value.trim();
-            const dropdownKey = document.getElementById('manage-key-input').value;
-            const key = manualKey || dropdownKey;
-
+            // 1. Force find the key and password at the moment of click
+            const inputKey = document.getElementById('single-key-input').value.trim();
+            const dropKey = document.getElementById('manage-key-input').value;
+            const key = inputKey || dropKey;
             const pass = document.getElementById('admin-pass').value;
 
-            console.log(`[DEBUG] Attempting ${action} for Key: ${key}`);
+            console.log(`[DEBUG] Button Clicked: ${action} | Key: ${key}`);
 
-            if (!key) return alert("Error: No User/Key Selected!");
-            if (!pass) return alert("Error: Admin Password Required!");
+            if (!key || !pass) {
+                return alert("Error: Select a user and enter Admin Password first!");
+            }
 
             try {
-                const res = await fetch(`${API}/admin/${action}`, {
+                // 2. Use the DIRECT URL to ensure the request goes out
+                const res = await fetch(`https://sk-auth-api.up.railway.app{action}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -494,9 +494,10 @@
                 });
 
                 const data = await res.json();
+                console.log("[DEBUG] Server Response:", data);
 
                 if (data.success) {
-                    // Instant UI Cleanup
+                    // 3. Force hide the Gold Box immediately
                     const requestBox = document.getElementById('request-alert-box');
                     const standardBtn = document.getElementById('standard-reset-btn');
 
@@ -505,16 +506,16 @@
                         if (standardBtn) standardBtn.style.display = 'block';
                     }
 
-                    console.log(`[SUCCESS] Action ${action} completed.`);
+                    console.log(`[SUCCESS] ${action.toUpperCase()} completed.`);
 
-                    // Re-load the user info to confirm HWID is cleared
+                    // Refresh the user info labels
                     await loadKey();
                 } else {
                     alert("API Error: " + data.error);
                 }
             } catch (err) {
                 console.error("Fetch Error:", err);
-                alert("Connection Failed: Check if API is online.");
+                alert("Connection Failed. Check Console (F12).");
             }
         }
     </script>
