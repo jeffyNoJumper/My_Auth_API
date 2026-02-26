@@ -14,7 +14,12 @@ app.use(express.urlencoded({ limit: '75mb', extended: true }));
 // Middleware
 app.use(cors());
 
-// MongoDB Connection (FORCE CLEAN VERSION)
+// Add this helper to force-clear the model cache
+if (mongoose.models.User) {
+    delete mongoose.models.User;
+}
+const User = require('./models/User'); // Re-import after clearing cache
+
 mongoose.connect(process.env.MONGO_URL)
     .then(async () => {
         console.log("✅ Connected to MongoDB");
@@ -22,26 +27,25 @@ mongoose.connect(process.env.MONGO_URL)
         try {
             const db = mongoose.connection.db;
 
-            // 1. CLEAR HIDDEN SCHEMA VALIDATORS (The most common 500 error cause)
+            // 1. COMPLETELY WIPE SERVER-SIDE VALIDATION
+            // This stops MongoDB from saying "Path is required" at the database level
             await db.command({
                 collMod: "users",
                 validator: {},
                 validationLevel: "off"
             });
 
-            // 2. DROP THE "REQUIRED" INDEX ON EXPIRY_DATE
-            // This stops the "Path is required" error instantly
-            await db.collection('users').dropIndex("expiry_date_1").catch(() => { });
+            // 2. DROP THE INDEX MANUALLY (Try both common names)
+            await mongoose.connection.collection('users').dropIndex("expiry_date_1").catch(() => { });
 
-            // 3. RE-SYNC INDEXES FROM YOUR NEW USER.JS
+            // 3. FORCE INDEX SYNC
             await User.syncIndexes();
 
-            console.log("🔥 DATABASE RESTRAINTS REMOVED: Expiry is no longer required.");
+            console.log("🔥 DATABASE RESTRAINTS NUKE SUCCESS");
         } catch (err) {
-            console.log("ℹ️ Database indexes already clean.");
+            console.log("ℹ️ Database is clean.");
         }
     })
-    .catch(err => console.error("❌ MongoDB Error:", err));
 
 const Request = mongoose.models.Request || mongoose.model('Request', new mongoose.Schema({
     hwid: String,
@@ -67,22 +71,23 @@ app.post('/admin/create-key', verifyAdmin, async (req, res) => {
         const { days, games, email, password } = req.body;
         const daysNum = parseFloat(days);
 
-        const gamePrefixMap = { "FiveM": "FIVM", "GTAV": "GTAV", "Warzone": "WARZ", "CS2": "CS2X" };
+        const gamePrefixMap = { "FiveM": "FIVM", "GTAV": "GTAV", "Warzone": "WARZ", "Counter-Strike 2": "CS2X", "ALL-ACCESS": "ALLX" };
         const firstGame = (games && games.length > 0) ? games[0] : "FiveM";
         const prefix = gamePrefixMap[firstGame] || "GENR";
         const randomPart = crypto.randomBytes(6).toString('hex').toUpperCase().match(/.{4}/g).join('-');
         const newKey = `${prefix}-${randomPart}`;
 
-        const newUser = new User({
+        // Create the object WITHOUT the expiry_date field at all
+        const userData = {
             license_key: newKey,
+            duration_days: daysNum,
+            games: games || ["FiveM"],
             email: email ? email.toLowerCase() : `pending_${randomPart}@auth.com`,
             password: password || null,
-            hwid: null,
-            expiry_date: null,
-            duration_days: daysNum,
-            games: games || ["FiveM"]
-        });
+            hwid: null
+        };
 
+        const newUser = new User(userData);
         await newUser.save();
 
         res.json({
@@ -97,19 +102,17 @@ app.post('/admin/create-key', verifyAdmin, async (req, res) => {
     }
 });
 
-// --- ADMIN: UNIFIED MANAGEMENT (FULLY FIXED) ---
+// --- ADMIN: UNIFIED MANAGEMENT ---
 app.post('/admin/:action', verifyAdmin, async (req, res) => {
     const safeJson = (obj) => res.json(obj);
 
     try {
         const { license_key, email, password, profile_pic } = req.body;
 
-        // 1. Get the raw action from the URL and clean it
         const rawAction = req.params.action ? req.params.action.toLowerCase().trim() : "";
         console.log(`[ADMIN] Incoming Action: ${rawAction}`);
 
-        // 2. HANDLE LOAD-KEYS FIRST (Check this BEFORE stripping '-key')
-        // This prevents "load-keys" from becoming "load-s"
+        // HANDLE LOAD-KEYS FIRST
         if (rawAction === 'load-keys') {
             console.log("[ADMIN] Success: Running load-keys logic...");
             try {
@@ -131,10 +134,8 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
             }
         }
 
-        // 3. For all other actions (ban-key, pause-key, etc), strip the suffix
         const cleanAction = rawAction.replace('-key', '').trim();
 
-        // 4. FIND USER (Only for actions that need a specific key)
         let user = null;
         if (license_key) {
             user = await User.findOne({ license_key: license_key.toUpperCase().trim() });
@@ -147,7 +148,6 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
             return safeJson({ success: false, error: "Key not found" });
         }
 
-        // 6. REMAINING ACTIONS (Using cleanAction)
         switch (cleanAction) {
             case 'update':
                 if (email) user.email = email.toLowerCase();
@@ -185,11 +185,10 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
 
             case 'reset-hwid':
                 try {
-                    // 1. Clear the HWID lock (Working)
+
                     user.hwid = null;
                     await user.save();
-
-                    // 2. Find and Update the status (THE PART THAT IS CURRENTLY BEING SKIPPED)
+=
                     const result = await mongoose.connection.collection('requests').updateOne(
                         { license_key: license_key.toUpperCase(), status: "PENDING" },
                         { $set: { status: "APPROVED" } },
@@ -197,8 +196,6 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                     );
 
                     console.log(`[ADMIN] HWID Reset & Approved for ${license_key}`);
-
-                    // 3. Return this SPECIFIC message so we know it worked
                     return res.json({ success: true, message: "Approved" });
 
                 } catch (err) {
@@ -207,7 +204,7 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                 }
 
             case 'deny-hwid':
-                // 1. Find the LATEST pending request
+                // Find the LATEST pending request
                 const latestDeny = await mongoose.connection.collection('requests')
                     .find({ license_key: license_key.toUpperCase(), status: "PENDING" })
                     .sort({ date: -1 })
@@ -215,7 +212,7 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                     .toArray();
 
                 if (latestDeny.length > 0) {
-                    // 2. Update it to DENIED
+                    // Update it to DENIED
                     await mongoose.connection.collection('requests').updateOne(
                         { _id: latestDeny[0]._id },
                         { $set: { status: "DENIED" } }
@@ -261,7 +258,7 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
     }
 });
 
-// --- 6. USER LOGIN ---
+// --- USER LOGIN ---
 app.post('/login', async (req, res) => {
     try {
         const { email, password, license_key, hwid } = req.body;
@@ -389,14 +386,39 @@ app.post('/request-hwid-reset', async (req, res) => {
 
         // --- 2. SEND TO DISCORD ---
         const DISCORD_WEBHOOK = "https://discord.com/api/webhooks/1375161068317573253/mK3ucW0iJcN9nj96LJ1L_0bSeCtx-dQMedS9kxvdz49Qhpsd1GCfWb3fRydp_b1Z1OT_";
+
         if (DISCORD_WEBHOOK.includes("discord.com")) {
-            await fetch(DISCORD_WEBHOOK, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    content: `📢 **HWID RESET REQUEST**\n**Key:** \`${upperKey}\`\n**New HWID:** \`${hwid}\``
-                })
-            });
+            try {
+                await fetch(DISCORD_WEBHOOK, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        username: "SK AIO Auth System",
+                        content: "<@&1370451599427764234>", // This triggers the @Admin ping
+                        embeds: [{
+                            title: "🚨 HWID Reset Request",
+                            description: "A user is requesting a manual hardware ID reset.",
+                            color: 0xFF0044, // Red color for urgency
+                            fields: [
+                                {
+                                    name: "🔑 License Key",
+                                    value: `\`${upperKey}\``,
+                                    inline: true
+                                },
+                                {
+                                    name: "🖥️ New HWID",
+                                    value: `\`${hwid}\``,
+                                    inline: true
+                                }
+                            ],
+                            footer: { text: "Action Required • Security" },
+                            timestamp: new Date().toISOString()
+                        }]
+                    })
+                });
+            } catch (webhookError) {
+                console.error("[⚠️] Failed to send Discord notification:", webhookError);
+            }
         }
 
         return res.json({ success: true, message: "Admin notified." });
@@ -408,6 +430,7 @@ app.post('/request-hwid-reset', async (req, res) => {
         }
     }
 });
+
 
 app.get('/health', (req, res) => {
     res.json({
