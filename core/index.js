@@ -5,10 +5,8 @@ const crypto = require('crypto');
 const cors = require('cors');
 
 // --- 1. HANDLE MODELS SAFELY ---
-// Clear cache to prevent "Overlap" errors
 if (mongoose.models.User) delete mongoose.models.User;
 
-// Ensure this path matches where your User.js file actually is!
 const User = require('./user');
 
 const app = express();
@@ -26,17 +24,14 @@ mongoose.connect(process.env.MONGO_URL)
         try {
             const db = mongoose.connection.db;
 
-            // WIPE SERVER-SIDE VALIDATION (The "Path is Required" fix)
             await db.command({
                 collMod: "users",
                 validator: {},
                 validationLevel: "off"
             });
 
-            // DROP THE OLD INDEX
             await mongoose.connection.collection('users').dropIndex("expiry_date_1").catch(() => { });
 
-            // SYNC NEW SCHEMA
             await User.syncIndexes();
 
             console.log("🔥 DATABASE RESTRAINTS NUKE SUCCESS");
@@ -56,7 +51,6 @@ const Request = mongoose.models.Request || mongoose.model('Request', new mongoos
 // --- 1. ADMIN MIDDLEWARE ---
 function verifyAdmin(req, res, next) {
     const { admin_password } = req.body;
-    // Uses ADMIN_SECRET from Railway env
     if (!admin_password || admin_password !== process.env.ADMIN_SECRET) {
         return res.status(401).json({ success: false, error: "Unauthorized" });
     }
@@ -69,20 +63,31 @@ app.post('/admin/create-key', verifyAdmin, async (req, res) => {
         const { days, games, email, password } = req.body;
         const daysNum = parseFloat(days);
 
-        const gamePrefixMap = { "FiveM": "FIVM", "GTAV": "GTAV", "Warzone": "WARZ", "Counter-Strike 2": "CS2X", "ALL-ACCESS": "ALLX" };
-        const firstGame = (games && games.length > 0) ? games[0] : "FiveM";
-        const prefix = gamePrefixMap[firstGame] || "GENR";
+        const gamePrefixMap = {
+            "CS2": "CS2X",
+            "FiveM": "FIVM",
+            "GTAV": "GTAV",
+            "Warzone": "WARZ",
+            "All-Access": "ALL"
+        };
+
+        const { games } = req.body;
+
+        const firstGame = Array.isArray(games) ? games[0] : games;
+
+        const prefix = gamePrefixMap[firstGame] || "GENR"; 
+
         const randomPart = crypto.randomBytes(6).toString('hex').toUpperCase().match(/.{4}/g).join('-');
         const newKey = `${prefix}-${randomPart}`;
 
-        // Create the object WITHOUT the expiry_date field at all
         const userData = {
             license_key: newKey,
             duration_days: daysNum,
-            games: games || ["FiveM"],
+            games: Array.isArray(games) ? games : [games],
             email: email ? email.toLowerCase() : `pending_${randomPart}@auth.com`,
             password: password || null,
-            hwid: null
+            hwid: null,
+            expiry_date: null
         };
 
         const newUser = new User(userData);
@@ -91,11 +96,11 @@ app.post('/admin/create-key', verifyAdmin, async (req, res) => {
         res.json({
             success: true,
             key: newKey,
-            expires: "Pending Activation",
+            expiry: null,"
             games: newUser.games
         });
     } catch (err) {
-        if (err.code === 11000) return res.status(400).json({ success: false, error: "Email already exists" });
+        console.error("Create Key Error:", err);
         res.status(500).json({ success: false, error: err.message });
     }
 });
