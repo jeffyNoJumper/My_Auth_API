@@ -305,7 +305,6 @@
             const userPass = document.getElementById('new-user-pass').value.trim();
 
             const days = parseFloat(document.getElementById('key-days').value);
-            const days = parseFloat(daysValue) || 30;
             const game = document.getElementById('key-game').value;
             const keyText = document.getElementById('key-text');
 
@@ -415,10 +414,17 @@
                     document.getElementById('manage-status').innerText = data.is_banned ? "BANNED" : (data.is_paused ? "PAUSED" : "ACTIVE");
                     document.getElementById('manage-hwid').innerText = data.hwid || "NOT CAPTURED";
 
-                    if (data.expiry) {
-                        startCountdown(data.expiry);
+                    if (!data.expiry || data.expiry === null) {
+                        // 1. Stop any old timers from previous keys
+                        if (window.countdownInterval) clearInterval(window.countdownInterval);
+
+                        // 2. Set the text correctly
+                        document.getElementById('info-timer').innerText = "PENDING ACTIVATION";
+                        document.getElementById('info-timer').style.color = "var(--gold)";
+                        document.getElementById('manage-status').innerText = "INACTIVE (NEW)";
                     } else {
-                        document.getElementById('info-timer').innerText = "LIFETIME";
+                        // 3. Only start the countdown if a real date exists
+                        startCountdown(data.expiry);
                     }
 
                     if (document.getElementById('manage-expiry')) {
