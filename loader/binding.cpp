@@ -60,17 +60,16 @@ std::string exec(const char* cmd) {
 
 bool SetMachineID(const std::string& newGuid) {
     HKEY hKey;
-
+    // CRITICAL: KEY_WOW64_64KEY is required to hit the REAL registry on 64-bit Windows
     if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SOFTWARE\\Microsoft\\Cryptography", 0, KEY_ALL_ACCESS | KEY_WOW64_64KEY, &hKey) == ERROR_SUCCESS) {
 
+        // Ensure the string is null-terminated (+1)
         LSTATUS status = RegSetValueExA(hKey, "MachineGuid", 0, REG_SZ, (const BYTE*)newGuid.c_str(), (DWORD)(newGuid.size() + 1));
 
-        if (status == ERROR_SUCCESS) {
-            RegFlushKey(hKey);
-            RegCloseKey(hKey);
-            return true;
-        }
+        RegFlushKey(hKey); // FORCE Windows to commit the change to disk
         RegCloseKey(hKey);
+
+        return (status == ERROR_SUCCESS);
     }
     return false;
 }
