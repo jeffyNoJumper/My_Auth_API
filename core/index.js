@@ -1,447 +1,253 @@
-require('dotenv').config();
-const express = require('express');
-const mongoose = require('mongoose');
-const User = require('./user');
-const crypto = require('crypto');
-const cors = require('cors');
+const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
+const { autoUpdater } = require('electron-updater');
+const path = require('path');
+const { execSync } = require('child_process');
+const fs = require('fs');
+const os = require('os');
 
+let mainWindow
+let spoofer
+function startSecurityMonitor() {
+    const blacklist = [
+        "x64dbg", "wireshark", "processhacker", "httpdebugger",
+        "fiddler", "dnspy", "vboxservice", "ghidra",
+        "ida64", "idaw", "ollydng", "cheatengine"
+    ];
 
-const app = express();
+    setInterval(() => {
+        if (process.execArgv.some(arg => arg.includes('--inspect') || arg.includes('--debug'))) {
+            triggerReaction("Debugger Attachment Detected");
+        }
 
-app.use(express.json({ limit: '75mb' }));
-app.use(express.urlencoded({ limit: '75mb', extended: true }));
+        exec('tasklist', (err, stdout) => {
+            if (err) return;
+            const activeProcess = stdout.toLowerCase();
 
-// Middleware
-app.use(cors());
-
-// Add this helper to force-clear the model cache
-if (mongoose.models.User) {
-    delete mongoose.models.User;
-}
-const User = require('./models/User'); // Re-import after clearing cache
-
-mongoose.connect(process.env.MONGO_URL)
-    .then(async () => {
-        console.log("✅ Connected to MongoDB");
-
-        try {
-            const db = mongoose.connection.db;
-
-            // 1. COMPLETELY WIPE SERVER-SIDE VALIDATION
-            // This stops MongoDB from saying "Path is required" at the database level
-            await db.command({
-                collMod: "users",
-                validator: {},
-                validationLevel: "off"
+            blacklist.forEach(tool => {
+                if (activeProcess.includes(tool.toLowerCase())) {
+                    triggerReaction(`Unauthorized Tool: ${tool}`);
+                }
             });
-
-            // 2. DROP THE INDEX MANUALLY (Try both common names)
-            await mongoose.connection.collection('users').dropIndex("expiry_date_1").catch(() => { });
-
-            // 3. FORCE INDEX SYNC
-            await User.syncIndexes();
-
-            console.log("🔥 DATABASE RESTRAINTS NUKE SUCCESS");
-        } catch (err) {
-            console.log("ℹ️ Database is clean.");
-        }
-    })
-
-const Request = mongoose.models.Request || mongoose.model('Request', new mongoose.Schema({
-    hwid: String,
-    license_key: String,
-    type: String,
-    status: { type: String, default: "PENDING" },
-    date: { type: Date, default: Date.now }
-}));
-
-// --- 1. ADMIN MIDDLEWARE ---
-function verifyAdmin(req, res, next) {
-    const { admin_password } = req.body;
-    // Uses ADMIN_SECRET from Railway env
-    if (!admin_password || admin_password !== process.env.ADMIN_SECRET) {
-        return res.status(401).json({ success: false, error: "Unauthorized" });
-    }
-    next();
+        });
+    }, 2000);
 }
 
-// --- 2. CREATE KEY ---
-app.post('/admin/create-key', verifyAdmin, async (req, res) => {
-    try {
-        const { days, games, email, password } = req.body;
-        const daysNum = parseFloat(days);
+try {
+    spoofer = require('./build/Release/spoofer.node');
+    console.log("SUCCESS: C++ Spoofer Addon loaded.");
+} catch (e) {
+    console.error("CRITICAL: Failed to load C++ Spoofer Addon.", e);
+    spoofer = {
+        getMachineID: () => "MODULE_LOAD_FAIL",
+        getBaseboard: () => "MODULE_LOAD_FAIL",
+        getGPUID: () => "MODULE_LOAD_FAIL",
+        runSpoofer: (cb) => cb(null, { disk: false, guid: false })
+    };
+}
 
-        const gamePrefixMap = { "FiveM": "FIVM", "GTAV": "GTAV", "Warzone": "WARZ", "Counter-Strike 2": "CS2X", "ALL-ACCESS": "ALLX" };
-        const firstGame = (games && games.length > 0) ? games[0] : "FiveM";
-        const prefix = gamePrefixMap[firstGame] || "GENR";
-        const randomPart = crypto.randomBytes(6).toString('hex').toUpperCase().match(/.{4}/g).join('-');
-        const newKey = `${prefix}-${randomPart}`;
+app.setAppUserModelId("com.sk.allinone");
 
-        // Create the object WITHOUT the expiry_date field at all
-        const userData = {
-            license_key: newKey,
-            duration_days: daysNum,
-            games: games || ["FiveM"],
-            email: email ? email.toLowerCase() : `pending_${randomPart}@auth.com`,
-            password: password || null,
-            hwid: null
-        };
+// --- 1. WINDOW SETUP ---
+function createWindow() {
+    mainWindow = new BrowserWindow({
+        width: 820,
+        height: 720,
+        frame: false,
+        resizable: false,
+        icon: path.join(__dirname, 'imgs/SK.ico'),
+        backgroundColor: '#050505',
+        webPreferences: {
+            preload: path.join(__dirname, 'preload.js'),
+            backgroundThrottling: true,
+            contextIsolation: true,
+            nodeIntegration: false,
+            sandbox: false
+        }
+    });
 
-        const newUser = new User(userData);
-        await newUser.save();
+    mainWindow.loadFile('index.html');
 
-        res.json({
-            success: true,
-            key: newKey,
-            expires: "Pending Activation",
-            games: newUser.games
-        });
-    } catch (err) {
-        if (err.code === 11000) return res.status(400).json({ success: false, error: "Email already exists" });
-        res.status(500).json({ success: false, error: err.message });
-    }
+    mainWindow.once('ready-to-show', () => {
+        autoUpdater.checkForUpdatesAndNotify();
+    });
+}
+
+// --- IPC HANDLERS ---
+ipcMain.on('window-close', () => {
+    app.quit();
 });
 
-// --- ADMIN: UNIFIED MANAGEMENT ---
-app.post('/admin/:action', verifyAdmin, async (req, res) => {
-    const safeJson = (obj) => res.json(obj);
-
-    try {
-        const { license_key, email, password, profile_pic } = req.body;
-
-        const rawAction = req.params.action ? req.params.action.toLowerCase().trim() : "";
-        console.log(`[ADMIN] Incoming Action: ${rawAction}`);
-
-        // HANDLE LOAD-KEYS FIRST
-        if (rawAction === 'load-keys') {
-            console.log("[ADMIN] Success: Running load-keys logic...");
-            try {
-                const keys = await User.find({}, 'license_key email expiry_date is_banned is_paused games').lean();
-                return safeJson({
-                    success: true,
-                    keys: keys.map(k => ({
-                        license_key: k.license_key || "N/A",
-                        email: k.email || "No Email",
-                        expiry: k.expiry_date,
-                        is_banned: k.is_banned || false,
-                        is_paused: k.is_paused || false,
-                        games: k.games || []
-                    }))
-                });
-            } catch (err) {
-                console.error("[ADMIN] DB Error:", err);
-                return safeJson({ success: false, error: "Failed to load keys from database" });
-            }
-        }
-
-        const cleanAction = rawAction.replace('-key', '').trim();
-
-        let user = null;
-        if (license_key) {
-            user = await User.findOne({ license_key: license_key.toUpperCase().trim() });
-        }
-
-        // 5. VALIDATE USER EXISTENCE
-        // We only return "Key not found" if it's NOT a delete action
-        if (!user && cleanAction !== 'delete') {
-            console.log(`[ADMIN] Error: Key not found for action "${cleanAction}"`);
-            return safeJson({ success: false, error: "Key not found" });
-        }
-
-        switch (cleanAction) {
-            case 'update':
-                if (email) user.email = email.toLowerCase();
-                if (password) user.password = password;
-                await user.save();
-                return safeJson({ success: true, message: `Linked ${email} successfully.` });
-
-            case 'update-pfp':
-                user.profile_pic = profile_pic;
-                await user.save();
-                return safeJson({ success: true, message: "PFP Updated" });
-
-            case 'get':
-            case 'get-key':
-                let pendingRequest = null;
-                try {
-                    // Using raw connection to match the 'reset-hwid' collection exactly
-                    pendingRequest = await mongoose.connection.collection('requests').findOne({
-                        license_key: license_key.toUpperCase(),
-                        status: "PENDING"
-                    });
-                } catch (e) { console.log("Request fetch failed"); }
-
-                return safeJson({
-                    success: true,
-                    email: user.email || "No Email Linked",
-                    is_banned: user.is_banned || false,
-                    is_paused: user.is_paused || false,
-                    hwid: user.hwid || "NOT CAPTURED",
-                    expiry: user.expiry_date,
-                    games: user.games || [],
-                    profile_pic: user.profile_pic || "",
-                    pending_request: pendingRequest
-                });
-
-            case 'reset-hwid':
-                try {
-
-                    user.hwid = null;
-                    await user.save();
-=
-                    const result = await mongoose.connection.collection('requests').updateOne(
-                        { license_key: license_key.toUpperCase(), status: "PENDING" },
-                        { $set: { status: "APPROVED" } },
-                        { sort: { date: -1 } }
-                    );
-
-                    console.log(`[ADMIN] HWID Reset & Approved for ${license_key}`);
-                    return res.json({ success: true, message: "Approved" });
-
-                } catch (err) {
-                    console.error("Reset Error:", err);
-                    return res.json({ success: false, error: "Database sync failed" });
-                }
-
-            case 'deny-hwid':
-                // Find the LATEST pending request
-                const latestDeny = await mongoose.connection.collection('requests')
-                    .find({ license_key: license_key.toUpperCase(), status: "PENDING" })
-                    .sort({ date: -1 })
-                    .limit(1)
-                    .toArray();
-
-                if (latestDeny.length > 0) {
-                    // Update it to DENIED
-                    await mongoose.connection.collection('requests').updateOne(
-                        { _id: latestDeny[0]._id },
-                        { $set: { status: "DENIED" } }
-                    );
-                    console.log(`[❌] ADMIN PANEL: Denied Request for ${license_key}`);
-                }
-                return safeJson({ success: true, message: "Denied" });
-
-            case 'pause':
-                user.is_paused = true;
-                await user.save();
-                return safeJson({ success: true, message: "Key paused." });
-
-            case 'unpause':
-                user.is_paused = false;
-                await user.save();
-                return safeJson({ success: true, message: "Key unpaused." });
-
-            case 'ban':
-                user.is_banned = true;
-                await user.save();
-                return safeJson({ success: true, message: "User banned." });
-
-            case 'unban':
-                user.is_banned = false;
-                await user.save();
-                return safeJson({ success: true, message: "User unbanned." });
-
-            case 'delete':
-                if (license_key) {
-                    await User.deleteOne({ license_key: license_key.toUpperCase().trim() });
-                    return safeJson({ success: true, message: "Key deleted." });
-                }
-                return safeJson({ success: false, error: "No key provided to delete" });
-
-            default:
-                console.log(`[ADMIN] Unknown clean action: ${cleanAction}`);
-                return safeJson({ success: false, error: `Invalid Action: ${cleanAction}` });
-        }
-    } catch (err) {
-        console.error("Admin Route Error:", err);
-        return res.status(500).json({ success: false, error: "Internal Server Error" });
-    }
+ipcMain.on('window-minimize', () => {
+    if (mainWindow) mainWindow.minimize();
 });
 
-// --- USER LOGIN ---
-app.post('/login', async (req, res) => {
-    try {
-        const { email, password, license_key, hwid } = req.body;
+// --- 3. AUTO-UPDATER LOGIC ---
+autoUpdater.autoDownload = false;
 
-        if (!email || !password || !license_key) {
-            return res.json({ error: "Missing required fields" });
-        }
-
-        const cleanEmail = email.toLowerCase().trim();
-        const cleanKey = license_key.toUpperCase().trim();
-        const cleanPass = password.trim();
-
-        const user = await User.findOne({ license_key: cleanKey });
-
-        if (!user) return res.json({ error: "Invalid License Key" });
-
-        const isNewUser = !user.password || user.email.includes('pending_');
-
-        if (isNewUser) {
-
-            const emailCheck = await User.findOne({ email: cleanEmail });
-            if (emailCheck && emailCheck.license_key !== cleanKey) {
-                return res.json({ error: "This email is already registered to another key." });
-            }
-
-            user.email = cleanEmail;
-            user.password = cleanPass;
-            await user.save();
-            console.log(`[AUTH] Key ${cleanKey} registered to: ${cleanEmail}`);
-        }
-
-        else {
-            if (user.email !== cleanEmail || user.password !== cleanPass) {
-                return res.json({ error: "Invalid Email or Password for this key." });
-            }
-        }
-
-        if (user.is_banned) return res.json({ error: "Account Banned" });
-        if (user.is_paused) return res.json({ error: "Subscription Paused" });
-
-        if (!user.expiry_date) {
-            const now = new Date();
-            const expiry = new Date();
-            const days = user.duration_days || 30;
-
-            if (days === 999) {
-                expiry.setFullYear(expiry.getFullYear() + 50);
-            } else {
-                expiry.setTime(now.getTime() + (days * 24 * 60 * 60 * 1000));
-            }
-
-            user.expiry_date = expiry;
-            await user.save();
-            console.log(`[AUTH] Key ${cleanKey} activated for ${days} days.`);
-        }
-
-        if (new Date() > user.expiry_date) return res.json({ error: "Subscription Expired" });
-
-        if (!user.hwid || user.hwid === "null" || user.hwid === null) {
-            user.hwid = hwid;
-            await user.save();
-        } else if (user.hwid !== hwid) {
-            return res.json({ error: "HWID Mismatch. Please request a reset." });
-        }
-
-        res.json({
-            token: "VALID",
-            expiry: user.expiry_date,
-            profile_pic: user.profile_pic || '',
-            games: user.games || []
-        });
-
-    } catch (err) {
-        console.error("Login Crash:", err);
-        res.status(500).json({ error: "Internal Server Error" });
-    }
+ipcMain.on('check-for-updates', () => {
+    autoUpdater.checkForUpdates();
 });
 
-// --- LOADER STATUS CHECK ---
-app.get('/check-reset-status', async (req, res) => {
-    try {
-        const { key } = req.query;
-        if (!key) return res.json({ status: "NONE" });
-
-        // Find the LATEST entry in the 'requests' collection for this key
-        const request = await mongoose.connection.collection('requests')
-            .find({ license_key: key.toUpperCase() })
-            .sort({ date: -1 })
-            .limit(1)
-            .toArray();
-
-        if (request.length === 0) {
-            return res.json({ status: "NONE" });
-        }
-
-        // Return only the status (PENDING, APPROVED, or DENIED)
-        res.json({ status: request[0].status });
-    } catch (err) {
-        console.error("Polling Error:", err);
-        res.status(500).json({ status: "ERROR" });
-    }
-});
-
-
-app.post('/request-hwid-reset', async (req, res) => {
-    try {
-        const { hwid, license_key, type } = req.body;
-
-        if (!hwid || !license_key || type !== "ADMIN-PANEL_RESET") {
-            return res.status(400).json({ success: false, error: "Invalid Request Format" });
-        }
-
-        const upperKey = license_key.toUpperCase();
-        console.log(`[!] RESET REQUEST | Key: ${upperKey} | HWID: ${hwid}`);
-
-        // --- 1. SAVE TO DATABASE ---
-        await mongoose.connection.collection('requests').insertOne({
-            hwid: hwid,
-            license_key: upperKey,
-            type: type,
-            status: "PENDING",
-            date: new Date()
-        });
-        console.log(`[✅] DB SUCCESS: Saved to requests table.`);
-
-        // --- 2. SEND TO DISCORD ---
-        const DISCORD_WEBHOOK = "https://discord.com/api/webhooks/1375161068317573253/mK3ucW0iJcN9nj96LJ1L_0bSeCtx-dQMedS9kxvdz49Qhpsd1GCfWb3fRydp_b1Z1OT_";
-
-        if (DISCORD_WEBHOOK.includes("discord.com")) {
-            try {
-                await fetch(DISCORD_WEBHOOK, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        username: "SK AIO Auth System",
-                        content: "<@&1370451599427764234>", // This triggers the @Admin ping
-                        embeds: [{
-                            title: "🚨 HWID Reset Request",
-                            description: "A user is requesting a manual hardware ID reset.",
-                            color: 0xFF0044, // Red color for urgency
-                            fields: [
-                                {
-                                    name: "🔑 License Key",
-                                    value: `\`${upperKey}\``,
-                                    inline: true
-                                },
-                                {
-                                    name: "🖥️ New HWID",
-                                    value: `\`${hwid}\``,
-                                    inline: true
-                                }
-                            ],
-                            footer: { text: "Action Required • Security" },
-                            timestamp: new Date().toISOString()
-                        }]
-                    })
-                });
-            } catch (webhookError) {
-                console.error("[⚠️] Failed to send Discord notification:", webhookError);
-            }
-        }
-
-        return res.json({ success: true, message: "Admin notified." });
-
-    } catch (err) {
-        console.error("[❌] Server/DB Error:", err);
-        if (!res.headersSent) {
-            return res.status(500).json({ success: false, error: "Internal Server Error" });
-        }
-    }
-});
-
-
-app.get('/health', (req, res) => {
-    res.json({
-        status: "online",
-        database: mongoose.connection.readyState === 1 ? "connected" : "disconnected"
+autoUpdater.on('update-available', (info) => {
+    mainWindow.webContents.send('update-available', {
+        version: info.version,
+        news: typeof info.releaseNotes === 'string' ? info.releaseNotes : "Stability and performance improvements."
     });
 });
 
-app.get('/', (req, res) => res.send('API Online & Connected.'));
-
-const PORT = process.env.PORT || 8080;
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 API Active on port ${PORT}`);
+ipcMain.on('start-update-download', () => {
+    autoUpdater.downloadUpdate();
 });
+
+autoUpdater.on('download-progress', (progressObj) => {
+    mainWindow.webContents.send('download-progress', progressObj.percent);
+});
+
+// Download finished: Notify user & prepare for installation
+autoUpdater.on('update-downloaded', () => {
+    mainWindow.webContents.send('update-ready');
+    setTimeout(() => {
+        autoUpdater.quitAndInstall();
+    }, 6000);
+});
+
+autoUpdater.on('update-not-available', () => {
+    mainWindow.webContents.send('update-not-available');
+});
+
+autoUpdater.on('error', (err) => {
+    mainWindow.webContents.send('update-error', err.message || 'Check connection.');
+});
+
+ipcMain.on('log-to-terminal', (event, message) => {
+    console.log('[UPDATE LOG]', message);
+});
+
+
+// Spoofing ----
+ipcMain.handle('start-spoof', async (event, options) => {
+    return new Promise((resolve) => {
+
+        spoofer.runSpoofer(options, (err, results) => {
+            if (err) {
+                console.error("[MAIN] C++ Worker Error:", err);
+                resolve({ disk: false, guid: false, Kernel: false, User: false });
+            } else {
+                // 'results' contains { User, Kernel, disk } from SpoofWorker::OnOK
+                resolve(results);
+            }
+        });
+    });
+});
+
+ipcMain.handle('launch-game', async (event, gameName, autoClose, licenseKey) => {
+    let injectionType = "default";
+    let cheatPath = "";
+
+    // Logic for CS2 (DLL vs External)
+    if (gameName.toLowerCase() === 'cs2') {
+        const { response } = await dialog.showMessageBox({
+            type: 'question',
+            buttons: ['Inject DLL', 'External', 'Cancel'],
+            defaultId: 0,
+            cancelId: 2,
+            title: 'Injection Method',
+            message: 'How would you like to launch the CS2 cheat?',
+            detail: 'DLL injection is internal, External runs as a separate process.'
+        });
+
+        if (response === 2) return { status: "Cancelled", message: "Injection aborted." };
+
+        injectionType = (response === 0) ? "dll" : "external";
+
+        // Logic for filenames
+        const fileName = (injectionType === "dll") ? "Ai cheat.dll" : "Noxen.exe";
+        cheatPath = path.join(__dirname, 'assets', fileName);
+    }
+    else {
+
+        const fileName = `${gameName.toLowerCase()}.exe`;
+        cheatPath = path.join(__dirname, 'assets', fileName);
+        injectionType = "external";
+    }
+
+    console.log(`[MAIN] Initializing ${injectionType} for ${gameName} using key prefix...`);
+
+    try {
+        const success = spoofer.launchCheat(gameName.toUpperCase(), injectionType, cheatPath, licenseKey);
+
+        if (success) {
+            if (autoClose) {
+                console.log("[MAIN] Auto-close enabled. Exiting in 3 seconds...");
+                setTimeout(() => { app.quit(); }, 3000);
+            }
+            return { status: "Success", message: `${gameName} launched successfully!` };
+        } else {
+            return { status: "Error", message: `Access Denied Key is NOT VALID for ${gameName}.` };
+        }
+    } catch (err) {
+        console.error("[C++ Error]", err);
+        return { status: "Error", message: "You Dont Have Access To This Game." };
+    }
+});
+
+
+
+ipcMain.on('toggle-stream-proof', (event, enabled) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (win) {
+
+        win.setContentProtection(enabled);
+    }
+});
+
+ipcMain.on('toggle-discord', (event, enabled) => {
+    if (enabled) {
+        console.log("[MAIN] Discord RPC Enabled");
+        // Initialize your discord-rpc library here
+    } else {
+        console.log("[MAIN] Discord RPC Disabled");
+        // Destroy discord-rpc client here
+    }
+});
+
+
+// Listener for Machine ID
+ipcMain.handle('get-machine-id', async () => {
+    try {
+        return execSync('reg query "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Cryptography" /v "MachineGuid"').toString().split('REG_SZ')[1].trim();
+    } catch (e) { return "ERROR_READING_REG"; }
+});
+
+// Listener for Baseboard Serial
+ipcMain.handle('get-baseboard', async () => {
+    try {
+        // If spoofed 'LastConfig' or similar in Registry, read that here.
+        // Otherwise, return a cached spoofed value.
+        return spoofer.getBaseboard();
+    } catch (e) { return "SERIAL-ERROR"; }
+});
+
+// Listener for GPU ID
+ipcMain.handle('get-gpuid', async () => {
+    return spoofer.getGPUID();
+});
+
+
+// News Terminal
+ipcMain.handle('get-news', async () => {
+    return [
+        "> [v1.1.1] Added CS2 DLL & External support.",
+        "> [SECURITY] Spoofer kernel module updated.",
+        "> [INFO] New terminal interface integrated."
+    ].join('\n');
+});
+
+// --- 4. APP LIFECYCLE ---
+app.disableHardwareAcceleration();
+
+app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') app.quit();
+});
+
+app.whenReady().then(createWindow);
