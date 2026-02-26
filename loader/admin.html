@@ -393,7 +393,7 @@
             }
         }
 
-        // LOAD SELECTED KEY INFO
+        // LOAD SELECTED KEY INFO (FINAL SYNCED VERSION)
         async function loadKey() {
             const keyInput = document.getElementById('single-key-input').value.trim();
             const dropdown = document.getElementById('manage-key-input');
@@ -412,36 +412,50 @@
 
                 if (data.success) {
                     document.getElementById('info-email').innerText = data.email || "No Email Linked";
-                    document.getElementById('manage-status').innerText = data.is_banned ? "BANNED" : (data.is_paused ? "PAUSED" : "ACTIVE");
                     document.getElementById('manage-hwid').innerText = data.hwid || "NOT CAPTURED";
 
+                    // Handle Pending Activation vs Active Expiry
+                    const timerDisplay = document.getElementById('info-timer');
+                    const statusDisplay = document.getElementById('manage-status');
+                    const dateDisplay = document.getElementById('manage-expiry');
+
                     if (!data.expiry || data.expiry === null) {
-                        // 1. Stop any old timers from previous keys
+                        // STOP any old running timers
                         if (window.countdownInterval) clearInterval(window.countdownInterval);
 
-                        // 2. Set the text correctly
-                        document.getElementById('info-timer').innerText = "PENDING ACTIVATION";
-                        document.getElementById('info-timer').style.color = "var(--gold)";
-                        document.getElementById('manage-status').innerText = "INACTIVE (NEW)";
+                        // Set Visuals for PENDING
+                        if (timerDisplay) {
+                            timerDisplay.innerText = "PENDING ACTIVATION";
+                            timerDisplay.style.color = "var(--gold)";
+                        }
+                        if (statusDisplay) {
+                            statusDisplay.innerText = "INACTIVE (NEW)";
+                            statusDisplay.style.color = "var(--gold)";
+                        }
+                        if (dateDisplay) dateDisplay.innerText = "Not Activated";
                     } else {
-                        // 3. Only start the countdown if a real date exists
+                        // START the actual countdown
                         startCountdown(data.expiry);
+
+                        // Set Visuals for ACTIVE
+                        if (statusDisplay) {
+                            statusDisplay.innerText = data.is_banned ? "BANNED" : (data.is_paused ? "PAUSED" : "ACTIVE");
+                            statusDisplay.style.color = data.is_banned ? "var(--red)" : "var(--accent)";
+                        }
+                        if (dateDisplay) {
+                            dateDisplay.innerText = new Date(data.expiry).toLocaleDateString();
+                        }
                     }
 
-                    if (document.getElementById('manage-expiry')) {
-                        document.getElementById('manage-expiry').innerText = data.expiry ? new Date(data.expiry).toLocaleDateString() : "N/A";
-                    }
-
+                    // 3. HWID Request Handling
                     const requestBox = document.getElementById('request-alert-box');
                     const standardBtn = document.getElementById('standard-reset-btn');
                     const requestedHwidText = document.getElementById('requested-hwid-text');
 
                     if (data.pending_request && data.pending_request.status === "PENDING") {
-
                         if (requestBox) requestBox.style.display = 'block';
                         if (standardBtn) standardBtn.style.display = 'none';
                         if (requestedHwidText) requestedHwidText.innerText = "REQUESTED ID: " + data.pending_request.hwid;
-
                         console.log(`[!] PENDING REQUEST DETECTED FOR: ${key}`);
                     } else {
                         if (requestBox) requestBox.style.display = 'none';
