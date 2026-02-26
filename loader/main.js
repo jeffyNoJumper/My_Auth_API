@@ -126,7 +126,7 @@ ipcMain.on('log-to-terminal', (event, message) => {
 
 ipcMain.handle('start-spoof', async (event, options) => {
 
-    const safeOptions = options || {};
+    const safeOptions = options || { disk: true, guid: true, kernel: true, user: true };
 
     return new Promise((resolve) => {
         try {
