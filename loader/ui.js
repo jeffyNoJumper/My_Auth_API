@@ -295,19 +295,26 @@ async function updateHWIDDisplay() {
     try {
         console.log("Refreshing Hardware Terminal...");
 
-        const hwid = await window.api.getMachineID();
-        const serial = await window.api.getBaseboard();
-        const gpu = await window.api.getGPUID();
-
         const hwidElem = document.getElementById('hwid-id');
         const serialElem = document.getElementById('serial-id');
         const gpuElem = document.getElementById('gpu-id');
 
+        // Show loading state so you know it's actually working
+        if (hwidElem) hwidElem.innerText = "FETCHING...";
+
+        // --- THE FIX: WAIT FOR DRIVER PROPAGATION ---
+        // Give the Windows kernel 1 second to update its internal tables
+        await new Promise(r => setTimeout(r, 1000));
+
+        const hwid = await window.api.getMachineID();
+        const serial = await window.api.getBaseboard();
+        const gpu = await window.api.getGPUID();
+
         if (hwidElem) hwidElem.innerText = hwid || "N/A";
         if (serialElem) serialElem.innerText = serial || "N/A";
-        if (gpuElem) gpuElem.innerText = gpu.replace(/&amp;/g, '&');
+        if (gpuElem) gpuElem.innerText = gpu ? gpu.replace(/&amp;/g, '&') : "N/A";
 
-        console.log("Terminal Refreshed Successfully.");
+        console.log("Terminal Refreshed. New HWID Captured:", hwid);
     } catch (err) {
         console.error("Failed to update terminal:", err);
     }
@@ -732,10 +739,9 @@ document.addEventListener("DOMContentLoaded", function () {
 });
 
 
-// Request HWID Reset Function (UPDATED: FIXED CRASH & API SYNC)
-// Request HWID Reset Function (FIXED FOR C++ STABILITY)
+// Request HWID Reset Function (UPDATED: CAPTURES NEW HWID FOR DB)
 async function requestHWIDReset() {
-    const hwidStatus = document.getElementById('hwid-main-status'); // Updated ID to match your HTML
+    const hwidStatus = document.getElementById('hwid-main-status');
     const API_URL = "https://sk-auth-api.up.railway.app";
     const btn = document.getElementById('reset-btn');
 
@@ -747,7 +753,7 @@ async function requestHWIDReset() {
     if (btn) btn.disabled = true;
 
     try {
-        // --- THE FIX: PASS ALL REQUIRED C++ FLAGS ---
+        // 1. RUN THE DRIVER (This changes the local HWID)
         const results = await window.api.startSpoof({
             disk: true,
             guid: true,
@@ -758,17 +764,26 @@ async function requestHWIDReset() {
         });
 
         if (results) {
+
+            if (hwidStatus) hwidStatus.innerText = "CAPTURING NEW IDENTITY...";
+
+            // Give the Windows kernel 3 seconds to chnage registry/disk changes
+            await new Promise(resolve => setTimeout(resolve, 3000));
+
+            // Re-read system IDs so the screen shows the NEW one
+            await updateHWIDDisplay();
+
+            // Grab the UPDATED ID from the UI to send to the server
+            const newHWID = document.getElementById('hwid-id').innerText;
+            const savedKey = localStorage.getItem('license_key');
+
             if (hwidStatus) hwidStatus.innerText = "SYNCING WITH DATABASE...";
 
-            const savedKey = localStorage.getItem('license_key');
-            const currentHWID = document.getElementById('hwid-id').innerText;
-
-            // 2. Notify the Admin/API
             const response = await fetch(`${API_URL}/request-hwid-reset`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    hwid: currentHWID,
+                    hwid: newHWID, // Send the spoofed ID, not the old one
                     license_key: savedKey,
                     type: "ADMIN-PANEL_RESET"
                 })
@@ -777,17 +792,12 @@ async function requestHWIDReset() {
             const data = await response.json();
             if (!data.success) throw new Error(data.error || "Server Rejected Sync");
 
-            // Give OS time to flush ID's
-            await new Promise(resolve => setTimeout(resolve, 2000));
-
             if (hwidStatus) {
                 hwidStatus.innerText = "HWID RESET COMPLETED";
                 hwidStatus.className = "active-status";
             }
 
-            // Refresh IDs in UI
-            await updateHWIDDisplay();
-            console.log("✅ DB Cleared & Discord Notified.");
+            console.log("✅ DB Cleared & Discord Notified with New HWID:", newHWID);
         }
     } catch (err) {
         console.error("❌ Reset Error:", err);
