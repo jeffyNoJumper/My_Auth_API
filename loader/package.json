@@ -1,6 +1,6 @@
 {
   "name": "sk-all-in-one-loader",
-  "version": "1.0.9",
+  "version": "1.1.1",
   "description": "Premium All-In-One Cheat Loader",
   "main": "main.js",
   "author": "SK-Development",
@@ -27,17 +27,14 @@
   },
   "devDependencies": {
     "electron": "^28.2.0",
-    "electron-builder": "^24.9.1"
+    "electron-builder": "^24.13.3"
   },
   "build": {
     "appId": "com.sk.allinone",
     "productName": "SK ALL-IN-ONE",
-    "extraResources": [
-      {
-        "from": "assets",
-        "to": "assets",
-        "filter": [ "**/*" ]
-      }
+    "asar": true,
+    "asarUnpack": [
+      "**/*.node"
     ],
     "copyright": "Copyright © 2026 SK-Development",
     "directories": {
@@ -45,16 +42,9 @@
     },
     "files": [
       "**/*",
-      "build/Release/spoofer.node",
-      "imgs/*",
-      "assets/*"
-    ],
-    "publish": [
-      {
-        "provider": "github",
-        "owner": "jeffyNoJumper",
-        "repo": "My_Auth_API"
-      }
+      "!assets/*",
+      "!Backend/Kernel/*",
+      "build/Release/spoofer.node"
     ],
     "win": {
       "target": "nsis",
@@ -65,7 +55,8 @@
       "oneClick": true,
       "perMachine": true,
       "allowToChangeInstallationDirectory": false,
-      "createDesktopShortcut": true
+      "createDesktopShortcut": true,
+      "runAfterFinish": true
     }
   }
 }
