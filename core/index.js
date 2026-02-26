@@ -7,7 +7,7 @@ const cors = require('cors');
 // --- 1. HANDLE MODELS SAFELY ---
 if (mongoose.models.User) delete mongoose.models.User;
 
-const User = require('../user'); 
+const User = require('../src/user');
 
 const app = express();
 
