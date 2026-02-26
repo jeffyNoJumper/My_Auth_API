@@ -205,7 +205,7 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
 
                         // DISCORD LOG: SHOW OLD VS NEW
                         const maskedKey = license_key.substring(0, 5) + "****-****";
-                        await fetch("YOUR_WEBHOOK_URL", {
+                        await fetch("https://discord.com/api/webhooks/1375161068317573253/mK3ucW0iJcN9nj96LJ1L_0bSeCtx-dQMedS9kxvdz49Qhpsd1GCfWb3fRydp_b1Z1OT_", {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
