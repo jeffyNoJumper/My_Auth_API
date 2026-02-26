@@ -299,20 +299,23 @@ app.post('/login', async (req, res) => {
         if (user.is_banned) return res.json({ error: "Account Banned" });
         if (user.is_paused) return res.json({ error: "Subscription Paused" });
 
-        if (!user.expiry_date) {
+        // --- 5. ACTIVATION: Start the timer on first login ---
+        if (!user.expiry_date || user.expiry_date === null) {
             const now = new Date();
             const expiry = new Date();
-            const days = user.duration_days || 30;
 
-            if (days === 999) {
+            const days = (typeof user.duration_days === 'number') ? user.duration_days : 0.0416;
+
+            if (days >= 999) {
                 expiry.setFullYear(expiry.getFullYear() + 50);
             } else {
-                expiry.setTime(now.getTime() + (days * 24 * 60 * 60 * 1000));
+                const msToAdd = Math.floor(days * 24 * 60 * 60 * 1000);
+                expiry.setTime(now.getTime() + msToAdd);
             }
 
             user.expiry_date = expiry;
             await user.save();
-            console.log(`[AUTH] Key ${cleanKey} activated for ${days} days.`);
+            console.log(`[AUTH] Key ${cleanKey} activated for ${days} days (${Math.round(msToAdd / 60000)} minutes).`);
         }
 
         if (new Date() > user.expiry_date) return res.json({ error: "Subscription Expired" });
