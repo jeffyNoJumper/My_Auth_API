@@ -125,41 +125,35 @@ ipcMain.on('log-to-terminal', (event, message) => {
 });
 
 ipcMain.handle('start-spoof', async (event, options) => {
-    // 1. Generate a GENUINE new Windows MachineGuid
-    const brandNewGUID = crypto.randomUUID();
+    const brandNewGUID = require('crypto').randomUUID();
 
+    // Explicitly define every boolean your C++ L244 is looking for
     const safeOptions = {
-        disk: true,
-        guid: true,
-        kernel: true,
-        user: true,
-        cleanReg: true,
-        newMachineGuid: brandNewGUID, // <-- PASS THIS TO C++
-        ...(options || {})
+        disk: Boolean(options?.disk ?? true),
+        guid: Boolean(options?.guid ?? true),
+        kernel: Boolean(options?.kernel ?? true),
+        user: Boolean(options?.user ?? true),
+        cleanReg: Boolean(options?.cleanReg ?? true),
+        cleanDisk: Boolean(options?.cleanDisk ?? true),
+        biosFlash: Boolean(options?.biosFlash ?? false),
+        // Pass the string separately
+        newMachineGuid: String(brandNewGUID)
     };
 
     return new Promise((resolve) => {
         try {
-            console.log(`[MAIN] Requesting Registry Write: ${brandNewGUID}`);
+            console.log(`[MAIN] Writing Registry ID: ${safeOptions.newMachineGuid}`);
 
-            // 2. Execute C++ Worker
             spoofer.runSpoofer(safeOptions, (err, results) => {
                 if (err) {
-                    console.error("[MAIN] C++ Worker Error (Driver/Registry):", err);
+                    console.error("[MAIN] C++ Error:", err);
                     resolve(null);
                 } else {
-                    // 3. Success - The Registry should now be updated
-                    console.log("[MAIN] Hardware Masking Complete:", results);
-
-                    resolve({
-                        success: true,
-                        newHwid: brandNewGUID, // Return the new ID to the UI
-                        ...results
-                    });
+                    resolve({ success: true, newHwid: brandNewGUID, ...results });
                 }
             });
         } catch (crash) {
-            console.error("[MAIN] Critical Spoofer Process Crash:", crash);
+            console.error("[MAIN] Fatal Crash:", crash);
             resolve(null);
         }
     });
