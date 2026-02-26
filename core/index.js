@@ -495,7 +495,7 @@ app.get('/health', (req, res) => {
 
 app.get('/', (req, res) => res.send('API Online & Connected.'));
 
-const PORT = process.env.PORT || 1000;
+const PORT = process.env.PORT || 10000;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 API Active on port ${PORT}`);
 });
