@@ -68,14 +68,12 @@ app.post('/admin/create-key', verifyAdmin, async (req, res) => {
             "FiveM": "FIVM",
             "GTAV": "GTAV",
             "Warzone": "WARZ",
-            "All-Access": "ALL"
+            "All-Access": "ALLX"
         };
-
-        const { games } = req.body;
 
         const firstGame = Array.isArray(games) ? games[0] : games;
 
-        const prefix = gamePrefixMap[firstGame] || "GENR"; 
+        const prefix = gamePrefixMap[firstGame] || "GENR";
 
         const randomPart = crypto.randomBytes(6).toString('hex').toUpperCase().match(/.{4}/g).join('-');
         const newKey = `${prefix}-${randomPart}`;
@@ -96,7 +94,7 @@ app.post('/admin/create-key', verifyAdmin, async (req, res) => {
         res.json({
             success: true,
             key: newKey,
-            expiry: null,"
+            expiry: null,
             games: newUser.games
         });
     } catch (err) {
