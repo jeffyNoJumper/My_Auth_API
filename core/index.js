@@ -186,7 +186,6 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
 
                     user.hwid = null;
                     await user.save();
-=
                     const result = await mongoose.connection.collection('requests').updateOne(
                         { license_key: license_key.toUpperCase(), status: "PENDING" },
                         { $set: { status: "APPROVED" } },
