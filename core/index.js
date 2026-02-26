@@ -7,7 +7,7 @@ const cors = require('cors');
 // --- 1. HANDLE MODELS SAFELY ---
 if (mongoose.models.User) delete mongoose.models.User;
 
-const User = require('../src/user');
+const User = require('./user');
 
 const app = express();
 
@@ -405,6 +405,35 @@ app.post('/login', async (req, res) => {
         res.status(500).json({ error: "Internal Server Error" });
     }
 });
+
+// --- UPDATE PROFILE ROUTE ---
+app.post('/update-profile', async (req, res) => {
+    try {
+        const { license_key, email, password, profile_pic } = req.body;
+
+        // Find the user by their key
+        const user = await User.findOne({ license_key: license_key.toUpperCase() });
+
+        if (!user) {
+            return res.status(404).json({ success: false, error: "User not found" });
+        }
+
+        // Update fields only if they were sent
+        if (email) user.email = email.toLowerCase();
+        if (password) user.password = password;
+        if (profile_pic) user.profile_pic = profile_pic;
+
+        await user.save();
+
+        console.log(`[UPDATED] Profile for key: ${license_key}`);
+        res.json({ success: true, message: "Profile updated successfully!" });
+
+    } catch (err) {
+        console.error("Update Error:", err);
+        res.status(500).json({ success: false, error: "Internal Server Error" });
+    }
+});
+
 
 // --- LOADER STATUS CHECK ---
 app.get('/check-reset-status', async (req, res) => {
