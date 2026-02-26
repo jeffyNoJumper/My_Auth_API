@@ -91,40 +91,86 @@
     <div id="main-dashboard" class="screen">
         <nav class="top-nav">
             <div class="nav-left">
-                <!-- Updated Navigation Buttons -->
                 <button onclick="showTab('home')" id="btn-home" class="nav-btn active">HOME</button>
                 <button onclick="showTab('games')" id="btn-games" class="nav-btn">GAMES</button>
                 <button onclick="showTab('hwid')" id="btn-hwid" class="nav-btn">HWID</button>
                 <button onclick="showTab('spoofing')" id="btn-spoofing" class="nav-btn">SPOOFING</button>
-                <button onclick="showTab('settings')" id="btn-settings" class="nav-btn">SETTINGS</button>
+                <!-- Corrected: Now opens the Modal -->
+                <button onclick="openModal('settings-modal')" id="btn-settings" class="nav-btn">SETTINGS</button>
             </div>
 
-            <div class="nav-right user-box">
+            <div class="nav-right">
                 <div class="user-meta">
-                    <!-- Status dot first, then the expiry -->
-                    <span id="status-dot" class="status-dot dot-offline"></span>
-                    <span id="user-expiry">EXP: --</span>
+                    <span id="status-dot" class="status-dot dot-online"></span>
+                    <span id="user-expiry" style="font-size: 10px; color: #888; margin-right: 10px;">EXP: --</span>
                 </div>
-                <img src="./imgs/default-profile.png" id="user-pic" class="glow-border" onclick="document.getElementById('profile-upload').click();">
-                <input type="file" id="profile-upload" style="display: none;" accept="image/*">
-            </div>
-        </nav>
 
-        <div class="content-area">
+                <div class="profile-trigger" onclick="toggleUserDropdown()" style="position:relative; cursor:pointer;">
+                    <img src="./imgs/default-profile.png" id="user-pic" class="glow-border" style="width: 35px; height: 35px; border-radius: 50%;">
 
-            <!-- Tab: Home -->
-            <div id="home-tab" class="tab-content active">
-                <div id="particles-js" style="position:absolute; width:100%; height:100%; top:0; left:0; z-index:0;"></div>
-
-                <div class="welcome-panel" style="position:relative; z-index:1;">
-                    <h2 class="glow-text-cyan">WELCOME TO SK ALL-IN-ONE</h2>
-                    <p>Select a module from the navigation bar to begin.</p>
-                    <div class="terminal-box">
-                        <div class="typewriter">> User session validated...</div>
-                        <div class="typewriter">> System ready...</div>
+                    <div id="user-dropdown" class="dropdown-content hidden">
+                        <div class="dropdown-header" style="padding: 10px; font-size: 10px; color: #555; border-bottom: 1px solid #222;">MANAGE PROFILE</div>
+                        <!-- Corrected: Now opens the Modal -->
+                        <div class="dropdown-item" onclick="openModal('settings-modal')">👤 Edit Profile</div>
+                        <div class="dropdown-item" onclick="openSocial('discord')">💬 Discord</div>
+                        <div class="dropdown-item" onclick="openShop()">🛒 Shop / Support</div>
+                        <div style="height:1px; background:#333; margin:5px 0;"></div>
+                        <div class="dropdown-item logout-red" onclick="logout()" style="color:#ff4444;">🚪 Logout</div>
                     </div>
                 </div>
             </div>
+        </nav>
+
+        <!-- SETTINGS MODAL (Inside Main Dashboard but Fixed Position) -->
+        <div id="settings-modal" class="modal-overlay hidden">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 class="glow-text-cyan">ACCOUNT SETTINGS</h3>
+                    <span class="close-x" onclick="closeModal('settings-modal')" style="cursor:pointer;">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <div class="pfp-edit-section" style="text-align:center; margin-bottom:15px;">
+                        <img src="./imgs/default-profile.png" id="modal-pfp" class="glow-border" style="width:80px; height:80px; border-radius:50%; object-fit:cover;">
+                        <br>
+                        <button class="mini-btn" onclick="document.getElementById('pfp-input').click()" style="margin-top:10px;">CHANGE PHOTO</button>
+                        <input type="file" id="pfp-input" hidden accept="image/*" onchange="previewImage(this)">
+                    </div>
+                    <div class="input-group">
+                        <label>NEW EMAIL</label>
+                        <input type="email" id="edit-email" placeholder="Update email...">
+                    </div>
+                    <div class="input-group">
+                        <label>NEW PASSWORD</label>
+                        <input type="password" id="edit-password" placeholder="New password...">
+                    </div>
+                    <button id="save-profile-btn" onclick="saveProfileChanges()" class="action-btn" style="width:100%; margin-top:10px;">SAVE CHANGES</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="content-area">
+            <!-- Home Tab -->
+            <div id="home-tab" class="tab-content active">
+                <div class="welcome-panel">
+                    <h2 class="glow-text-cyan">SK ALL-IN-ONE v1.1.2</h2>
+                    <p>Active User: <span id="home-username" style="color:var(--accent);">Pending...</span></p>
+                    <div class="home-tile-grid">
+                        <div class="stat-tile">
+                            <small style="color:#666;">SUBSCRIPTION</small>
+                            <div id="home-exp" style="font-family: monospace;">--</div>
+                        </div>
+                        <div class="stat-tile">
+                            <small style="color:#666;">SERVER STATUS</small>
+                            <div style="color:#00ff88; font-weight:bold;">● ONLINE</div>
+                        </div>
+                        <div class="stat-tile">
+                            <small style="color:#666;">VERSION</small>
+                            <div>v1.1.2-STABLE</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
 
             <!-- Tab: Games -->
             <div id="games-tab" class="tab-content">
@@ -183,7 +229,7 @@
                             <p>GPU_ID: <span id="gpu-id" class="code-text">PCI\VEN_1002...</span></p>
                         </div>
 
-                         <button id="reset-btn" class="reset-btn" onclick="requestHWIDReset()">
+                        <button id="reset-btn" class="reset-btn" onclick="requestHWIDReset()">
                             HWID RESET
                         </button>
                     </div>
@@ -372,7 +418,7 @@
         </div>
     </div> <!-- End Content Area -->
 
-    <script src="https://cdn.jsdelivr.net/npm/particles.js@2.0.0/particles.min.js"></script>
+    <!-- <script src="https://cdn.jsdelivr.net/npm/particles.js@2.0.0/particles.min.js"></script> -->
 
     <script src="./ui.js"></script>
 </body>
