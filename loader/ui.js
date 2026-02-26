@@ -9,42 +9,28 @@ const shell = window.api.shell;
 let currentUserPrefix = localStorage.getItem('user_prefix') || "";
 
 window.onload = async () => {
+
+    const savedPfp = localStorage.getItem('saved_profile_pic');
+    if (savedPfp) {
+        const navPfp = document.getElementById('user-pic');
+        const modalPfp = document.getElementById('modal-pfp');
+        if (navPfp) navPfp.src = savedPfp;
+        if (modalPfp) modalPfp.src = savedPfp;
+        console.log("✨ Persistent Profile Image Synchronized");
+    }
+
     await updateHWIDDisplay();
+    await checkServer();
 
     /*
-    // 1. Initialize with a slight delay to ensure DOM is ready
+    // Particles initialization
     setTimeout(() => {
-        particlesJS("particles-js", {
-            particles: {
-                number: { value: 60 },
-                color: { value: "#00ffff" },
-                shape: { type: ["circle", "square"] },
-                opacity: { value: 0.5 },
-                size: { value: 3 },
-                move: {
-                    enable: true,
-                    speed: 1,
-                    direction: "none",
-                    out_mode: "out"
-                }
-            },
-            interactivity: {
-                events: {
-                    onhover: { enable: true, mode: "repulse" }
-                }
-            }
-        });
-        window.dispatchEvent(new Event('resize'));
-        console.log("✨ Particles Initialized & Painted");
+        // ... particlesJS code ...
     }, 100);
     */
 
-    await checkServer();
-
     const overlay = document.getElementById('update-overlay');
-
     const currentVersion = localStorage.getItem('installedVersion') || '1.1.1';
-
     const updateNeeded = await checkForUpdateAndPrompt(currentVersion);
 
     if (!updateNeeded) {
@@ -52,7 +38,12 @@ window.onload = async () => {
             overlay.classList.add('hidden');
             overlay.style.display = 'none';
         }
+
         startBootSequence();
+
+        if (localStorage.getItem('license_key')) {
+            updateUIForAccess();
+        }
     }
 };
 function toggleDropdown() {
@@ -60,7 +51,7 @@ function toggleDropdown() {
 }
 
 function openShop() {
-    // Take them to your Discord Ticket Channel
+
     shell.openExternal("https://discord.com/channels/1244947057320661043/1373758276960911380");
 }
 
@@ -72,13 +63,13 @@ function openSocial(platform) {
 const getSetting = (id) => document.getElementById(id).checked;
 
 async function startCS2() {
-    // 1. Check if user even has access before trying to launch
+    // Check if user even has access before trying to launch
     if (!hasAccess('CS2')) return;
 
     const autoCloseActive = document.getElementById('auto-close-launcher').checked;
     const key = localStorage.getItem('license_key');
 
-    // 2. Pass 'key' as the 3rd argument to match new IPC handler
+    // Pass 'key' as the 3rd argument to match new IPC handler
     const result = await window.electron.invoke('launch-game', 'cs2', autoCloseActive, key);
 
     if (result && result.status === "Success") {
@@ -359,7 +350,6 @@ async function handleLogin() {
     try {
         const realHWID = await window.api.getMachineID();
 
-        // 1. Fetch the data
         const response = await fetch('https://my-auth-api-1ykc.onrender.com/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -373,42 +363,39 @@ async function handleLogin() {
 
         const data = await response.json();
 
-        // 3. Check for Success
         if (data.token === "VALID") {
 
             localStorage.setItem('user_email', email);
             localStorage.setItem('expiry_date', data.expiry);
             localStorage.setItem('license_key', key);
 
+            // Set prefix for UI filtering (CS2X, ALLX, etc.)
+            setSessionAccess(key);
 
             if (rememberMe) {
                 localStorage.setItem('remembered_email', email);
                 localStorage.setItem('remembered_password', password);
-                localStorage.setItem('license_key', key);
             } else {
                 localStorage.removeItem('remembered_email');
                 localStorage.removeItem('remembered_password');
-                localStorage.setItem('license_key', key);
             }
-
-            setSessionAccess(key);
 
             const userPic = document.getElementById('user-pic');
-            if (data.profile_pic) {
+            const modalPfp = document.getElementById('modal-pfp');
+
+            if (data.profile_pic && data.profile_pic !== "") {
                 localStorage.setItem('saved_profile_pic', data.profile_pic);
                 if (userPic) userPic.src = data.profile_pic;
-            } else if (userPic) {
-                userPic.src = 'imgs/default-profile.png';
-            }
+                if (modalPfp) modalPfp.src = data.profile_pic;
+            } else {
 
-            if (data.expiry) {
-                const expiryDate = new Date(data.expiry);
-                document.getElementById('user-expiry').innerText = "EXP: " + expiryDate.toLocaleDateString();
-
-                updateSubscriptionStatus(data.expiry);
+                const defaultImg = 'imgs/default-profile.png';
+                if (userPic) userPic.src = defaultImg;
+                if (modalPfp) modalPfp.src = defaultImg;
             }
 
             switchScreen('login-screen', 'main-dashboard');
+
             updateUIForAccess();
 
         } else {
@@ -418,7 +405,7 @@ async function handleLogin() {
         }
     } catch (err) {
         console.error("Login Error:", err);
-        alert("API Connection Error. Ensure your Loader is connected to a server & is live.");
+        alert("API Connection Error. Ensure your Render server is live.");
         btn.innerHTML = "VALIDATE & LOGIN";
         btn.disabled = false;
     }
