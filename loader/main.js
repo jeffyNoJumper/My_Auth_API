@@ -123,24 +123,33 @@ ipcMain.on('log-to-terminal', (event, message) => {
     console.log('[UPDATE LOG]', message);
 });
 
-
 ipcMain.handle('start-spoof', async (event, options) => {
-
-    const safeOptions = options || { disk: true, guid: true, kernel: true, user: true };
+    // Ensure we have a valid options object to prevent C++ crashes
+    // If the UI sends nothing, we default to full spoofing
+    const safeOptions = {
+        disk: true,
+        guid: true,
+        kernel: true,
+        user: true,
+        cleanReg: true,
+        ...(options || {}) // Overwrite defaults with any incoming options
+    };
 
     return new Promise((resolve) => {
         try {
-            // Call the C++ addon with the SAFE options object
+            console.log("[MAIN] Initializing Kernel Spoofer with options:", safeOptions);
+
+            // 2. Execute C++ Worker
             spoofer.runSpoofer(safeOptions, (err, results) => {
                 if (err) {
-                    console.error("[MAIN] C++ Worker Error:", err);
-                    // Return null or failure so UI knows it failed
+                    console.error("[MAIN] C++ Worker Error (Driver/Registry):", err);
+                    // Return null so ui.js hits the 'catch' block
                     resolve(null);
                 } else {
-                    // 'results' contains { User, Kernel, disk } from your C++ OnOK
-                    console.log("[MAIN] Spoof Success:", results);
+                    // 3. Results should now contain the NEW identifiers
+                    console.log("[MAIN] Hardware Masking Complete:", results);
 
-                    // Return a clean object with a success flag
+                    // Return success + the actual data (disk, guid, etc.)
                     resolve({
                         success: true,
                         ...results
@@ -148,7 +157,7 @@ ipcMain.handle('start-spoof', async (event, options) => {
                 }
             });
         } catch (crash) {
-            console.error("[MAIN] Spoofer Crash:", crash);
+            console.error("[MAIN] Critical Spoofer Process Crash:", crash);
             resolve(null);
         }
     });
