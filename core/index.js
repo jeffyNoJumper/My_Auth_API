@@ -186,45 +186,67 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
 
             case 'reset-hwid':
                 try {
-                    // Find the pending request to get the IDs
-                    const pendingReq = await mongoose.connection.collection('requests')
+                    // 1. Find the pending request to get the IDs
+                    const pendingReqList = await mongoose.connection.collection('requests')
                         .find({ license_key: license_key.toUpperCase(), status: "PENDING" })
                         .sort({ date: -1 }).limit(1).toArray();
 
-                    if (pendingReq.length > 0) {
-                        const reqData = pendingReq[0];
+                    if (pendingReqList.length > 0) {
+                        const reqData = pendingReqList[0];
 
-                        user.hwid = null; // Clears it for the user to relink
+                        // --- NEW: TIME RESTORE LOGIC ---
+                        const now = new Date();
+                        const newExpiry = new Date();
+                        const days = user.duration_days || 30; // Fallback to 30 if missing
+
+                        if (days >= 999) {
+                            newExpiry.setFullYear(newExpiry.getFullYear() + 50); // Lifetime
+                        } else {
+                            // Reset to full original duration starting NOW
+                            const msToAdd = Math.floor(days * 24 * 60 * 60 * 1000);
+                            newExpiry.setTime(now.getTime() + msToAdd);
+                        }
+
+                        // 2. Update User
+                        user.hwid = null;
+                        user.expiry_date = newExpiry;
                         await user.save();
 
-                        // Update Request Status
+                        // 3. Update Request Status
                         await mongoose.connection.collection('requests').updateOne(
                             { _id: reqData._id },
                             { $set: { status: "APPROVED" } }
                         );
 
-                        // DISCORD LOG: SHOW OLD VS NEW
+                        // 4. DISCORD LOG: SHOW OLD VS NEW + RESTORED TIME
+                        const DISCORD_WEBHOOK = "https://discord.com/api/webhooks/1375161068317573253/mK3ucW0iJcN9nj96LJ1L_0bSeCtx-dQMedS9kxvdz49Qhpsd1GCfWb3fRydp_b1Z1OT_";
                         const maskedKey = license_key.substring(0, 5) + "****-****";
-                        await fetch("https://discord.com/api/webhooks/1375161068317573253/mK3ucW0iJcN9nj96LJ1L_0bSeCtx-dQMedS9kxvdz49Qhpsd1GCfWb3fRydp_b1Z1OT_", {
+
+                        await fetch(DISCORD_WEBHOOK, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
+                                username: "SK SECURITY SYSTEM",
                                 embeds: [{
-                                    title: "✅ HWID RESET APPROVED",
+                                    title: "✅ HWID RESET & TIME RESTORED",
+                                    description: `Admin has approved the reset and **restored the subscription timer** to its original duration.`,
                                     color: 0x00FF88,
                                     fields: [
-                                        { name: "🔑 License", value: `\`${maskedKey}\``, inline: false },
+                                        { name: "🔑 License", value: `\`${maskedKey}\``, inline: true },
+                                        { name: "⏳ New Expiry", value: `<t:${Math.floor(newExpiry.getTime() / 1000)}:f>`, inline: true },
                                         { name: "🔴 Old HWID", value: `\`\`\`${reqData.old_hwid || "None"}\`\`\``, inline: false },
                                         { name: "🟢 New HWID (Target)", value: `\`\`\`${reqData.new_hwid || "None"}\`\`\``, inline: false }
                                     ],
-                                    footer: { text: "Audit: User reset successfully" },
+                                    footer: { text: "SK Audit: Full time credit applied." },
                                     timestamp: new Date().toISOString()
                                 }]
                             })
                         });
+                        console.log(`[✅] Approved & Time Restored for: ${license_key}`);
                     }
-                    return res.json({ success: true, message: "Approved" });
+                    return res.json({ success: true, message: "Approved & Time Restored" });
                 } catch (err) {
+                    console.error("Reset Error:", err);
                     return res.json({ success: false, error: "Database sync failed" });
                 }
 
