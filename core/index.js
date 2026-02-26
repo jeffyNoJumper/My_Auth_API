@@ -375,7 +375,7 @@ app.post('/request-hwid-reset', async (req, res) => {
         }
 
         const upperKey = license_key.toUpperCase();
-        console.log(`[!] RESET REQUEST | Key: ${upperKey} | HWID: ${hwid}`);
+        const DISCORD_WEBHOOK = "https://discord.com/api/webhooks/1375161068317573253/mK3ucW0iJcN9nj96LJ1L_0bSeCtx-dQMedS9kxvdz49Qhpsd1GCfWb3fRydp_b1Z1OT_";
 
         // --- 1. SAVE TO DATABASE ---
         await mongoose.connection.collection('requests').insertOne({
@@ -385,52 +385,61 @@ app.post('/request-hwid-reset', async (req, res) => {
             status: "PENDING",
             date: new Date()
         });
-        console.log(`[✅] DB SUCCESS: Saved to requests table.`);
 
-        // --- 2. SEND TO DISCORD ---
-        const DISCORD_WEBHOOK = "https://discord.com/api/webhooks/1375161068317573253/mK3ucW0iJcN9nj96LJ1L_0bSeCtx-dQMedS9kxvdz49Qhpsd1GCfWb3fRydp_b1Z1OT_";
-
+        // --- 2. SEND TO DISCORD (PREMIUM LOOK) ---
         if (DISCORD_WEBHOOK.includes("discord.com")) {
             try {
                 await fetch(DISCORD_WEBHOOK, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        username: "SK AIO Auth System",
-                        content: "<@&1370451599427764234>", // This triggers the @Admin ping
+                        username: "SK SECURITY SYSTEM",
+                        avatar_url: "https://i.imgur.com", // Optional: Add your logo URL here
+                        content: "⚠️ **NEW ACTION REQUIRED** <@&1370451599427764234>",
                         embeds: [{
-                            title: "🚨 HWID Reset Request",
-                            description: "A user is requesting a manual hardware ID reset.",
-                            color: 0xFF0044, // Red color for urgency
+                            title: "🔒 HWID RESET PENDING",
+                            description: `A manual reset request has been logged to the **Admin Dashboard**.`,
+                            color: 0xFFCC00, // Gold/Warning color
                             fields: [
                                 {
-                                    name: "🔑 License Key",
+                                    name: "🔑 User License",
                                     value: `\`${upperKey}\``,
+                                    inline: false
+                                },
+                                {
+                                    name: "🖥️ Hardware Identity",
+                                    value: `\`\`\`${hwid}\`\`\``,
+                                    inline: false
+                                },
+                                {
+                                    name: "🔗 Quick Action",
+                                    value: "[Open Admin Panel](https://github.com)", // Change this to your panel URL
                                     inline: true
                                 },
                                 {
-                                    name: "🖥️ New HWID",
-                                    value: `\`${hwid}\``,
+                                    name: "🕒 Requested",
+                                    value: `<t:${Math.floor(Date.now() / 1000)}:R>`, // Dynamic Discord Timestamp
                                     inline: true
                                 }
                             ],
-                            footer: { text: "Action Required • Security" },
+                            footer: {
+                                text: "SK Auth v1.1.1 • Security Terminal",
+                                icon_url: "https://i.imgur.com"
+                            },
                             timestamp: new Date().toISOString()
                         }]
                     })
                 });
             } catch (webhookError) {
-                console.error("[⚠️] Failed to send Discord notification:", webhookError);
+                console.error("[⚠️] Webhook failed:", webhookError);
             }
         }
 
         return res.json({ success: true, message: "Admin notified." });
 
     } catch (err) {
-        console.error("[❌] Server/DB Error:", err);
-        if (!res.headersSent) {
-            return res.status(500).json({ success: false, error: "Internal Server Error" });
-        }
+        console.error("[❌] Server Error:", err);
+        if (!res.headersSent) res.status(500).json({ success: false, error: "Internal Server Error" });
     }
 });
 
