@@ -1,4 +1,5 @@
 const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
+const crypto = require('crypto');
 const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const { execSync } = require('child_process');
@@ -124,34 +125,35 @@ ipcMain.on('log-to-terminal', (event, message) => {
 });
 
 ipcMain.handle('start-spoof', async (event, options) => {
-    // Ensure we have a valid options object to prevent C++ crashes
-    // If the UI sends nothing, we default to full spoofing
+    // 1. Generate a GENUINE new Windows MachineGuid
+    const brandNewGUID = crypto.randomUUID();
+
     const safeOptions = {
         disk: true,
         guid: true,
         kernel: true,
         user: true,
         cleanReg: true,
-        ...(options || {}) // Overwrite defaults with any incoming options
+        newMachineGuid: brandNewGUID, // <-- PASS THIS TO C++
+        ...(options || {})
     };
 
     return new Promise((resolve) => {
         try {
-            console.log("[MAIN] Initializing Kernel Spoofer with options:", safeOptions);
+            console.log(`[MAIN] Requesting Registry Write: ${brandNewGUID}`);
 
             // 2. Execute C++ Worker
             spoofer.runSpoofer(safeOptions, (err, results) => {
                 if (err) {
                     console.error("[MAIN] C++ Worker Error (Driver/Registry):", err);
-                    // Return null so ui.js hits the 'catch' block
                     resolve(null);
                 } else {
-                    // 3. Results should now contain the NEW identifiers
+                    // 3. Success - The Registry should now be updated
                     console.log("[MAIN] Hardware Masking Complete:", results);
 
-                    // Return success + the actual data (disk, guid, etc.)
                     resolve({
                         success: true,
+                        newHwid: brandNewGUID, // Return the new ID to the UI
                         ...results
                     });
                 }
