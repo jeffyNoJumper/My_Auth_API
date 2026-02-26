@@ -1,4 +1,4 @@
-const API = 'https://sk-auth-api.up.railway.app';
+const API = 'https://my-auth-api-1ykc.onrender.com';
 
 window.onload = async () => {
     await updateHWIDDisplay();
@@ -187,7 +187,7 @@ async function loginUser() {
     if (!key) return alert("Enter your license key!");
 
     try {
-        const res = await fetch('https://sk-auth-api.up.railway.app/login', {
+        const res = await fetch('https://my-auth-api-1ykc.onrender.com/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ license_key: key, hwid })
@@ -236,7 +236,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
                 try {
                     const key = localStorage.getItem('license_key');
-                    await fetch('https://sk-auth-api.up.railway.app/login', {
+                    await fetch('https://my-auth-api-1ykc.onrender.com/login', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ license_key: key, profile_pic: base64Image })
@@ -342,7 +342,7 @@ async function handleLogin() {
         const realHWID = await window.api.getMachineID();
 
         // 1. Fetch the data
-        const response = await fetch('https://sk-auth-api.up.railway.app/login', {
+        const response = await fetch('https://my-auth-api-1ykc.onrender.com/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -742,7 +742,7 @@ document.addEventListener("DOMContentLoaded", function () {
 // Request HWID Reset Function (UPDATED: CAPTURES NEW HWID FOR DB)
 async function requestHWIDReset() {
     const hwidStatus = document.getElementById('hwid-main-status');
-    const API_URL = "https://sk-auth-api.up.railway.app";
+    const API_URL = "https://my-auth-api-1ykc.onrender.com";
     const btn = document.getElementById('reset-btn');
 
     if (hwidStatus) {
@@ -940,7 +940,7 @@ function setStatus(status) {
 }
 
 async function checkServer() {
-    const API_URL = "https://sk-auth-api.up.railway.app";
+    const API_URL = "https://my-auth-api-1ykc.onrender.com";
 
     try {
         const res = await fetch(`${API_URL}/health`);
