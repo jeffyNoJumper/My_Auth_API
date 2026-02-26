@@ -186,40 +186,84 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
 
             case 'reset-hwid':
                 try {
+                    // Find the pending request to get the IDs
+                    const pendingReq = await mongoose.connection.collection('requests')
+                        .find({ license_key: license_key.toUpperCase(), status: "PENDING" })
+                        .sort({ date: -1 }).limit(1).toArray();
 
-                    user.hwid = null;
-                    await user.save();
-                    const result = await mongoose.connection.collection('requests').updateOne(
-                        { license_key: license_key.toUpperCase(), status: "PENDING" },
-                        { $set: { status: "APPROVED" } },
-                        { sort: { date: -1 } }
-                    );
+                    if (pendingReq.length > 0) {
+                        const reqData = pendingReq[0];
 
-                    console.log(`[ADMIN] HWID Reset & Approved for ${license_key}`);
+                        user.hwid = null; // Clears it for the user to relink
+                        await user.save();
+
+                        // Update Request Status
+                        await mongoose.connection.collection('requests').updateOne(
+                            { _id: reqData._id },
+                            { $set: { status: "APPROVED" } }
+                        );
+
+                        // DISCORD LOG: SHOW OLD VS NEW
+                        const maskedKey = license_key.substring(0, 5) + "****-****";
+                        await fetch("YOUR_WEBHOOK_URL", {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                embeds: [{
+                                    title: "✅ HWID RESET APPROVED",
+                                    color: 0x00FF88,
+                                    fields: [
+                                        { name: "🔑 License", value: `\`${maskedKey}\``, inline: false },
+                                        { name: "🔴 Old HWID", value: `\`\`\`${reqData.old_hwid || "None"}\`\`\``, inline: false },
+                                        { name: "🟢 New HWID (Target)", value: `\`\`\`${reqData.new_hwid || "None"}\`\`\``, inline: false }
+                                    ],
+                                    footer: { text: "Audit: User reset successfully" },
+                                    timestamp: new Date().toISOString()
+                                }]
+                            })
+                        });
+                    }
                     return res.json({ success: true, message: "Approved" });
-
                 } catch (err) {
-                    console.error("Reset Error:", err);
                     return res.json({ success: false, error: "Database sync failed" });
                 }
 
             case 'deny-hwid':
-                // Find the LATEST pending request
-                const latestDeny = await mongoose.connection.collection('requests')
-                    .find({ license_key: license_key.toUpperCase(), status: "PENDING" })
-                    .sort({ date: -1 })
-                    .limit(1)
-                    .toArray();
+                try {
+                    const latestDeny = await mongoose.connection.collection('requests')
+                        .find({ license_key: license_key.toUpperCase(), status: "PENDING" })
+                        .sort({ date: -1 })
+                        .limit(1)
+                        .toArray();
 
-                if (latestDeny.length > 0) {
-                    // Update it to DENIED
-                    await mongoose.connection.collection('requests').updateOne(
-                        { _id: latestDeny[0]._id },
-                        { $set: { status: "DENIED" } }
-                    );
-                    console.log(`[❌] ADMIN PANEL: Denied Request for ${license_key}`);
+                    if (latestDeny.length > 0) {
+                        await mongoose.connection.collection('requests').updateOne(
+                            { _id: latestDeny[0]._id },
+                            { $set: { status: "DENIED" } }
+                        );
+
+                        // --- DISCORD LOG: DENIED ---
+                        const maskedKeyDeny = license_key.substring(0, 5) + "****-****";
+                        await fetch("https://discord.com_", {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                embeds: [{
+                                    title: "❌ HWID RESET DENIED",
+                                    description: `The request for key \`${maskedKeyDeny}\` has been **Rejected**.`,
+                                    color: 0xFF4444, // Red
+                                    footer: { text: "SK Security Audit Log" },
+                                    timestamp: new Date().toISOString()
+                                }]
+                            })
+                        });
+
+                        console.log(`[❌] ADMIN PANEL: Denied Request for ${license_key}`);
+                    }
+                    return res.json({ success: true, message: "Denied" });
+                } catch (err) {
+                    return res.json({ success: false, error: "Deny failed" });
                 }
-                return safeJson({ success: true, message: "Denied" });
 
             case 'pause':
                 user.is_paused = true;
@@ -375,71 +419,47 @@ app.post('/request-hwid-reset', async (req, res) => {
         }
 
         const upperKey = license_key.toUpperCase();
-        const DISCORD_WEBHOOK = "https://discord.com/api/webhooks/1375161068317573253/mK3ucW0iJcN9nj96LJ1L_0bSeCtx-dQMedS9kxvdz49Qhpsd1GCfWb3fRydp_b1Z1OT_";
+
+        const user = await User.findOne({ license_key: upperKey });
+        const oldHwid = user ? user.hwid : "NOT_SET";
+
+        // --- MASKING LOGIC ---
+        const maskedKey = upperKey.substring(0, 5) + "****-****";
+        const maskedHWID = hwid.substring(0, 4) + "********" + hwid.slice(-4);
 
         // --- 1. SAVE TO DATABASE ---
         await mongoose.connection.collection('requests').insertOne({
-            hwid: hwid,
+            old_hwid: oldHwid,
+            new_hwid: hwid,
             license_key: upperKey,
             type: type,
             status: "PENDING",
             date: new Date()
         });
 
-        // --- 2. SEND TO DISCORD (PREMIUM LOOK) ---
-        if (DISCORD_WEBHOOK.includes("discord.com")) {
-            try {
-                await fetch(DISCORD_WEBHOOK, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        username: "SK SECURITY SYSTEM",
-                        avatar_url: "https://i.imgur.com", // Optional: Add your logo URL here
-                        content: "⚠️ **NEW ACTION REQUIRED** <@&1370451599427764234>",
-                        embeds: [{
-                            title: "🔒 HWID RESET PENDING",
-                            description: `A manual reset request has been logged to the **Admin Dashboard**.`,
-                            color: 0xFFCC00, // Gold/Warning color
-                            fields: [
-                                {
-                                    name: "🔑 User License",
-                                    value: `\`${upperKey}\``,
-                                    inline: false
-                                },
-                                {
-                                    name: "🖥️ Hardware Identity",
-                                    value: `\`\`\`${hwid}\`\`\``,
-                                    inline: false
-                                },
-                                {
-                                    name: "🔗 Quick Action",
-                                    value: "[Open Admin Panel](https://github.com)", // Change this to your panel URL
-                                    inline: true
-                                },
-                                {
-                                    name: "🕒 Requested",
-                                    value: `<t:${Math.floor(Date.now() / 1000)}:R>`, // Dynamic Discord Timestamp
-                                    inline: true
-                                }
-                            ],
-                            footer: {
-                                text: "SK Auth v1.1.1 • Security Terminal",
-                                icon_url: "https://i.imgur.com"
-                            },
-                            timestamp: new Date().toISOString()
-                        }]
-                    })
-                });
-            } catch (webhookError) {
-                console.error("[⚠️] Webhook failed:", webhookError);
-            }
-        }
+        // --- 2. SEND TO DISCORD ---
+        const DISCORD_WEBHOOK = "https://discord.com/api/webhooks/1375161068317573253/mK3ucW0iJcN9nj96LJ1L_0bSeCtx-dQMedS9kxvdz49Qhpsd1GCfWb3fRydp_b1Z1OT_";
+        await fetch(DISCORD_WEBHOOK, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                content: "⚠️ **NEW RESET REQUEST** <@&1370451599427764234>",
+                embeds: [{
+                    title: "🔒 HWID RESET PENDING",
+                    color: 0xFFCC00,
+                    fields: [
+                        { name: "🔑 License", value: `\`${maskedKey}\``, inline: true },
+                        { name: "🕒 Time", value: `<t:${Math.floor(Date.now() / 1000)}:R>`, inline: true },
+                        { name: "🖥️ Current (Old) HWID", value: `\`\`\`${oldHwid || "None"}\`\`\``, inline: false }
+                    ],
+                    footer: { text: "Details visible in Admin Panel" }
+                }]
+            })
+        });
 
         return res.json({ success: true, message: "Admin notified." });
-
     } catch (err) {
-        console.error("[❌] Server Error:", err);
-        if (!res.headersSent) res.status(500).json({ success: false, error: "Internal Server Error" });
+        res.status(500).json({ success: false, error: "Internal Error" });
     }
 });
 
