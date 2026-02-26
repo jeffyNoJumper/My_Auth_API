@@ -152,7 +152,7 @@ ipcMain.handle('start-spoof', async (event, options) => {
             resolve(null);
         }
     });
-});S
+});
 
 ipcMain.handle('launch-game', async (event, gameName, autoClose, licenseKey) => {
     let injectionType = "default";
