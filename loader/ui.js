@@ -538,36 +538,46 @@ window.addEventListener('DOMContentLoaded', async () => {
 });
 
 async function startSpoofing() {
-
     const statusText = document.getElementById('spoof-main-status');
     const progress = document.getElementById('spoof-progress');
     const btn = document.querySelector('.spoof-btn');
     const subText = document.getElementById('spoof-subtext');
 
+    // --- FIX: ADD ALL EXPECTED C++ FLAGS ---
     const options = {
         mode: typeof currentSpoofMode !== 'undefined' ? currentSpoofMode : 'hwid',
         motherboard: document.getElementById('motherboard-select').value,
+        // C++ Worker expects these specific boolean keys:
+        disk: document.getElementById('clean-disk').checked,
+        guid: true,   // Always spoof GUID
+        kernel: true, // Always use Kernel driver
+        user: true,   // Always clean User-mode traces
         biosFlash: document.getElementById('bios-flash').checked,
-        cleanReg: document.getElementById('clean-reg').checked,
-        cleanDisk: document.getElementById('clean-disk').checked
+        cleanReg: document.getElementById('clean-reg').checked
     };
 
     btn.disabled = true;
     btn.style.opacity = "0.5";
-    progress.classList.remove('hidden'); // SHOW LOADER
+    if (progress) progress.classList.remove('hidden');
 
     statusText.innerText = "SPOOFING...";
     statusText.className = "processing";
     subText.innerText = "Communicating with kernel driver...";
 
     try {
-        
+        // Call the bridge
         const results = await window.api.startSpoof(options);
 
-        if (results && (results.disk || results.guid)) {
+        // Check for success (results.success is sent by our updated main.js)
+        if (results && (results.success || results.disk || results.guid)) {
             statusText.innerText = "SPOOFED SUCCESSFULLY";
             statusText.className = "active-status";
             subText.innerText = "Hardware identifiers successfully masked.";
+
+            // Trigger the Admin/API Reset Request after successful spoof
+            if (typeof requestHWIDReset === 'function') {
+                await requestHWIDReset();
+            }
         } else {
             statusText.innerText = "FAILED";
             statusText.className = "inactive";
@@ -579,9 +589,8 @@ async function startSpoofing() {
         statusText.className = "inactive";
         subText.innerText = "Failed to communicate with bridge.";
     } finally {
-        
         setTimeout(() => {
-            progress.classList.add('hidden'); // HIDE LOADER
+            if (progress) progress.classList.add('hidden');
             btn.disabled = false;
             btn.style.opacity = "1";
         }, 800);
