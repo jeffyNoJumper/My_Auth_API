@@ -226,6 +226,7 @@
                         <option value="FiveM">FiveM</option>
                         <option value="GTAV">GTAV</option>
                         <option value="Warzone">Warzone</option>
+                        <option value="All-Access">ALL</option>
                     </select>
                 </div>
 
@@ -530,12 +531,20 @@
 
         function startCountdown(expiryDate) {
             const timerDisplay = document.getElementById('info-timer');
-            if (!expiryDate || !timerDisplay) return;
+            if (!timerDisplay) return;
 
             // Clear any existing timer first
             if (countdownInterval) clearInterval(countdownInterval);
 
+            // --- NEW: HANDLE PENDING STATE ---
+            if (!expiryDate || expiryDate === "Pending Activation") {
+                timerDisplay.innerText = "PENDING ACTIVATION";
+                timerDisplay.style.color = "var(--gold)"; // Use your gold/warning color
+                return;
+            }
+
             const targetDate = new Date(expiryDate).getTime();
+            timerDisplay.style.color = "#ffcc00"; // Reset to default color
 
             countdownInterval = setInterval(() => {
                 const now = new Date().getTime();
@@ -548,13 +557,11 @@
                     return;
                 }
 
-                // Calculations for days, hours, minutes and seconds
                 const days = Math.floor(distance / (1000 * 60 * 60 * 24));
                 const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
                 const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
                 const seconds = Math.floor((distance % (1000 * 60)) / 1000);
 
-                // Format: 00d 00h 00m 00s
                 timerDisplay.innerText = `${days}d ${hours}h ${minutes}m ${seconds}s`;
             }, 1000);
         }
