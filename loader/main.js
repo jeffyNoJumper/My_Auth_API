@@ -124,21 +124,35 @@ ipcMain.on('log-to-terminal', (event, message) => {
 });
 
 
-// Spoofing ----
 ipcMain.handle('start-spoof', async (event, options) => {
-    return new Promise((resolve) => {
 
-        spoofer.runSpoofer(options, (err, results) => {
-            if (err) {
-                console.error("[MAIN] C++ Worker Error:", err);
-                resolve({ disk: false, guid: false, Kernel: false, User: false });
-            } else {
-                // 'results' contains { User, Kernel, disk } from SpoofWorker::OnOK
-                resolve(results);
-            }
-        });
+    const safeOptions = options || {};
+
+    return new Promise((resolve) => {
+        try {
+            // Call the C++ addon with the SAFE options object
+            spoofer.runSpoofer(safeOptions, (err, results) => {
+                if (err) {
+                    console.error("[MAIN] C++ Worker Error:", err);
+                    // Return null or failure so UI knows it failed
+                    resolve(null);
+                } else {
+                    // 'results' contains { User, Kernel, disk } from your C++ OnOK
+                    console.log("[MAIN] Spoof Success:", results);
+
+                    // Return a clean object with a success flag
+                    resolve({
+                        success: true,
+                        ...results
+                    });
+                }
+            });
+        } catch (crash) {
+            console.error("[MAIN] Spoofer Crash:", crash);
+            resolve(null);
+        }
     });
-});
+});S
 
 ipcMain.handle('launch-game', async (event, gameName, autoClose, licenseKey) => {
     let injectionType = "default";
