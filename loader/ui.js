@@ -413,7 +413,6 @@ function updateSubscriptionStatus(expiryDate) {
         dot.classList.add('dot-offline');
         expiryText.style.color = "#ff4444";
         expiryText.innerText = "EXP: EXPIRED";
-        // Disable launch buttons for expired users
         document.querySelectorAll('.launch-btn').forEach(btn => btn.disabled = true);
     }
     else if (diffDays <= 3) {
@@ -427,12 +426,10 @@ function updateSubscriptionStatus(expiryDate) {
         expiryText.style.color = "#00ff88";
     }
 }
-
 function updateProfileDisplay(base64Data) {
     const userPic = document.getElementById('user-pic');
     if (!userPic) return;
 
-    // 1. Check if the string actually contains image data
     if (base64Data && base64Data.startsWith('data:image')) {
         userPic.src = base64Data;
         localStorage.setItem('saved_profile_pic', base64Data);
@@ -442,8 +439,6 @@ function updateProfileDisplay(base64Data) {
     }
 }
 
-
-// 4. Auto-Fill logic for when the Loader starts up
 window.addEventListener('DOMContentLoaded', () => {
     const emailInput = document.getElementById('login-email');
     const passInput = document.getElementById('login-password');
@@ -462,7 +457,6 @@ window.addEventListener('DOMContentLoaded', () => {
     if (savedEmail && rememberCheckbox) rememberCheckbox.checked = true;
 });
 
-
 function hasAccess(gameName) {
     const accessMap = {
         'CS2': 'CS2X',
@@ -477,7 +471,6 @@ function hasAccess(gameName) {
     if (currentUserPrefix === accessMap[gameName]) {
         return true;
     }
-
     alert(`Access Denied! Your key (${currentUserPrefix}) is not valid for ${gameName}.`);
     return false;
 }
@@ -487,7 +480,6 @@ function setSessionAccess(key) {
     currentUserPrefix = key.split('-')[0].toUpperCase();
     localStorage.setItem('user_prefix', currentUserPrefix);
 }
-
 function updateUIForAccess() {
     const games = ['CS2', 'VALORANT', 'WARZONE', 'GTAV', 'FORTNITE'];
     games.forEach(game => {
@@ -508,21 +500,20 @@ document.getElementById('toggle-password').addEventListener('click', function ()
 });
 
 window.addEventListener('DOMContentLoaded', async () => {
-    // 1. Grab all UI elements
+
     const emailInput = document.getElementById('login-email');
     const passInput = document.getElementById('login-password');
     const licenseInput = document.getElementById('license-key');
     const userPic = document.getElementById('user-pic');
     const rememberCheckbox = document.getElementById('remember-me');
 
-    // 2. Pull everything from LocalStorage
+    // Pull everything from LocalStorage
     const savedEmail = localStorage.getItem('remembered_email');
     const savedPass = localStorage.getItem('remembered_password');
     const savedKey = localStorage.getItem('license_key');
     const savedPic = localStorage.getItem('saved_profile_pic');
     const savedPrefix = localStorage.getItem('user_prefix');
 
-    // 3. Auto-fill the Login Fields
     if (savedEmail && emailInput) emailInput.value = savedEmail;
     if (savedPass && passInput) passInput.value = savedPass;
     if (savedKey && licenseInput) licenseInput.value = savedKey;
@@ -530,13 +521,11 @@ window.addEventListener('DOMContentLoaded', async () => {
     // Check the box if they have saved credentials
     if (savedEmail && rememberCheckbox) rememberCheckbox.checked = true;
 
-    // 4. Restore Session Access (Prefix Logic)
     if (savedKey) {
         setSessionAccess(savedKey); // Sets currentUserPrefix in memory
         updateUIForAccess();       // Grays out locked games
     }
 
-    // 5. Restore Profile Picture with Fallback
     if (userPic) {
         if (savedPic && savedPic !== "null" && savedPic !== "undefined") {
             userPic.src = savedPic;
@@ -545,20 +534,16 @@ window.addEventListener('DOMContentLoaded', async () => {
             userPic.src = 'imgs/default-profile.png';
         }
     }
-
     console.log(`[LOADER] Session Restored: ${savedEmail || 'Guest'} | Prefix: ${savedPrefix}`);
 });
 
-
-
 async function startSpoofing() {
-    // 1. Grab elements
+
     const statusText = document.getElementById('spoof-main-status');
     const progress = document.getElementById('spoof-progress');
     const btn = document.querySelector('.spoof-btn');
     const subText = document.getElementById('spoof-subtext');
 
-    // 2. Collect options
     const options = {
         mode: typeof currentSpoofMode !== 'undefined' ? currentSpoofMode : 'hwid',
         motherboard: document.getElementById('motherboard-select').value,
@@ -818,7 +803,7 @@ async function sendAdminRequest() {
         const response = await fetch(`${API}/request-hwid-reset`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ hwid, license_key: savedKey, type: "MANUAL_RESET" })
+            body: JSON.stringify({ hwid, license_key: savedKey, type: "ADMIN-PANEL_RESET" })
         });
 
         const data = await response.json();
@@ -830,7 +815,7 @@ async function sendAdminRequest() {
             // --- START LIVE POLLING ---
             const pollInterval = setInterval(async () => {
                 try {
-                    // This hits a new route we will add to index.js
+
                     const statusCheck = await fetch(`${API}/check-reset-status?key=${savedKey}`);
                     const statusData = await statusCheck.json();
 
@@ -839,7 +824,6 @@ async function sendAdminRequest() {
                         addLog("HWID RESET SUCCESSFUL. RE-LOGGING...");
                         clearInterval(pollInterval);
 
-                        // Auto-reload to let users log in after 3 seconds
                         setTimeout(() => { location.reload(); }, 3000);
                     }
                     else if (statusData.status === "DENIED") {
@@ -864,13 +848,12 @@ function setStatus(expiryDate) {
     const dot = document.getElementById("status-dot");
     if (!status || !dot) return;
 
-    // 1. Calculate time difference
+    // Calculate time difference
     const now = new Date();
     const expire = new Date(expiryDate);
     const diffMs = expire - now;
     const diffDays = diffMs / (1000 * 60 * 60 * 24); // Convert ms to days
 
-    // 2. Clear old classes
     status.classList.remove("status-active", "status-warning", "status-expired");
     dot.classList.remove("dot-online", "dot-warning", "dot-offline");
 
