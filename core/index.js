@@ -7,13 +7,9 @@ const cors = require('cors');
 // --- 1. HANDLE MODELS SAFELY ---
 if (mongoose.models.User) delete mongoose.models.User;
 
-const User = require('../src/user');
+const User = require('./user');
 
 const app = express();
-
-app.get('/ping', (req, res) => {
-    res.status(200).send('Server is awake!');
-});
 
 // --- 2. MIDDLEWARE ---
 app.use(express.json({ limit: '75mb' }));
@@ -499,13 +495,7 @@ app.get('/health', (req, res) => {
 
 app.get('/', (req, res) => res.send('API Online & Connected.'));
 
-const PORT = process.env.PORT || 10000;
-
+const PORT = process.env.PORT || 8080;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 API Active on port ${PORT}`);
 });
-
-app.get('/health', (req, res) => {
-    res.status(200).send('OK');
-});
-
