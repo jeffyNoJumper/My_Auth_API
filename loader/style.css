@@ -35,14 +35,34 @@ body {
     overflow: hidden;
 }
 
-#particles-js {
-    position: absolute;
-    width: 100%;
-    height: 100%;
+/* THE MASTER HIDE RULE - Ensure this is at the top */
+.hidden {
+    display: none !important;
+}
+
+/* THE MODAL OVERLAY - Force it to the very front */
+.modal-overlay {
+    position: fixed;
     top: 0;
     left: 0;
-    z-index: -1; /* Ensure it stays behind your buttons/text */
-    background-color: #000; /* Or your theme color */
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100000 !important; /* Higher than everything else */
+}
+
+.modal-content {
+    background: #111;
+    border: 1px solid var(--accent);
+    padding: 25px;
+    border-radius: 10px;
+    width: 350px;
+    position: relative;
+    box-shadow: 0 0 30px rgba(0, 242, 255, 0.2);
 }
 
 .content-area {
@@ -405,6 +425,96 @@ body {
     z-index: 999;
 }
 
+.dropdown-content {
+    position: absolute;
+    right: 0;
+    top: 50px;
+    background: rgba(10, 10, 10, 0.95);
+    border: 1px solid var(--accent);
+    width: 200px;
+    border-radius: 8px;
+    backdrop-filter: blur(15px);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    z-index: 9999;
+
+    transform-origin: top right;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    opacity: 1;
+    transform: scale(1) translateY(0);
+}
+
+    .dropdown-content.hidden {
+        display: block !important;
+        opacity: 0;
+        transform: scale(0.95) translateY(-10px);
+        pointer-events: none;
+    }
+
+.dropdown-item {
+    padding: 12px 15px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+    .dropdown-item:hover {
+        background: rgba(0, 242, 255, 0.1);
+        color: var(--accent);
+    }
+
+.home-tile-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 15px;
+    margin-top: 25px;
+}
+
+.stat-tile {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid #222;
+    padding: 20px;
+    border-radius: 10px;
+    text-align: center;
+    transition: 0.3s;
+}
+
+    .stat-tile:hover {
+        border-color: var(--accent);
+        transform: translateY(-5px);
+    }
+
+/* Home Grid */
+.home-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 15px;
+    margin-top: 20px;
+}
+
+.home-card {
+    background: #111;
+    border: 1px solid #222;
+    padding: 15px;
+    border-radius: 8px;
+    text-align: center;
+    border-bottom: 2px solid var(--accent);
+}
+
+.card-label {
+    font-size: 9px;
+    color: #555;
+    display: block;
+    margin-bottom: 5px;
+}
+
+.card-value {
+    font-size: 12px;
+    color: #eee;
+    font-family: monospace;
+}
+
 /* STEAM GRID CARDS */
 .steam-grid {
     display: grid;
@@ -514,12 +624,6 @@ body {
 .game-card:hover .card-overlay {
     opacity: 1;
 }
-
-/* UTILS
-.hidden {
-    display: none !important;
-}
-*/
 
 /* ==== HOME TAB ======
 
@@ -1299,6 +1403,7 @@ body {
     #update-terminal::-webkit-scrollbar-track {
         background: #000;
     }
+
 
 
 
