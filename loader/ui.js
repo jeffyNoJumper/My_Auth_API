@@ -733,33 +733,40 @@ document.addEventListener("DOMContentLoaded", function () {
 
 
 // Request HWID Reset Function (UPDATED: FIXED CRASH & API SYNC)
+// Request HWID Reset Function (FIXED FOR C++ STABILITY)
 async function requestHWIDReset() {
-    const hwidStatus = document.getElementById('hwid-status');
-    const spooferStatus = document.getElementById('spoofer-status');
-    const hwidText = document.getElementById('hwid-id'); // Get current ID element
+    const hwidStatus = document.getElementById('hwid-main-status'); // Updated ID to match your HTML
     const API_URL = "https://sk-auth-api.up.railway.app";
+    const btn = document.getElementById('reset-btn');
 
     if (hwidStatus) {
         hwidStatus.innerText = "BYPASSING BIOS RESTRICTIONS...";
         hwidStatus.className = "processing";
     }
 
+    if (btn) btn.disabled = true;
+
     try {
-        // 1. Run local C++ spoofing logic (FIXED: Added {} to prevent TypeError)
-        const results = await window.api.startSpoof({});
+        // --- THE FIX: PASS ALL REQUIRED C++ FLAGS ---
+        const results = await window.api.startSpoof({
+            disk: true,
+            guid: true,
+            kernel: true,
+            user: true,
+            cleanReg: true,
+            cleanDisk: true
+        });
 
         if (results) {
             if (hwidStatus) hwidStatus.innerText = "SYNCING WITH DATABASE...";
 
             const savedKey = localStorage.getItem('license_key');
-            const currentHWID = hwidText ? hwidText.innerText : "UNKNOWN";
+            const currentHWID = document.getElementById('hwid-id').innerText;
 
-            // 2. Notify the Admin/API (FIXED: Added /request-hwid-reset path and body)
+            // 2. Notify the Admin/API
             const response = await fetch(`${API_URL}/request-hwid-reset`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     hwid: currentHWID,
                     license_key: savedKey,
@@ -768,10 +775,7 @@ async function requestHWIDReset() {
             });
 
             const data = await response.json();
-
-            if (!data.success) {
-                throw new Error(data.error || "Server Rejected Sync");
-            }
+            if (!data.success) throw new Error(data.error || "Server Rejected Sync");
 
             // Give OS time to flush ID's
             await new Promise(resolve => setTimeout(resolve, 2000));
@@ -781,15 +785,9 @@ async function requestHWIDReset() {
                 hwidStatus.className = "active-status";
             }
 
-            if (spooferStatus) {
-                spooferStatus.innerText = "ACTIVE";
-                spooferStatus.className = "active-status";
-            }
-
-            // 3. Refresh IDs in UI
+            // Refresh IDs in UI
             await updateHWIDDisplay();
-
-            console.log("✅ DB Cleared & Discord Notified. Pending Admin Approval.");
+            console.log("✅ DB Cleared & Discord Notified.");
         }
     } catch (err) {
         console.error("❌ Reset Error:", err);
@@ -797,6 +795,8 @@ async function requestHWIDReset() {
             hwidStatus.innerText = "DB SYNC FAILED";
             hwidStatus.className = "inactive";
         }
+    } finally {
+        if (btn) btn.disabled = false;
     }
 }
 
