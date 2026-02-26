@@ -11,6 +11,10 @@ const User = require('./user');
 
 const app = express();
 
+app.get('/ping', (req, res) => {
+    res.status(200).send('Server is awake!');
+});
+
 // --- 2. MIDDLEWARE ---
 app.use(express.json({ limit: '75mb' }));
 app.use(express.urlencoded({ limit: '75mb', extended: true }));
