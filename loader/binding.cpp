@@ -246,6 +246,7 @@ private:
 Napi::Value RunSpooferAsync(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
+    // 1. Validate inputs (Ensure we have options and a callback)
     if (info.Length() < 2 || !info[0].IsObject() || !info[1].IsFunction()) {
         Napi::TypeError::New(env, "Expected options object and callback").ThrowAsJavaScriptException();
         return env.Null();
@@ -254,12 +255,21 @@ Napi::Value RunSpooferAsync(const Napi::CallbackInfo& info) {
     Napi::Object options = info[0].As<Napi::Object>();
     Napi::Function cb = info[1].As<Napi::Function>();
 
-    std::string motherboard = options.Get("motherboard").As<Napi::String>();
-    bool biosFlash = options.Get("biosFlash").As<Napi::Boolean>();
-    bool cleanReg = options.Get("cleanReg").As<Napi::Boolean>();
-    bool cleanDisk = options.Get("cleanDisk").As<Napi::Boolean>();
+    // 2. SAFE EXTRACTION (Prevents Fatal Error if property is missing)
+    // We check .Has() or use .ToString() fallback to ensure stability
+    std::string motherboard = options.Has("motherboard") ? options.Get("motherboard").ToString().Utf8Value() : "Auto";
+    bool biosFlash = options.Has("biosFlash") ? options.Get("biosFlash").ToBoolean().Value() : false;
+    bool cleanReg = options.Has("cleanReg") ? options.Get("cleanReg").ToBoolean().Value() : true;
+    bool cleanDisk = options.Has("cleanDisk") ? options.Get("cleanDisk").ToBoolean().Value() : true;
 
-    // Create the worker with the UI data
+    // 3. CAPTURE THE NEW GUID (For the Registry Reset)
+    if (options.Has("newMachineGuid")) {
+        std::string newGuid = options.Get("newMachineGuid").ToString().Utf8Value();
+        // Trigger the Registry Write immediately before the worker starts
+        SetMachineID(newGuid);
+    }
+
+    // 4. Create the worker with the UI data
     SpoofWorker* worker = new SpoofWorker(cb, motherboard, biosFlash, cleanReg, cleanDisk);
     worker->Queue();
 
@@ -272,11 +282,19 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     exports.Set("getMachineID", Napi::Function::New(env, [](const Napi::CallbackInfo& info) {
         return Napi::String::New(info.Env(), GetMachineID());
         }));
+
+    // --- ADD THIS LINE TO FIX THE STUCK ID ---
+    exports.Set("setMachineID", Napi::Function::New(env, [](const Napi::CallbackInfo& info) {
+        std::string newID = info[0].As<Napi::String>().Utf8Value();
+        return Napi::Boolean::New(info.Env(), SetMachineID(newID));
+        }));
+
     exports.Set("getBaseboard", Napi::Function::New(env, GetBaseboardSerial));
     exports.Set("getGPUID", Napi::Function::New(env, GetGPUID));
     exports.Set("runSpoofer", Napi::Function::New(env, RunSpooferAsync));
     exports.Set("launchCheat", Napi::Function::New(env, LaunchCheat));
     return exports;
 }
+
 
 NODE_API_MODULE(spoofer, Init)
