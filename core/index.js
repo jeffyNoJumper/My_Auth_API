@@ -142,27 +142,34 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
             user = await User.findOne({ license_key: license_key.toUpperCase().trim() });
         }
 
-        // 5. VALIDATE USER EXISTENCE
-        // We only return "Key not found" if it's NOT a delete action
         if (!user && cleanAction !== 'delete') {
             console.log(`[ADMIN] Error: Key not found for action "${cleanAction}"`);
             return safeJson({ success: false, error: "Key not found" });
         }
 
-        if (action === 'add-time') {
-            const daysToAdd = parseFloat(days);
-            if (isNaN(daysToAdd)) return res.status(400).json({ error: "Invalid days" });
+        if (cleanAction === 'add-time') {
+            // Pull 'days' from req.body
+            const daysToAdd = parseFloat(req.body.days);
 
+            if (isNaN(daysToAdd)) {
+                return res.status(400).json({ success: false, error: "Invalid days value" });
+            }
+
+            // Math: If expired, start from NOW. If active, add to existing
             let currentExpiry = user.expiry_date ? new Date(user.expiry_date) : new Date();
-
-            // Smart Math: If expired, start from NOW. If active, add to existing.
             let baseDate = (currentExpiry > new Date()) ? currentExpiry : new Date();
+
+            // Add the days
             baseDate.setDate(baseDate.getDate() + daysToAdd);
 
             user.expiry_date = baseDate;
             await user.save();
 
-            return res.json({ success: true, message: `Added ${daysToAdd} days.` });
+            console.log(`[ADMIN] Successfully added ${daysToAdd} days to: ${license_key}`);
+            return res.json({
+                success: true,
+                message: `Added ${daysToAdd} days. New Expiry: ${baseDate.toLocaleDateString()}`
+            });
         }
 
         switch (cleanAction) {
@@ -210,31 +217,30 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                     if (pendingReqList.length > 0) {
                         const reqData = pendingReqList[0];
 
-                        // --- NEW: TIME RESTORE LOGIC ---
                         const now = new Date();
                         const newExpiry = new Date();
-                        const days = user.duration_days || 30; // Fallback to 30 if missing
+                        const days = user.duration_days || 30;
 
                         if (days >= 999) {
                             newExpiry.setFullYear(newExpiry.getFullYear() + 50); // Lifetime
                         } else {
-                            // Reset to full original duration starting NOW
+
                             const msToAdd = Math.floor(days * 24 * 60 * 60 * 1000);
                             newExpiry.setTime(now.getTime() + msToAdd);
                         }
 
-                        // 2. Update User
+                        // Update User
                         user.hwid = null;
                         user.expiry_date = newExpiry;
                         await user.save();
 
-                        // 3. Update Request Status
+                        // Update Request Status
                         await mongoose.connection.collection('requests').updateOne(
                             { _id: reqData._id },
                             { $set: { status: "APPROVED" } }
                         );
 
-                        // 4. DISCORD LOG: SHOW OLD VS NEW + RESTORED TIME
+                        // DISCORD LOG: SHOW OLD VS NEW + RESTORED TIME
                         const DISCORD_WEBHOOK = "https://discord.com/api/webhooks/1375161068317573253/mK3ucW0iJcN9nj96LJ1L_0bSeCtx-dQMedS9kxvdz49Qhpsd1GCfWb3fRydp_b1Z1OT_";
                         const maskedKey = license_key.substring(0, 5) + "****-****";
 
