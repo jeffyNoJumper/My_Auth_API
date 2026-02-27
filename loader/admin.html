@@ -266,8 +266,21 @@
                     <div style="font-size:11px; margin-bottom:10px; line-height:1.6; border-bottom: 1px solid #333; padding-bottom: 8px;">
                         <span style="color:#888;">User:</span> <span id="info-email" style="color:var(--accent)">---</span><br>
                         <span style="color:#888;">Status:</span> <span id="manage-status" style="font-weight:bold;">Offline</span><br>
-                        <span style="color:#888;">HWID:</span> <span id="manage-hwid" style="font-size:9px; color:#666; word-break:break-all;">None</span><br>
                         <span style="color:#888;">Time Left:</span> <span id="info-timer" style="color:#ffcc00; font-family: monospace;">--:--:--</span>
+                    </div>
+
+                    <!-- NEW: EXTEND TIME SECTION -->
+                    <div style="margin-bottom:10px; padding:5px; background:rgba(255,255,255,0.05); border-radius:4px; border:1px solid #333;">
+                        <div style="font-size:9px; color:#888; margin-bottom:4px; text-transform:uppercase;">Extend Subscription</div>
+                        <div style="display:flex; gap:4px; margin-bottom:4px;">
+                            <input type="number" id="add-days-input" placeholder="Days" style="flex:1; height:22px; font-size:10px; background:#111; border:1px solid #444; color:white; padding:0 5px; margin:0;">
+                            <button onclick="modifyKey('add-time')" style="height:22px; width:40px; background:var(--accent); color:black; font-size:10px; font-weight:bold; margin:0; padding:0;">ADD</button>
+                        </div>
+                        <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:3px;">
+                            <button onclick="quickAdd(1)" style="font-size:8px; background:#222; border:1px solid #444; padding:2px; color:#ccc;">+1D</button>
+                            <button onclick="quickAdd(7)" style="font-size:8px; background:#222; border:1px solid #444; padding:2px; color:#ccc;">+7D</button>
+                            <button onclick="quickAdd(30)" style="font-size:8px; background:#222; border:1px solid #444; padding:2px; color:#ccc;">+30D</button>
+                        </div>
                     </div>
 
                     <!-- PENDING REQUEST BOX -->
@@ -281,347 +294,352 @@
                     </div>
 
                     <!-- Action Buttons (Stacked Hierarchy) -->
-                    <div style="display:flex; flex-direction: column; gap:6px; margin-top: 10px;">
+                    <div style="display:flex; flex-direction: column; gap:6px;">
                         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px;">
-                            <button style="background: #282828; color: var(--accent); border: 1px solid #333;" onclick="modifyKey('unpause')">UNPAUSE</button>
-                            <button style="background: #282828; color: var(--accent); border: 1px solid #333;" onclick="modifyKey('unban')">UNBAN</button>
+                            <button style="background: #282828; color: var(--accent); border: 1px solid #333; font-size:10px; padding:5px;" onclick="modifyKey('unpause')">UNPAUSE</button>
+                            <button style="background: #282828; color: var(--accent); border: 1px solid #333; font-size:10px; padding:5px;" onclick="modifyKey('unban')">UNBAN</button>
                         </div>
                         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px;">
-                            <button style="background: #222; color: #ffcc00; border: 1px solid #333;" onclick="modifyKey('pause')">PAUSE</button>
-                            <button style="background: var(--red); color: white;" onclick="modifyKey('ban')">BAN USER</button>
+                            <button style="background: #222; color: #ffcc00; border: 1px solid #333; font-size:10px; padding:5px;" onclick="modifyKey('pause')">PAUSE</button>
+                            <button style="background: var(--red); color: white; border:none; font-size:10px; padding:5px;" onclick="modifyKey('ban')">BAN USER</button>
                         </div>
-                        <button style="background: transparent; color: var(--red); border: 1px solid var(--red); font-size: 10px;" onclick="modifyKey('delete')">DELETE PERMANENTLY</button>
-                        <button style="background: #444; color: white; margin-top: 5px;" onclick="loadKeysDropdown()">REFRESH API & DB</button>
-                        <button id="standard-reset-btn" style="background: #00f2ff; color: black; font-weight: 900;" onclick="modifyKey('reset-hwid')">RESET HWID LOCK</button>
+                        <button id="standard-reset-btn" style="background: #00f2ff; color: black; font-weight: 900; padding:6px; font-size:11px;" onclick="modifyKey('reset-hwid')">RESET HWID LOCK</button>
+                        <button style="background: transparent; color: #666; border: 1px solid #333; font-size: 9px; padding:3px;" onclick="modifyKey('delete')">DELETE KEY</button>
                     </div>
                 </div>
             </div>
-        </div>
-    </div>
 
-    <script>
-        const { ipcRenderer, clipboard } = require('electron');
-        const API = 'https://my-auth-api-1ykc.onrender.com';
 
-        function closeWin() { ipcRenderer.send('admin-close'); }
-        function minWin() { ipcRenderer.send('admin-min'); }
-        
-        async function generateKey() {
-            const btn = document.getElementById('gen-btn');
-            const pass = document.getElementById('admin-pass').value;
+            <script>
+                const { ipcRenderer, clipboard } = require('electron');
+                const API = 'https://my-auth-api-1ykc.onrender.com';
 
-            const userEmail = document.getElementById('new-user-email').value.trim();
-            const userPass = document.getElementById('new-user-pass').value.trim();
+                function closeWin() { ipcRenderer.send('admin-close'); }
+                function minWin() { ipcRenderer.send('admin-min'); }
 
-            const days = parseFloat(document.getElementById('key-days').value);
-            const game = document.getElementById('key-game').value;
-            const keyText = document.getElementById('key-text');
+                async function generateKey() {
+                    const btn = document.getElementById('gen-btn');
+                    const pass = document.getElementById('admin-pass').value;
 
-            if (!pass) return alert("Enter Admin Password!");
+                    const userEmail = document.getElementById('new-user-email').value.trim();
+                    const userPass = document.getElementById('new-user-pass').value.trim();
 
-            btn.disabled = true;
-            btn.innerHTML = 'GENERATING...';
+                    const days = parseFloat(document.getElementById('key-days').value);
+                    const game = document.getElementById('key-game').value;
+                    const keyText = document.getElementById('key-text');
 
-            try {
-                const response = await fetch(`${API}/admin/create-key`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        admin_password: pass,
-                        email: userEmail || null,
-                        password: userPass || null,
-                        days: days,
-                        games: [game]
-                    })
-                });
+                    if (!pass) return alert("Enter Admin Password!");
 
-                const data = await response.json();
+                    btn.disabled = true;
+                    btn.innerHTML = 'GENERATING...';
 
-                if (data.success) {
-                    keyText.innerText = data.key;
+                    try {
+                        const response = await fetch(`${API}/admin/create-key`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                admin_password: pass,
+                                email: userEmail || null,
+                                password: userPass || null,
+                                days: days,
+                                games: [game]
+                            })
+                        });
 
-                    document.getElementById('key-expiry').innerText = "Status: Pending Activation";
+                        const data = await response.json();
 
-                    if (clipboard) clipboard.writeText(data.key);
-                    alert("Key Generated! User can register email/pass on login.");
-                    loadKeysDropdown();
-                } else {
-                    alert("API Error: " + (data.error || "Access Denied"));
+                        if (data.success) {
+                            keyText.innerText = data.key;
+
+                            document.getElementById('key-expiry').innerText = "Status: Pending Activation";
+
+                            if (clipboard) clipboard.writeText(data.key);
+                            alert("Key Generated! User can register email/pass on login.");
+                            loadKeysDropdown();
+                        } else {
+                            alert("API Error: " + (data.error || "Access Denied"));
+                        }
+                    } catch (err) {
+                        alert("Connection failed.");
+                    } finally {
+                        btn.disabled = false;
+                        btn.innerHTML = 'GENERATE & SAVE';
+                    }
                 }
-            } catch (err) {
-                alert("Connection failed.");
-            } finally {
-                btn.disabled = false;
-                btn.innerHTML = 'GENERATE & SAVE';
-            }
-        }
 
-        // LOAD ALL KEYS INTO DROPDOWN
-        async function loadKeysDropdown() {
-            const pass = document.getElementById('admin-pass').value;
-            const select = document.getElementById('manage-key-input');
+                // LOAD ALL KEYS INTO DROPDOWN
+                async function loadKeysDropdown() {
+                    const pass = document.getElementById('admin-pass').value;
+                    const select = document.getElementById('manage-key-input');
 
-            if (!pass) return alert("Enter Admin Password first!");
+                    if (!pass) return alert("Enter Admin Password first!");
 
-            select.innerHTML = '<option value="">Connecting to API...</option>';
+                    select.innerHTML = '<option value="">Connecting to API...</option>';
 
-            try {
-                const res = await fetch(`${API}/admin/load-keys`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ admin_password: pass })
-                });
+                    try {
+                        const res = await fetch(`${API}/admin/load-keys`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ admin_password: pass })
+                        });
 
-                const data = await res.json();
+                        const data = await res.json();
 
-                if (data.success && data.keys) {
-                    select.innerHTML = '';
+                        if (data.success && data.keys) {
+                            select.innerHTML = '';
 
-                    if (data.keys.length === 0) {
-                        select.innerHTML = '<option value="">(No keys found in database)</option>';
+                            if (data.keys.length === 0) {
+                                select.innerHTML = '<option value="">(No keys found in database)</option>';
+                                return;
+                            }
+
+                            data.keys.forEach(k => {
+                                const opt = document.createElement('option');
+                                opt.value = k.license_key;
+                                const status = k.is_banned ? "🔴" : (k.is_paused ? "🟡" : "🟢");
+                                opt.innerText = `${status} ${k.license_key || k.email}`;
+                                select.appendChild(opt);
+                            });
+                            console.log("Keys loaded successfully.");
+                        } else {
+                            alert("Login Failed: " + (data.error || "Invalid Admin Key"));
+                            select.innerHTML = `<option value="">❌ ${data.error || "Access Denied"}</option>`;
+                        }
+                    } catch (err) {
+                        console.error("Fetch error:", err);
+                        alert("Connection failed. Check if the API is online.");
+                        select.innerHTML = '<option value="">(Connection Error)</option>';
+                    }
+                }
+
+                async function loadKey() {
+                    const keyInput = document.getElementById('single-key-input')?.value.trim();
+                    const dropdown = document.getElementById('manage-key-input');
+                    const key = keyInput || dropdown?.value;
+                    const pass = document.getElementById('admin-pass')?.value;
+
+                    if (!key || !pass) return alert("Select a key and enter Admin Password!");
+
+                    try {
+                        const res = await fetch(`${API}/admin/get-key`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ license_key: key, admin_password: pass })
+                        });
+                        const data = await res.json();
+
+                        if (data.success) {
+                            // --- 1. CORE INFO (Safe Assignment) ---
+                            const emailEl = document.getElementById('info-email');
+                            const hwidEl = document.getElementById('manage-hwid');
+                            const timerDisplay = document.getElementById('info-timer');
+                            const statusDisplay = document.getElementById('manage-status');
+
+                            if (emailEl) emailEl.innerText = data.email || "No Email Linked";
+                            if (hwidEl) hwidEl.innerText = data.hwid || "NOT CAPTURED";
+
+                            // --- 2. TIME & EXPIRY LOGIC ---
+                            if (!data.expiry) {
+                                if (window.countdownInterval) clearInterval(window.countdownInterval);
+                                if (timerDisplay) {
+                                    timerDisplay.innerText = "PENDING ACTIVATION";
+                                    timerDisplay.style.color = "var(--gold)";
+                                }
+                                if (statusDisplay) {
+                                    statusDisplay.innerText = "INACTIVE (NEW)";
+                                    statusDisplay.style.color = "var(--gold)";
+                                }
+                            } else {
+                                if (typeof startCountdown === "function") startCountdown(data.expiry);
+                                if (statusDisplay) {
+                                    statusDisplay.innerText = data.is_banned ? "BANNED" : (data.is_paused ? "PAUSED" : "ACTIVE");
+                                    statusDisplay.style.color = data.is_banned ? "var(--red)" : "var(--accent)";
+                                }
+                            }
+
+                            // --- 3. HWID REQUEST HANDLING ---
+                            const requestBox = document.getElementById('request-alert-box');
+                            const standardBtn = document.getElementById('standard-reset-btn');
+                            const requestedHwidText = document.getElementById('requested-hwid-text');
+
+                            if (data.pending_request && data.pending_request.status === "PENDING") {
+                                if (requestBox) requestBox.style.display = 'block';
+                                if (standardBtn) standardBtn.style.display = 'none';
+                                // Only set innerText if the element actually exists
+                                if (requestedHwidText) requestedHwidText.innerText = "ID: " + (data.pending_request.hwid || "Unknown");
+                            } else {
+                                if (requestBox) requestBox.style.display = 'none';
+                                if (standardBtn) standardBtn.style.display = 'block';
+                            }
+
+                        } else {
+                            alert(data.error || "Failed to load key");
+                        }
+                    } catch (err) {
+                        console.error("Load Error:", err);
+                    }
+                }
+
+                async function linkUserEmail() {
+                    const key = document.getElementById('manage-key-input').value || document.getElementById('single-key-input').value;
+                    const email = document.getElementById('quick-link-email').value.trim();
+                    const pass = document.getElementById('admin-pass').value;
+
+                    if (!key || !email) return alert("Select a key and enter an email first!");
+
+                    const res = await fetch(`${API}/admin/update-key`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ admin_password: pass, license_key: key, email: email })
+                    });
+
+                    const data = await res.json();
+                    if (data.success) {
+                        alert(`Linked ${email} successfully!`);
+                        document.getElementById('quick-link-email').value = "";
+                        await loadKey();
+                    }
+                }
+
+                async function modifyKey(action, customDays = null) {
+                    const inputKey = document.getElementById('single-key-input').value.trim();
+                    const dropKey = document.getElementById('manage-key-input').value;
+                    const key = inputKey || dropKey;
+                    const pass = document.getElementById('admin-pass').value;
+
+                    console.log(`[DEBUG] Button Clicked: ${action} | Key: ${key}`);
+
+                    if (!key || !pass) {
+                        return alert("Error: Select a user and enter Admin Password first!");
+                    }
+
+                    let daysToSend = customDays;
+                    if (action === 'add-time' && !daysToSend) {
+                        const inputVal = document.getElementById('add-days-input').value;
+                        if (!inputVal || inputVal <= 0) return alert("Enter valid days!");
+                        daysToSend = parseFloat(inputVal);
+                    }
+
+                    try {
+                        const res = await fetch(`${API}/admin/${action}`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                license_key: key,
+                                admin_password: pass,
+                                days: daysToSend
+                            })
+                        });
+
+                        const data = await res.json();
+                        console.log("[DEBUG] Server Response:", data);
+
+                        if (data.success) {
+                            // UI cleanup for HWID requests
+                            const requestBox = document.getElementById('request-alert-box');
+                            const standardBtn = document.getElementById('standard-reset-btn');
+
+                            if (requestBox && (action === 'reset-hwid' || action === 'deny-hwid')) {
+                                requestBox.style.display = 'none';
+                                if (standardBtn) standardBtn.style.display = 'block';
+                            }
+
+                            // Clear the time input if that was the action
+                            if (action === 'add-time') {
+                                document.getElementById('add-days-input').value = "";
+                                alert(`Added ${daysToSend} day(s) to ${key}`);
+                            }
+
+                            console.log(`[SUCCESS] ${action.toUpperCase()} completed.`);
+                            await loadKey(); // Refresh the user info and timer
+                        } else {
+                            alert("API Error: " + data.error);
+                        }
+                    } catch (err) {
+                        console.error("Fetch Error:", err);
+                        alert("Connection Failed. Check Console (F12).");
+                    }
+                }
+
+                // Helper for the quick buttons (+1D, +7D, etc)
+                function quickAdd(days) {
+                    modifyKey('add-time', days);
+                }
+
+
+                function copyActiveKey() {
+                    const keyInput = document.getElementById('single-key-input').value.trim();
+                    const dropdown = document.getElementById('manage-key-input');
+                    const copyBtn = document.getElementById('copy-btn');
+
+                    const keyToCopy = keyInput || dropdown.value;
+
+                    if (!keyToCopy || keyToCopy === "") {
+                        return alert("No key selected to copy!");
+                    }
+
+                    if (typeof clipboard !== 'undefined') {
+                        clipboard.writeText(keyToCopy);
+                    } else {
+                        navigator.clipboard.writeText(keyToCopy);
+                    }
+
+                    const originalText = copyBtn.innerText;
+                    copyBtn.innerText = "✅ Done!";
+                    copyBtn.style.borderColor = "#00ff88";
+                    copyBtn.style.color = "#00ff88";
+
+                    setTimeout(() => {
+                        copyBtn.innerText = originalText;
+                        copyBtn.style.borderColor = "var(--accent)";
+                        copyBtn.style.color = "var(--accent)";
+                    }, 1500);
+                }
+
+                let countdownInterval;
+                function startCountdown(expiryDate) {
+                    const timerDisplay = document.getElementById('info-timer');
+                    if (!timerDisplay) return;
+
+                    // Clear any existing timer first
+                    if (window.countdownInterval) clearInterval(window.countdownInterval);
+
+                    // --- HANDLE PENDING STATE ---
+                    if (!expiryDate || expiryDate === "Pending Activation" || expiryDate === "Not Activated") {
+                        timerDisplay.innerText = "PENDING ACTIVATION";
+                        timerDisplay.style.color = "var(--gold)";
                         return;
                     }
 
-                    data.keys.forEach(k => {
-                        const opt = document.createElement('option');
-                        opt.value = k.license_key;
-                        const status = k.is_banned ? "🔴" : (k.is_paused ? "🟡" : "🟢");
-                        opt.innerText = `${status} ${k.license_key || k.email}`;
-                        select.appendChild(opt);
-                    });
-                    console.log("Keys loaded successfully.");
-                } else {
-                    alert("Login Failed: " + (data.error || "Invalid Admin Key"));
-                    select.innerHTML = `<option value="">❌ ${data.error || "Access Denied"}</option>`;
-                }
-            } catch (err) {
-                console.error("Fetch error:", err);
-                alert("Connection failed. Check if the API is online.");
-                select.innerHTML = '<option value="">(Connection Error)</option>';
-            }
-        }
+                    const targetDate = new Date(expiryDate).getTime();
 
-        // LOAD SELECTED KEY INFO (FINAL SYNCED VERSION)
-        async function loadKey() {
-            const keyInput = document.getElementById('single-key-input').value.trim();
-            const dropdown = document.getElementById('manage-key-input');
-            const key = keyInput || dropdown.value;
-            const pass = document.getElementById('admin-pass').value;
-
-            if (!key || !pass) return alert("Select a key and enter Admin Password!");
-
-            try {
-                const res = await fetch(`${API}/admin/get-key`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ license_key: key, admin_password: pass })
-                });
-                const data = await res.json();
-
-                if (data.success) {
-                    document.getElementById('info-email').innerText = data.email || "No Email Linked";
-                    document.getElementById('manage-hwid').innerText = data.hwid || "NOT CAPTURED";
-
-                    // Handle Pending Activation vs Active Expiry
-                    const timerDisplay = document.getElementById('info-timer');
-                    const statusDisplay = document.getElementById('manage-status');
-                    const dateDisplay = document.getElementById('manage-expiry');
-
-                    if (!data.expiry || data.expiry === null) {
-                        // STOP any old running timers
-                        if (window.countdownInterval) clearInterval(window.countdownInterval);
-
-                        // Set Visuals for PENDING
-                        if (timerDisplay) {
-                            timerDisplay.innerText = "PENDING ACTIVATION";
-                            timerDisplay.style.color = "var(--gold)";
-                        }
-                        if (statusDisplay) {
-                            statusDisplay.innerText = "INACTIVE (NEW)";
-                            statusDisplay.style.color = "var(--gold)";
-                        }
-                        if (dateDisplay) dateDisplay.innerText = "Not Activated";
-                    } else {
-                        // START the actual countdown
-                        startCountdown(data.expiry);
-
-                        // Set Visuals for ACTIVE
-                        if (statusDisplay) {
-                            statusDisplay.innerText = data.is_banned ? "BANNED" : (data.is_paused ? "PAUSED" : "ACTIVE");
-                            statusDisplay.style.color = data.is_banned ? "var(--red)" : "var(--accent)";
-                        }
-                        if (dateDisplay) {
-                            dateDisplay.innerText = new Date(data.expiry).toLocaleDateString();
-                        }
+                    if (isNaN(targetDate) || targetDate < 1000000000000) {
+                        timerDisplay.innerText = "PENDING ACTIVATION";
+                        timerDisplay.style.color = "var(--gold)";
+                        return;
                     }
 
-                    // 3. HWID Request Handling
-                    const requestBox = document.getElementById('request-alert-box');
-                    const standardBtn = document.getElementById('standard-reset-btn');
-                    const requestedHwidText = document.getElementById('requested-hwid-text');
+                    timerDisplay.style.color = "#ffcc00";
 
-                    if (data.pending_request && data.pending_request.status === "PENDING") {
-                        if (requestBox) requestBox.style.display = 'block';
-                        if (standardBtn) standardBtn.style.display = 'none';
-                        if (requestedHwidText) requestedHwidText.innerText = "REQUESTED ID: " + data.pending_request.hwid;
-                        console.log(`[!] PENDING REQUEST DETECTED FOR: ${key}`);
-                    } else {
-                        if (requestBox) requestBox.style.display = 'none';
-                        if (standardBtn) standardBtn.style.display = 'block';
-                    }
+                    window.countdownInterval = setInterval(() => {
+                        const now = new Date().getTime();
+                        const distance = targetDate - now;
 
-                } else {
-                    alert(data.error || "Failed to load key");
+                        if (distance < 0) {
+                            clearInterval(window.countdownInterval);
+                            timerDisplay.innerText = "EXPIRED";
+                            timerDisplay.style.color = "var(--red)";
+                            return;
+                        }
+
+                        const days = Math.floor(distance / (1000 * 60 * 60 * 24));
+                        const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                        const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+                        const seconds = Math.floor((distance % (1000 * 60)) / 1000);
+
+                        timerDisplay.innerText = `${days}d ${hours}h ${minutes}m ${seconds}s`;
+                    }, 1000);
                 }
-            } catch (err) {
-                console.error("Load Error:", err);
-                alert("Load Error: Check console for details");
-            }
-        }
-
-        async function linkUserEmail() {
-            const key = document.getElementById('manage-key-input').value || document.getElementById('single-key-input').value;
-            const email = document.getElementById('quick-link-email').value.trim();
-            const pass = document.getElementById('admin-pass').value;
-
-            if (!key || !email) return alert("Select a key and enter an email first!");
-
-            const res = await fetch(`${API}/admin/update-key`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ admin_password: pass, license_key: key, email: email })
-            });
-
-            const data = await res.json();
-            if (data.success) {
-                alert(`Linked ${email} successfully!`);
-                document.getElementById('quick-link-email').value = "";
-                await loadKey();
-            }
-        }
-
-        async function modifyKey(action) {
-            const inputKey = document.getElementById('single-key-input').value.trim();
-            const dropKey = document.getElementById('manage-key-input').value;
-            const key = inputKey || dropKey;
-            const pass = document.getElementById('admin-pass').value;
-
-            console.log(`[DEBUG] Button Clicked: ${action} | Key: ${key}`);
-
-            if (!key || !pass) {
-                return alert("Error: Select a user and enter Admin Password first!");
-            }
-
-            try {
-
-                const res = await fetch(`${API}/admin/${action}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        license_key: key,
-                        admin_password: pass
-                    })
-                });
-
-                const data = await res.json();
-                console.log("[DEBUG] Server Response:", data);
-
-                if (data.success) {
-
-                    const requestBox = document.getElementById('request-alert-box');
-                    const standardBtn = document.getElementById('standard-reset-btn');
-
-                    if (requestBox && (action === 'reset-hwid' || action === 'deny-hwid')) {
-                        requestBox.style.display = 'none';
-                        if (standardBtn) standardBtn.style.display = 'block';
-                    }
-
-                    console.log(`[SUCCESS] ${action.toUpperCase()} completed.`);
-
-                    // Refresh the user info labels
-                    await loadKey();
-                } else {
-                    alert("API Error: " + data.error);
-                }
-            } catch (err) {
-                console.error("Fetch Error:", err);
-                alert("Connection Failed. Check Console (F12).");
-            }
-        }
-
-        function copyActiveKey() {
-            const keyInput = document.getElementById('single-key-input').value.trim();
-            const dropdown = document.getElementById('manage-key-input');
-            const copyBtn = document.getElementById('copy-btn');
-
-            const keyToCopy = keyInput || dropdown.value;
-
-            if (!keyToCopy || keyToCopy === "") {
-                return alert("No key selected to copy!");
-            }
-
-            if (typeof clipboard !== 'undefined') {
-                clipboard.writeText(keyToCopy);
-            } else {
-                navigator.clipboard.writeText(keyToCopy);
-            }
-
-            const originalText = copyBtn.innerText;
-            copyBtn.innerText = "✅ Done!";
-            copyBtn.style.borderColor = "#00ff88";
-            copyBtn.style.color = "#00ff88";
-
-            setTimeout(() => {
-                copyBtn.innerText = originalText;
-                copyBtn.style.borderColor = "var(--accent)";
-                copyBtn.style.color = "var(--accent)";
-            }, 1500);
-        }
-
-        let countdownInterval;
-        function startCountdown(expiryDate) {
-            const timerDisplay = document.getElementById('info-timer');
-            if (!timerDisplay) return;
-
-            // Clear any existing timer first
-            if (window.countdownInterval) clearInterval(window.countdownInterval);
-
-            // --- HANDLE PENDING STATE ---
-            if (!expiryDate || expiryDate === "Pending Activation" || expiryDate === "Not Activated") {
-                timerDisplay.innerText = "PENDING ACTIVATION";
-                timerDisplay.style.color = "var(--gold)";
-                return;
-            }
-
-            const targetDate = new Date(expiryDate).getTime();
-
-            if (isNaN(targetDate) || targetDate < 1000000000000) {
-                timerDisplay.innerText = "PENDING ACTIVATION";
-                timerDisplay.style.color = "var(--gold)";
-                return;
-            }
-
-            timerDisplay.style.color = "#ffcc00";
-
-            window.countdownInterval = setInterval(() => {
-                const now = new Date().getTime();
-                const distance = targetDate - now;
-
-                if (distance < 0) {
-                    clearInterval(window.countdownInterval);
-                    timerDisplay.innerText = "EXPIRED";
-                    timerDisplay.style.color = "var(--red)";
-                    return;
-                }
-
-                const days = Math.floor(distance / (1000 * 60 * 60 * 24));
-                const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-                const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
-                const seconds = Math.floor((distance % (1000 * 60)) / 1000);
-
-                timerDisplay.innerText = `${days}d ${hours}h ${minutes}m ${seconds}s`;
-            }, 1000);
-        }
-    </script>
+            </script>
 </body>
 </html>
