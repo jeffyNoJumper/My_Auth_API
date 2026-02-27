@@ -149,6 +149,22 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
             return safeJson({ success: false, error: "Key not found" });
         }
 
+        if (action === 'add-time') {
+            const daysToAdd = parseFloat(days);
+            if (isNaN(daysToAdd)) return res.status(400).json({ error: "Invalid days" });
+
+            let currentExpiry = user.expiry_date ? new Date(user.expiry_date) : new Date();
+
+            // Smart Math: If expired, start from NOW. If active, add to existing.
+            let baseDate = (currentExpiry > new Date()) ? currentExpiry : new Date();
+            baseDate.setDate(baseDate.getDate() + daysToAdd);
+
+            user.expiry_date = baseDate;
+            await user.save();
+
+            return res.json({ success: true, message: `Added ${daysToAdd} days.` });
+        }
+
         switch (cleanAction) {
             case 'update':
                 if (email) user.email = email.toLowerCase();
