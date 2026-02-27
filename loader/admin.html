@@ -245,15 +245,26 @@
                 <div class="section-label">2. Find User</div>
                 <input type="text" id="single-key-input" placeholder="Paste Key Manually...">
                 <div style="text-align:center; margin:5px 0; font-size:10px; color:#555;">— OR —</div>
+
                 <select id="manage-key-input" size="8" style="height:145px; background: #111; border: 1px solid #333; color: white;">
                     <option value="">(Connect to load keys)</option>
                 </select>
 
-                <div style="display:flex; gap:5px; margin-top:5px;">
-                    <button onclick="loadKey()" style="flex:2; background:#444; color:white;">Load Selected</button>
-                    <button id="copy-btn" onclick="copyActiveKey()" style="flex:1; background:#222; color:var(--accent); border:1px solid var(--accent); cursor:pointer;">
-                        📋 Copy
+                <div style="display:flex; flex-direction: column; gap:5px; margin-top:5px;">
+                    <!-- Main Action -->
+                    <button onclick="loadKey()" style="width:100%; background:#444; color:white; padding:6px; font-weight:bold;">
+                        LOAD SELECTED USER
                     </button>
+
+                    <!-- UTIL Row -->
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px;">
+                        <button id="copy-btn" onclick="copyActiveKey()" style="background:#222; color:var(--accent); border:1px solid var(--accent); font-size:10px; padding:5px; cursor:pointer;">
+                            📋 COPY KEY
+                        </button>
+                        <button onclick="loadKeysDropdown()" style="background:#333; color:white; border:1px solid #444; font-size:10px; padding:5px; cursor:pointer;">
+                            🔄 REFRESH LIST
+                        </button>
+                    </div>
                 </div>
             </div>
 
