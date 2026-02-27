@@ -269,14 +269,18 @@
                         <span style="color:#888;">Time Left:</span> <span id="info-timer" style="color:#ffcc00; font-family: monospace;">--:--:--</span>
                     </div>
 
-                    <!-- NEW: EXTEND TIME SECTION -->
+                    <!-- EXTEND TIME SECTION (DAYS + HOURS) -->
                     <div style="margin-bottom:10px; padding:5px; background:rgba(255,255,255,0.05); border-radius:4px; border:1px solid #333;">
                         <div style="font-size:9px; color:#888; margin-bottom:4px; text-transform:uppercase;">Extend Subscription</div>
-                        <div style="display:flex; gap:4px; margin-bottom:4px;">
-                            <input type="number" id="add-days-input" placeholder="Days" style="flex:1; height:22px; font-size:10px; background:#111; border:1px solid #444; color:white; padding:0 5px; margin:0;">
-                            <button onclick="modifyKey('add-time')" style="height:22px; width:40px; background:var(--accent); color:black; font-size:10px; font-weight:bold; margin:0; padding:0;">ADD</button>
+
+                        <div style="display:flex; gap:3px; margin-bottom:4px;">
+                            <input type="number" id="add-days-input" placeholder="D" title="Days" style="width:35px; height:22px; font-size:10px; background:#111; border:1px solid #444; color:white; padding:0 5px; margin:0;">
+                            <input type="number" id="add-hours-input" placeholder="H" title="Hours" style="width:35px; height:22px; font-size:10px; background:#111; border:1px solid #444; color:white; padding:0 5px; margin:0;">
+                            <button onclick="addTimeCombined()" style="flex:1; height:22px; background:var(--accent); color:black; font-size:10px; font-weight:bold; margin:0; padding:0;">ADD TIME</button>
                         </div>
-                        <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:3px;">
+
+                        <div style="display:grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap:3px;">
+                            <button onclick="quickAdd(0.0416)" style="font-size:8px; background:#222; border:1px solid #444; padding:2px; color:#ccc;">+1H</button>
                             <button onclick="quickAdd(1)" style="font-size:8px; background:#222; border:1px solid #444; padding:2px; color:#ccc;">+1D</button>
                             <button onclick="quickAdd(7)" style="font-size:8px; background:#222; border:1px solid #444; padding:2px; color:#ccc;">+7D</button>
                             <button onclick="quickAdd(30)" style="font-size:8px; background:#222; border:1px solid #444; padding:2px; color:#ccc;">+30D</button>
@@ -293,7 +297,7 @@
                         </div>
                     </div>
 
-                    <!-- Action Buttons (Stacked Hierarchy) -->
+                    <!-- Action Buttons -->
                     <div style="display:flex; flex-direction: column; gap:6px;">
                         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px;">
                             <button style="background: #282828; color: var(--accent); border: 1px solid #333; font-size:10px; padding:5px;" onclick="modifyKey('unpause')">UNPAUSE</button>
@@ -429,7 +433,7 @@
                         const data = await res.json();
 
                         if (data.success) {
-                            // --- 1. CORE INFO (Safe Assignment) ---
+                            // --- CORE INFO (Safe Assignment) ---
                             const emailEl = document.getElementById('info-email');
                             const hwidEl = document.getElementById('manage-hwid');
                             const timerDisplay = document.getElementById('info-timer');
@@ -438,7 +442,7 @@
                             if (emailEl) emailEl.innerText = data.email || "No Email Linked";
                             if (hwidEl) hwidEl.innerText = data.hwid || "NOT CAPTURED";
 
-                            // --- 2. TIME & EXPIRY LOGIC ---
+                            // --- TIME & EXPIRY LOGIC ---
                             if (!data.expiry) {
                                 if (window.countdownInterval) clearInterval(window.countdownInterval);
                                 if (timerDisplay) {
@@ -457,7 +461,7 @@
                                 }
                             }
 
-                            // --- 3. HWID REQUEST HANDLING ---
+                            // --- HWID REQUEST HANDLING ---
                             const requestBox = document.getElementById('request-alert-box');
                             const standardBtn = document.getElementById('standard-reset-btn');
                             const requestedHwidText = document.getElementById('requested-hwid-text');
@@ -465,7 +469,6 @@
                             if (data.pending_request && data.pending_request.status === "PENDING") {
                                 if (requestBox) requestBox.style.display = 'block';
                                 if (standardBtn) standardBtn.style.display = 'none';
-                                // Only set innerText if the element actually exists
                                 if (requestedHwidText) requestedHwidText.innerText = "ID: " + (data.pending_request.hwid || "Unknown");
                             } else {
                                 if (requestBox) requestBox.style.display = 'none';
@@ -561,11 +564,39 @@
                     }
                 }
 
-                // Helper for the quick buttons (+1D, +7D, etc)
                 function quickAdd(days) {
                     modifyKey('add-time', days);
                 }
 
+                // Function to handle the combined Days + Hours input
+                async function addTimeCombined() {
+                    const dInput = document.getElementById('add-days-input');
+                    const hInput = document.getElementById('add-hours-input');
+
+                    const days = parseFloat(dInput.value) || 0;
+                    const hours = parseFloat(hInput.value) || 0;
+
+                    if (days === 0 && hours === 0) {
+                        return alert("Please enter at least some time (Days or Hours)!");
+                    }
+
+                    // Convert everything to "Days" for the server
+                    // Example: 1 Day + 12 Hours = 1.5 Days
+                    const totalDaysToAdd = days + (hours / 24);
+
+                    console.log(`[ADMIN] Adding ${days}d ${hours}h (Total: ${totalDaysToAdd.toFixed(4)} days)`);
+
+                    // Call your existing modifyKey function
+                    await modifyKey('add-time', totalDaysToAdd);
+
+                    // Clear inputs on success
+                    dInput.value = "";
+                    hInput.value = "";
+                }
+
+                function quickAdd(daysValue) {
+                    modifyKey('add-time', daysValue);
+                }
 
                 function copyActiveKey() {
                     const keyInput = document.getElementById('single-key-input').value.trim();
