@@ -8,6 +8,25 @@ const os = require('os');
 
 let mainWindow
 let spoofer
+const RPC = require('discord-rpc');
+const CLIENT_ID = '1476724607485743277';
+let rpcClient = null;
+
+app.on('will-quit', async () => {
+    if (rpcClient) {
+        try {
+            // THE FINAL WIPE
+            await rpcClient.clearActivity().catch(() => { });
+            await rpcClient.destroy().catch(() => { });
+            console.log("💀 Ghost Status Purged on Exit");
+        } catch (e) { }
+    }
+});
+
+function quickAdd(days) {
+    console.log(`[DEBUG] Quick Add Triggered: +${days}D`);
+    modifyKey('add-time', days);
+}
 function startSecurityMonitor() {
     const blacklist = [
         "x64dbg", "wireshark", "processhacker", "httpdebugger",
@@ -55,10 +74,11 @@ function createWindow() {
         height: 720,
         frame: false,
         resizable: false,
-        icon: path.join(__dirname, 'imgs/SK.ico'),
+        icon: path.join(__dirname, 'imgs/SK_App_Icon.ico'),
         backgroundColor: '#050505',
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
+            partition: 'persist:sk_loader',
             backgroundThrottling: true,
             contextIsolation: true,
             nodeIntegration: false,
@@ -159,74 +179,109 @@ ipcMain.handle('start-spoof', async (event, options) => {
     });
 });
 
-ipcMain.handle('launch-game', async (event, gameName, autoClose, licenseKey) => {
-    let injectionType = "default";
-    let cheatPath = "";
-
-    // Logic for CS2 (DLL vs External)
-    if (gameName.toLowerCase() === 'cs2') {
-        const { response } = await dialog.showMessageBox({
-            type: 'question',
-            buttons: ['Inject DLL', 'External', 'Cancel'],
-            defaultId: 0,
-            cancelId: 2,
-            title: 'Injection Method',
-            message: 'How would you like to launch the CS2 cheat?',
-            detail: 'DLL injection is internal, External runs as a separate process.'
-        });
-
-        if (response === 2) return { status: "Cancelled", message: "Injection aborted." };
-
-        injectionType = (response === 0) ? "dll" : "external";
-
-        // Logic for filenames
-        const fileName = (injectionType === "dll") ? "Ai cheat.dll" : "Noxen.exe";
-        cheatPath = path.join(__dirname, 'assets', fileName);
+function updateRPCStatus(gameName) {
+    if (rpcClient && rpcClient.transport.socket) {
+        rpcClient.setActivity({
+            details: `Gaming: ${gameName}`,
+            state: 'Status: Undetected',
+            startTimestamp: new Date(),
+            largeImageKey: 'logo',
+            instance: false,
+        }).catch(() => console.log("⚠️ RPC Update Failed"));
+        console.log(`[RPC] Status updated to: ${gameName}`);
     }
-    else {
+}
 
-        const fileName = `${gameName.toLowerCase()}.exe`;
-        cheatPath = path.join(__dirname, 'assets', fileName);
-        injectionType = "external";
+ipcMain.handle('launch-game', async (event, gameName, autoClose, licenseKey, injectionType) => {
+
+    console.log(`[MAIN] Key Received: ${licenseKey}`);
+
+    // 1. Data Normalization
+    const finalType = injectionType || "external";
+    const gameUpper = gameName.toUpperCase();
+    let fileName = "";
+
+    // 2. Filename Logic (Case-Sensitive for your assets folder)
+    if (gameUpper === 'CS2') {
+        fileName = (finalType === "dll") ? "Ai cheat.dll" : "Noxen.exe";
+    } else {
+        fileName = `${gameName.toUpperCase()}.exe`;
     }
 
-    console.log(`[MAIN] Initializing ${injectionType} for ${gameName} using key prefix...`);
+    const cheatPath = path.join(__dirname, 'assets', fileName);
+
+    // DEBUG: This should now show your CS2X key correctly
+    console.log(`[MAIN] Launching ${gameUpper} | Type: ${finalType} | Key: ${licenseKey}`);
 
     try {
-        const success = spoofer.launchCheat(gameName.toUpperCase(), injectionType, cheatPath, licenseKey);
+        // 3. EXECUTE C++ (Order: Game, Type, Path, Key)
+        const success = spoofer.launchCheat(
+            String(gameUpper),
+            String(finalType),
+            String(cheatPath),
+            String(licenseKey)
+        );
 
         if (success) {
+            // Discord RPC...
             if (autoClose) {
-                console.log("[MAIN] Auto-close enabled. Exiting in 3 seconds...");
                 setTimeout(() => { app.quit(); }, 3000);
             }
             return { status: "Success", message: `${gameName} launched successfully!` };
         } else {
-            return { status: "Error", message: `Access Denied Key is NOT VALID for ${gameName}.` };
+            return { status: "Error", message: `Access Denied: Invalid Key for ${gameName}` };
         }
     } catch (err) {
-        console.error("[C++ Error]", err);
-        return { status: "Error", message: "You Dont Have Access To This Game." };
+        console.error("[C++ CRASH]", err);
+        return { status: "Error", message: "Kernel communication failed." };
     }
 });
 
 
 
 ipcMain.on('toggle-stream-proof', (event, enabled) => {
-    const win = BrowserWindow.fromWebContents(event.sender);
-    if (win) {
-
-        win.setContentProtection(enabled);
+    // This makes the window black for OBS and Discord screenshare
+    if (mainWindow) {
+        mainWindow.setExclusionFromCapture(enabled);
+        console.log(`[MAIN] Stream Proof: ${enabled ? 'ENABLED' : 'DISABLED'}`);
     }
 });
 
-ipcMain.on('toggle-discord', (event, enabled) => {
-    if (enabled) {
-        console.log("[MAIN] Discord RPC Enabled");
-        // Initialize your discord-rpc library here
-    } else {
-        console.log("[MAIN] Discord RPC Disabled");
-        // Destroy discord-rpc client here
+ipcMain.on('toggle-discord', async (event, enabled) => {
+    // 1. If turning OFF
+    if (!enabled) {
+        if (rpcClient) {
+            console.log("🧹 Sending Clear Signal...");
+            // Force the profile to go blank first
+            await rpcClient.clearActivity().catch(() => { });
+            // WAIT - Discord needs a moment to update your profile
+            await new Promise(resolve => setTimeout(resolve, 1000));
+
+            await rpcClient.destroy().catch(() => { });
+            rpcClient = null;
+            console.log("🛑 RPC Connection Severed.");
+        }
+        return;
+    }
+
+    // 2. If turning ON
+    if (enabled && !rpcClient) {
+        rpcClient = new RPC.Client({ transport: 'ipc' });
+
+        rpcClient.on('ready', () => {
+            if (!rpcClient) return;
+            rpcClient.setActivity({
+                details: 'Managing Modules',
+                state: 'Status: Undetected',
+                startTimestamp: new Date(),
+                largeImageKey: 'logo',
+                instance: false,
+            }).catch(() => { });
+        });
+
+        rpcClient.login({ clientId: CLIENT_ID }).catch(() => {
+            rpcClient = null;
+        });
     }
 });
 
