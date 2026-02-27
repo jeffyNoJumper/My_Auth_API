@@ -4,15 +4,15 @@ const API = 'https://my-auth-api-1ykc.onrender.com';
 let countdownInterval;
 let progress = 0;
 let newsLoaded = false;
+let expiryCheckInterval = null;
 
 const shell = window.api.shell;
 
 let currentUserPrefix = localStorage.getItem('user_prefix') || "";
 
 window.onload = async () => {
-    // 1. IMMEDIATE PFP CHECK (Save to a variable first)
+    // 1. IMMEDIATE PFP CHECK
     const savedPfp = localStorage.getItem('saved_profile_pic');
-
     const syncProfileUI = () => {
         if (savedPfp) {
             const navPfp = document.getElementById('user-pic');
@@ -23,7 +23,6 @@ window.onload = async () => {
         }
     };
 
-    // Run once now
     syncProfileUI();
 
     await updateHWIDDisplay();
@@ -39,15 +38,38 @@ window.onload = async () => {
             overlay.style.display = 'none';
         }
 
-        startBootSequence();
+        // --- SESSION & EXPIRY GUARD ---
+        const savedExpiry = localStorage.getItem('expiry_date');
+        const savedEmail = localStorage.getItem('user_email');
+        const savedKey = localStorage.getItem('license_key');
 
-        // 2. THE FIX: SYNC AGAIN AFTER DASHBOARD LOADS
-        if (localStorage.getItem('license_key')) {
-            // Wait a tiny bit for the screen to switch, then force the image
-            setTimeout(() => {
-                syncProfileUI();
-                updateUIForAccess();
-            }, 100);
+        if (savedExpiry && savedEmail && savedKey) {
+            const now = new Date().getTime();
+            const expTime = new Date(savedExpiry).getTime();
+
+            // Check if user expired while app was closed
+            if (now >= expTime) {
+                console.warn("[SECURITY] Session expired. Wiping local data.");
+                localStorage.removeItem('user_email');
+                localStorage.removeItem('license_key');
+                localStorage.removeItem('expiry_date');
+                // Stay on login screen
+                startBootSequence();
+            } else {
+                console.log("[SECURITY] Session Valid. Initializing Heartbeat.");
+
+                startExpiryHeartbeat(savedExpiry);
+
+                startBootSequence();
+                setTimeout(() => {
+                    switchScreen('login-screen', 'main-dashboard');
+                    syncProfileUI();
+                    updateUIForAccess();
+                }, 500);
+            }
+        } else {
+            // No saved session, just show login
+            startBootSequence();
         }
     }
 };
@@ -504,7 +526,8 @@ async function handleLogin() {
             localStorage.setItem('expiry_date', data.expiry);
             localStorage.setItem('license_key', key);
 
-            // Set prefix for UI filtering (CS2X, ALLX, etc.)
+            startExpiryHeartbeat(data.expiry);
+
             setSessionAccess(key);
 
             if (rememberMe) {
@@ -586,7 +609,7 @@ function updateProfileDisplay(base64Data) {
         userPic.src = base64Data;
         localStorage.setItem('saved_profile_pic', base64Data);
     } else {
-        // 2. Fallback to default if string is broken or empty
+        // Fallback to default if string is broken or empty
         userPic.src = 'imgs/default-profile.png';
     }
 }
@@ -1578,5 +1601,42 @@ function logout() {
         localStorage.removeItem('license_key');
         hideUserDropdown();
     }
+    location.reload();
+}
+
+function startExpiryHeartbeat(expiryDate) {
+    // Clear any existing timer first
+    if (expiryCheckInterval) clearInterval(expiryCheckInterval);
+
+    const expiryTime = new Date(expiryDate).getTime();
+
+    expiryCheckInterval = setInterval(() => {
+        const now = new Date().getTime();
+
+        if (now >= expiryTime) {
+            console.log("[SECURITY] License Expired during runtime.");
+            clearInterval(expiryCheckInterval);
+            triggerExpirySequence();
+        }
+    }, 30000); // Check every 30 seconds
+}
+
+function triggerExpirySequence() {
+
+    openModal('expiry-modal');
+
+    document.querySelectorAll('.nav-btn').forEach(btn => btn.style.pointerEvents = 'none');
+
+    // 3. Play a subtle error sound if you want
+    // new Audio('assets/error.mp3').play();
+}
+
+function forceLogout() {
+
+    localStorage.removeItem('user_email');
+    localStorage.removeItem('license_key');
+
+    if (expiryCheckInterval) clearInterval(expiryCheckInterval);
+
     location.reload();
 }
