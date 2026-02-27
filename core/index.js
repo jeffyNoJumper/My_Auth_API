@@ -514,6 +514,30 @@ app.post('/request-hwid-reset', async (req, res) => {
     }
 });
 
+app.post('/admin/add-time', async (req, res) => {
+    const { license_key, admin_password, days } = req.body;
+    if (admin_password !== process.env.ADMIN_PASS) return res.status(403).json({ error: "Invalid Admin Pass" });
+
+    try {
+        const user = await User.findOne({ license_key: license_key.toUpperCase() });
+        if (!user) return res.status(404).json({ error: "User not found" });
+
+        const daysToAdd = parseFloat(days);
+        const currentExpiry = new Date(user.expiry_date);
+
+        // If expired, start from NOW. If active, add to existing time.
+        const baseDate = (currentExpiry > new Date()) ? currentExpiry : new Date();
+        baseDate.setDate(baseDate.getDate() + daysToAdd);
+
+        user.expiry_date = baseDate;
+        await user.save();
+
+        res.json({ success: true, new_expiry: user.expiry_date });
+    } catch (err) {
+        res.status(500).json({ error: "Server Error" });
+    }
+});
+
 
 app.get('/health', (req, res) => {
     res.json({
