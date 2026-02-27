@@ -143,7 +143,8 @@ Napi::Value LaunchCheat(const Napi::CallbackInfo& info) {
         {"VALORANT", "VALX"},
         {"WARZONE", "WZX"},
         {"GTAV", "GTAX"},
-        {"FORTNITE", "FRTX"}
+        {"FORTNITE", "FRTX"},
+        {"ALL-ACCESS", "ALLX"}
     };
 
     // 4. Validation Logic
