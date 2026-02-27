@@ -3,6 +3,7 @@ const API = 'https://my-auth-api-1ykc.onrender.com';
 
 let countdownInterval;
 let progress = 0;
+let newsLoaded = false;
 
 const shell = window.api.shell;
 
@@ -67,13 +68,12 @@ function openSocial(platform) {
 const getSetting = (id) => document.getElementById(id).checked;
 
 async function startCS2() {
-    // Check if user even has access before trying to launch
+
     if (!hasAccess('CS2')) return;
 
     const autoCloseActive = document.getElementById('auto-close-launcher').checked;
     const key = localStorage.getItem('license_key');
 
-    // Pass 'key' as the 3rd argument to match new IPC handler
     const result = await window.electron.invoke('launch-game', 'cs2', autoCloseActive, key);
 
     if (result && result.status === "Success") {
@@ -83,7 +83,7 @@ async function startCS2() {
             addTerminalLine(`> [SUCCESS] ${result.message}`);
         }
     } else if (result && result.status === "Error") {
-        // This will now trigger if the C++ side detects a prefix mismatch
+
         addTerminalLine(`> [ERROR] ${result.message}`);
     }
 }
@@ -91,22 +91,89 @@ async function startCS2() {
 async function launchGame(gameName) {
     if (!hasAccess(gameName)) return;
 
-    const autoCloseActive = document.getElementById('auto-close-launcher').checked;
     const key = localStorage.getItem('license_key');
+    const autoCloseActive = document.getElementById('auto-close-launcher').checked;
 
-    // --- THE MISSING LINK: Define injectionType ---
-    // Since this is the "Universal" function, we default to external
-    // CS2 choice is handled by your other modal logic we built earlier
+    // --- THE ID FIX: Target 'main-progress-bar' ---
+    const statusDiv = document.getElementById('injection-status');
+    const bar = document.getElementById('main-progress-bar');
+    const text = document.getElementById('status-text');
+    const percentText = document.getElementById('status-percent');
+
     let injectionType = "external";
+
+    if (gameName.toLowerCase() === 'cs2') {
+        openModal('cs2-modal');
+        injectionType = await new Promise((resolve) => {
+            window.submitCS2Choice = (choice) => { resolve(choice); };
+        });
+        closeModal('cs2-modal');
+        if (injectionType === 'cancel') {
+            addTerminalLine("> [SYSTEM] CS2 Injection cancelled.");
+            return;
+        }
+    }
+
+    // 1. Switch to Home Tab
+    showTab('home');
+
+    // 2. TRIGGER ANIMATION (With a tiny delay to ensure tab is visible)
+    if (statusDiv && bar) {
+        statusDiv.classList.remove('hidden');
+        statusDiv.style.display = 'block'; // Force display
+
+        setTimeout(() => {
+            bar.style.width = "45%";
+            if (percentText) percentText.innerText = "45%";
+            if (text) {
+                text.innerText = `COMMUNICATING WITH ${gameName.toUpperCase()}...`;
+                text.style.color = "var(--accent)";
+            }
+        }, 50); // 50ms delay gives the UI time to "breathe"
+    }
 
     addTerminalLine(`> [SYSTEM] Initializing ${gameName.toUpperCase()}...`);
 
-    // Now 'injectionType' actually exists and can be sent!
-    // Order: (1)Name, (2)Close, (3)Key, (4)Type
-    const result = await window.api.launchCheat(gameName, autoCloseActive, key, injectionType);
+    const result = await window.api.launchCheat(
+        gameName,
+        autoCloseActive,
+        key,
+        injectionType
+    );
+
+    // 3. FINALIZE ANIMATION
+    if (result.status === "Success") {
+        if (bar) bar.style.width = "100%";
+        if (percentText) percentText.innerText = "100%";
+        if (text) {
+            text.innerText = "INJECTION SUCCESSFUL!";
+            text.style.color = "#00ff88";
+        }
+
+        setTimeout(() => {
+            if (statusDiv) statusDiv.classList.add('hidden');
+            if (bar) bar.style.width = "0%";
+            if (percentText) percentText.innerText = "0%";
+        }, 3000);
+    } else {
+        if (bar) bar.style.width = "0%";
+        if (percentText) percentText.innerText = "0%";
+        if (text) {
+            text.innerText = "ACCESS DENIED / ERROR";
+            text.style.color = "#ff4444";
+        }
+    }
 
     const statusLabel = result.status === "Success" ? "[SUCCESS]" : "[ERROR]";
     addTerminalLine(`> ${statusLabel} ${result.message}`);
+}
+
+
+let resolveCS2;
+function submitCS2Choice(choice) {
+    if (resolveCS2) {
+        resolveCS2(choice);
+    }
 }
 
 function startBootSequence() {
@@ -1375,7 +1442,6 @@ function loadSavedPfp() {
     }
 
     // Updated News Loader
-    let newsLoaded = false;
 
     async function loadNews() {
 
@@ -1475,7 +1541,6 @@ function loadSavedPfp() {
     }
 
 // --- UI CONTROLS ---
-
 function toggleUserDropdown() {
     const dropdown = document.getElementById('user-dropdown');
     if (dropdown) dropdown.classList.toggle('hidden');
@@ -1498,6 +1563,14 @@ function openSocial(platform) {
     }
 }
 
+function hideUserDropdown() {
+    const dropdown = document.getElementById('user-dropdown');
+    if (dropdown) {
+        dropdown.classList.add('hidden');
+        console.log("[UI] Dropdown Hidden");
+    }
+}
+
 // --- SESSION CONTROL ---
 function logout() {
     localStorage.removeItem('user_prefix');
@@ -1507,10 +1580,3 @@ function logout() {
     }
     location.reload();
 }
-
-
-    // Injection
-    async function launchGame(gameName) {
-        const res = await window.api.launchCheat(gameName);
-        alert(res.message);
-    }
