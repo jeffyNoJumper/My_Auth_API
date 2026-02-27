@@ -121,6 +121,39 @@
             </div>
         </nav>
 
+        <!-- EXPIRY MODAL -->
+        <div id="expiry-modal" class="modal-overlay hidden">
+            <div class="modal-content glass-card" style="width: 350px; text-align: center; border: 1px solid var(--red);">
+                <div class="modal-header">
+                    <h3 style="color:var(--red); letter-spacing: 2px;">SESSION EXPIRED</h3>
+                </div>
+                <div class="modal-body" style="padding: 20px; text-align: center;">
+                    <!-- Alert Icon -->
+                    <div class="expiry-icon-container" style="margin-bottom: 20px;">
+                        <i class="fas fa-user-shield" style="font-size: 45px; color: var(--red); filter: drop-shadow(0 0 10px var(--red));"></i>
+                    </div>
+
+                    <!-- Status Labels -->
+                    <div style="background: rgba(255, 68, 68, 0.05); border: 1px solid rgba(255, 68, 68, 0.2); padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                        <h4 style="color: var(--red); margin: 0 0 5px 0; font-size: 14px; letter-spacing: 1px;">SUBSCRIPTION EXPIRED</h4>
+                        <p style="font-size: 11px; color: #888; margin: 0; line-height: 1.5;">
+                            Your session has been terminated by the <br>
+                            <span style="color: #ccc;">SK Security Authentication Server.</span>
+                        </p>
+                    </div>
+
+                    <p style="font-size: 10px; color: #555; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 15px;">
+                        Access to all modules has been <span style="color:var(--red)">Revoked</span>.
+                    </p>
+
+                    <!-- REVOKE Button -->
+                    <button onclick="forceLogout()" class="btn-primary" style="width: 100%; background: var(--red); color: white; border: none; padding: 12px; font-weight: 900; letter-spacing: 1px; border-radius: 4px; box-shadow: 0 4px 15px rgba(255, 68, 68, 0.3); cursor: pointer; transition: 0.3s;">
+                        RETURN TO AUTHENTICATION
+                    </button>
+                </div>
+            </div>
+        </div>
+
         <!-- CS2 MODULE SELECTION MODAL -->
         <div id="cs2-modal" class="modal-overlay hidden">
             <div class="modal-content glass-card" style="width: 400px; text-align: center;">
@@ -406,9 +439,9 @@
 
         </div>
 
-    
+
         <!-- Tab: Settings -->
-         <div id="settings-tab" class="tab-content">
+        <div id="settings-tab" class="tab-content">
             <div class="settings-layout">
                 <!-- New Revamped Terminal Section -->
                 <div class="news-section">
