@@ -9,25 +9,24 @@ const shell = window.api.shell;
 let currentUserPrefix = localStorage.getItem('user_prefix') || "";
 
 window.onload = async () => {
-
+    // 1. IMMEDIATE PFP CHECK (Save to a variable first)
     const savedPfp = localStorage.getItem('saved_profile_pic');
-    if (savedPfp) {
-        const navPfp = document.getElementById('user-pic');
-        const modalPfp = document.getElementById('modal-pfp');
-        if (navPfp) navPfp.src = savedPfp;
-        if (modalPfp) modalPfp.src = savedPfp;
-        console.log("✨ Persistent Profile Image Synchronized");
-    }
+
+    const syncProfileUI = () => {
+        if (savedPfp) {
+            const navPfp = document.getElementById('user-pic');
+            const modalPfp = document.getElementById('modal-pfp');
+            if (navPfp) navPfp.src = savedPfp;
+            if (modalPfp) modalPfp.src = savedPfp;
+            console.log("✨ Persistent Profile Image Synchronized");
+        }
+    };
+
+    // Run once now
+    syncProfileUI();
 
     await updateHWIDDisplay();
     await checkServer();
-
-    /*
-    // Particles initialization
-    setTimeout(() => {
-        // ... particlesJS code ...
-    }, 100);
-    */
 
     const overlay = document.getElementById('update-overlay');
     const currentVersion = localStorage.getItem('installedVersion') || '1.1.1';
@@ -41,8 +40,13 @@ window.onload = async () => {
 
         startBootSequence();
 
+        // 2. THE FIX: SYNC AGAIN AFTER DASHBOARD LOADS
         if (localStorage.getItem('license_key')) {
-            updateUIForAccess();
+            // Wait a tiny bit for the screen to switch, then force the image
+            setTimeout(() => {
+                syncProfileUI();
+                updateUIForAccess();
+            }, 100);
         }
     }
 };
@@ -90,7 +94,16 @@ async function launchGame(gameName) {
     const autoCloseActive = document.getElementById('auto-close-launcher').checked;
     const key = localStorage.getItem('license_key');
 
-    const result = await window.electron.invoke('launch-game', gameName, autoCloseActive, key);
+    // --- THE MISSING LINK: Define injectionType ---
+    // Since this is the "Universal" function, we default to external
+    // CS2 choice is handled by your other modal logic we built earlier
+    let injectionType = "external";
+
+    addTerminalLine(`> [SYSTEM] Initializing ${gameName.toUpperCase()}...`);
+
+    // Now 'injectionType' actually exists and can be sent!
+    // Order: (1)Name, (2)Close, (3)Key, (4)Type
+    const result = await window.api.launchCheat(gameName, autoCloseActive, key, injectionType);
 
     const statusLabel = result.status === "Success" ? "[SUCCESS]" : "[ERROR]";
     addTerminalLine(`> ${statusLabel} ${result.message}`);
@@ -178,16 +191,30 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function handleSettingChange(id, value) {
+    addTerminalLine(`> [CONFIG] Executing ${id.toUpperCase()}...`);
+
     switch (id) {
-        case 'auto-launch':
-            // window.api.toggleStartup(value); // Requires C++ or Electron login
-            break;
+
         case 'discord-rpc':
-            window.api.toggleDiscord(value); // Send to main.js
+            const rpcCheckbox = document.getElementById('discord-rpc');
+            rpcCheckbox.disabled = true;
+
+            window.api.toggleDiscord(value);
+            addTerminalLine(`> [SYSTEM] Synchronizing Discord RPC...`);
+
+            setTimeout(() => { rpcCheckbox.disabled = false; }, 2000);
             break;
+
         case 'stream-proof':
-            // Logic to make your overlay invisible to OBS
-            // window.api.setStreamProof(value); 
+            window.api.toggleStreamProof(value);
+            break;
+
+        case 'auto-launch':
+            if (window.api.toggleAutoLaunch) window.api.toggleAutoLaunch(value);
+            break;
+
+        case 'auto-close-launcher':
+            addTerminalLine(`> [SYSTEM] Preference saved: ${value ? 'EXIT_ON_INJECT' : 'STAY_OPEN'}`);
             break;
     }
 }
@@ -218,21 +245,31 @@ async function loginUser() {
     }
 }
 
+// Function to force-apply the PFP to all relevant elements
+function syncProfileImage() {
+    const savedPic = localStorage.getItem('saved_profile_pic');
+    if (!savedPic) return;
 
-// Navigation & News Feed Logic
-function switchScreen(oldId, newId) {
-    document.getElementById(oldId).classList.remove('active');
-    document.getElementById(newId).classList.add('active');
+    // Target both the top-nav pic and the settings modal pic
+    const targets = ['user-pic', 'modal-pfp'];
+    targets.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.src = savedPic;
+            console.log(`[PFP] Synced: ${id}`);
+        }
+    });
 }
 
+// 1. Initial Load when App Opens
 window.addEventListener('DOMContentLoaded', () => {
+    syncProfileImage();
+
     const userPic = document.getElementById('user-pic');
     const profileUpload = document.getElementById('profile-upload');
 
-    const savedPic = localStorage.getItem('saved_profile_pic');
-    if (savedPic && userPic) userPic.src = savedPic;
-
     if (userPic && profileUpload) {
+        // Trigger file input when clicking PFP
         userPic.addEventListener('click', () => profileUpload.click());
 
         profileUpload.addEventListener('change', async (e) => {
@@ -242,25 +279,44 @@ window.addEventListener('DOMContentLoaded', () => {
             const reader = new FileReader();
             reader.onload = async (event) => {
                 const base64Image = event.target.result;
-                
-                userPic.src = base64Image;
+
+                // Save locally first for instant feedback
                 localStorage.setItem('saved_profile_pic', base64Image);
+                syncProfileImage();
 
                 try {
                     const key = localStorage.getItem('license_key');
-                    await fetch('https://my-auth-api-1ykc.onrender.com/login', {
+                    // FIX: Pointing to the correct /update-profile route
+                    const res = await fetch('https://my-auth-api-1ykc.onrender.com', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ license_key: key, profile_pic: base64Image })
+                        body: JSON.stringify({
+                            license_key: key,
+                            profile_pic: base64Image
+                        })
                     });
+                    const data = await res.json();
+                    if (data.success) console.log("✅ Profile pic synced to Render DB");
                 } catch (err) {
-                    console.error("Failed to sync profile pic to DB");
+                    console.error("❌ Failed to sync profile pic to DB", err);
                 }
             };
             reader.readAsDataURL(file);
         });
     }
 });
+
+// 2. Updated switchScreen to prevent resets during tab changes
+function switchScreen(oldId, newId) {
+    document.getElementById(oldId).classList.remove('active');
+    document.getElementById(newId).classList.add('active');
+
+    // Ensure PFP is still there when the dashboard becomes visible
+    if (newId === 'main-dashboard') {
+        syncProfileImage();
+    }
+}
+
 
 document.getElementById('reset-btn').addEventListener('click', async () => {
     const statusText = document.getElementById('status-text');
@@ -293,14 +349,29 @@ function showTab(tabName) {
     if (selectedBtn && selectedTab) {
         selectedBtn.classList.add('active');
         selectedTab.classList.add('active');
-        selectedTab.style.display = 'block';
+
+        if (tabName === 'settings') {
+            selectedTab.style.display = 'grid';
+            loadNews();
+        } else {
+            selectedTab.style.display = 'block';
+        }
     }
 
-    if (tabName === 'settings') {
-        selectedTab.style.display = 'grid';
-        loadNews();
+    if (tabName === 'home') {
+        const rpcEnabled = localStorage.getItem('discord-rpc') === 'true';
+        if (rpcEnabled) {
+
+            window.api.toggleDiscord(true);
+        }
     }
+
     if (tabName === 'hwid') updateHWIDDisplay();
+
+    const dropdown = document.getElementById('user-dropdown');
+    if (dropdown) dropdown.classList.add('hidden');
+
+    console.log(`[UI] Switched to ${tabName.toUpperCase()} module.`);
 }
 
 async function updateHWIDDisplay() {
@@ -311,11 +382,8 @@ async function updateHWIDDisplay() {
         const serialElem = document.getElementById('serial-id');
         const gpuElem = document.getElementById('gpu-id');
 
-        // Show loading state so you know it's actually working
         if (hwidElem) hwidElem.innerText = "FETCHING...";
 
-        // --- THE FIX: WAIT FOR DRIVER PROPAGATION ---
-        // Give the Windows kernel 1 second to update its internal tables
         await new Promise(r => setTimeout(r, 1000));
 
         const hwid = await window.api.getMachineID();
@@ -665,6 +733,7 @@ function openModal(id) {
     if (modal) {
 
         modal.classList.remove('hidden');
+        hideUserDropdown();
 
         if (dropdown) dropdown.classList.add('hidden');
 
@@ -1373,18 +1442,7 @@ function loadSavedPfp() {
         box.appendChild(line);
     }
 
-    document.getElementById('stream-proof').addEventListener('change', (e) => {
-        window.api.toggleStreamProof(e.target.checked);
-        addTerminalLine(`> [SYSTEM] Stream Proof: ${e.target.checked ? 'ENABLED' : 'DISABLED'}`);
-    });
-
-    document.getElementById('discord-rpc').addEventListener('change', (e) => {
-        window.api.toggleDiscord(e.target.checked);
-    });
-
     // --- SETTINGS ACTIONS ---
-
-    // Function to wipe the terminal UI
     function clearLogs() {
         const terminal = document.getElementById('main-terminal');
         if (terminal) {
@@ -1397,7 +1455,7 @@ function loadSavedPfp() {
         const confirmed = confirm("WARNING: This will reset all saved settings and preferences. Continue?");
 
         if (confirmed) {
-            // 1. Clear the local storage
+
             localStorage.clear();
 
             const checkboxes = document.querySelectorAll('.switch-container input[type="checkbox"]');
@@ -1423,30 +1481,31 @@ function toggleUserDropdown() {
     if (dropdown) dropdown.classList.toggle('hidden');
 }
 
-// --- EXTERNAL LINKS (FIXED FOR ELECTRON) ---
 function openShop() {
-    // Uses the bridge we set up in preload.js
-    window.api.openExternal("https://discord.gg");
+
+    window.api.openExternal("https://discord.gg/RG7bEgrHF9");
+    hideUserDropdown();
 }
 
 function openSocial(platform) {
     const links = {
-        'discord': 'https://discord.gg',
-        'github': 'https://github.com'
+        'discord': 'https://discord.gg/vCrBfRsRvb',
+        'github': 'https://github.com/jeffyNoJumper?tab=repositories'
     };
     if (links[platform]) {
         window.api.openExternal(links[platform]);
+        hideUserDropdown();
     }
 }
 
 // --- SESSION CONTROL ---
 function logout() {
     localStorage.removeItem('user_prefix');
-    // If you didn't check "Remember Me", clear those too
     if (!document.getElementById('remember-me').checked) {
         localStorage.removeItem('license_key');
+        hideUserDropdown();
     }
-    location.reload(); // Restarts the loader to the boot screen
+    location.reload();
 }
 
 
