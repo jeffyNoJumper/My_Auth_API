@@ -358,10 +358,10 @@ body {
     border-bottom: 2px solid transparent;
 }
 
-.nav-btn.active {
-    color: var(--cyan);
-    border-bottom: 2px solid var(--cyan);
-}
+    .nav-btn.active {
+        color: var(--cyan);
+        border-bottom: 2px solid var(--cyan);
+    }
 
 .user-box {
     display: flex;
@@ -460,7 +460,6 @@ body {
     backdrop-filter: blur(15px);
     box-shadow: 0 10px 30px rgba(0,0,0,0.5);
     z-index: 9999;
-
     transform-origin: top right;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     opacity: 1;
@@ -611,12 +610,12 @@ body {
         }
 
 
-.game-card img {
-    width: 110%;
-    height: 100%;
-    object-fit: cover;
-    opacity: 0.5;
-}
+    .game-card img {
+        width: 110%;
+        height: 100%;
+        object-fit: cover;
+        opacity: 0.5;
+    }
 
 /* Glowing Border Logic */
 .card-green:hover {
@@ -847,7 +846,7 @@ body {
     background: rgba(0,0,0,0.4);
     border: 1px solid var(--border-color);
     border-radius: 12px;
-    padding: 15px; 
+    padding: 15px;
     box-shadow: inset 0 0 20px rgba(0,0,0,0.6);
     display: flex;
     flex-direction: column;
@@ -867,10 +866,10 @@ body {
 }
 
 
-.lock-icon.active {
-    box-shadow: 0 0 15px var(--green), inset 0 0 10px var(--green);
-    animation: shield-pulse 1.8s infinite;
-}
+    .lock-icon.active {
+        box-shadow: 0 0 15px var(--green), inset 0 0 10px var(--green);
+        animation: shield-pulse 1.8s infinite;
+    }
 
 @keyframes shield-pulse {
     0%,100% {
@@ -1260,37 +1259,37 @@ input:disabled + .slider {
 }
 
 
-    .toggle-row input[type="checkbox"] {
-        appearance: none;
-        width: 48px;
-        height: 24px;
-        border-radius: 20px;
-        background: #1c1c24;
-        position: relative;
-        cursor: pointer;
+.toggle-row input[type="checkbox"] {
+    appearance: none;
+    width: 48px;
+    height: 24px;
+    border-radius: 20px;
+    background: #1c1c24;
+    position: relative;
+    cursor: pointer;
+    transition: 0.3s ease;
+}
+
+    .toggle-row input[type="checkbox"]::before {
+        content: "";
+        position: absolute;
+        width: 18px;
+        height: 18px;
+        background: #fff;
+        border-radius: 50%;
+        top: 3px;
+        left: 4px;
         transition: 0.3s ease;
     }
 
-        .toggle-row input[type="checkbox"]::before {
-            content: "";
-            position: absolute;
-            width: 18px;
-            height: 18px;
-            background: #fff;
-            border-radius: 50%;
-            top: 3px;
-            left: 4px;
-            transition: 0.3s ease;
-        }
+    .toggle-row input[type="checkbox"]:checked {
+        background: var(--cyan);
+        box-shadow: 0 0 15px rgba(0,242,255,0.6);
+    }
 
-        .toggle-row input[type="checkbox"]:checked {
-            background: var(--cyan);
-            box-shadow: 0 0 15px rgba(0,242,255,0.6);
+        .toggle-row input[type="checkbox"]:checked::before {
+            transform: translateX(22px);
         }
-
-            .toggle-row input[type="checkbox"]:checked::before {
-                transform: translateX(22px);
-            }
 
 /* ============================= */
 /* ACTION CARD                  */
