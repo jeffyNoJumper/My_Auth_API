@@ -4,7 +4,7 @@ const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const { execSync } = require('child_process');
 const fs = require('fs');
-const os = require('os');
+
 
 let mainWindow
 let spoofer
@@ -145,36 +145,62 @@ ipcMain.on('log-to-terminal', (event, message) => {
 });
 
 ipcMain.handle('start-spoof', async (event, options) => {
-    const brandNewGUID = require('crypto').randomUUID();
 
-    // Explicitly define every boolean your C++ L244 is looking for
+    const crypto = require('crypto');
+    const brandNewGUID = crypto.randomUUID();
+
+    // COMPLETE OPTION MAP
     const safeOptions = {
+
+        motherboard: options?.motherboard || "Other",
+
+        // ---- BOOLEAN FLAGS (C++ EXPECTS THESE) ----
         disk: Boolean(options?.disk ?? true),
         guid: Boolean(options?.guid ?? true),
         kernel: Boolean(options?.kernel ?? true),
         user: Boolean(options?.user ?? true),
+
         cleanReg: Boolean(options?.cleanReg ?? true),
         cleanDisk: Boolean(options?.cleanDisk ?? true),
         biosFlash: Boolean(options?.biosFlash ?? false),
-        // Pass the string separately
+
+        // ---- GENERATED HWID ----
         newMachineGuid: String(brandNewGUID)
     };
 
+    console.log("[MAIN] Spoof Config:", safeOptions);
+
     return new Promise((resolve) => {
         try {
-            console.log(`[MAIN] Writing Registry ID: ${safeOptions.newMachineGuid}`);
+
+            console.log(
+                `[MAIN] Writing Registry ID: ${safeOptions.newMachineGuid}`
+            );
 
             spoofer.runSpoofer(safeOptions, (err, results) => {
+
                 if (err) {
                     console.error("[MAIN] C++ Error:", err);
-                    resolve(null);
-                } else {
-                    resolve({ success: true, newHwid: brandNewGUID, ...results });
+                    resolve({ success: false });
+                    return;
                 }
+
+                resolve({
+                    success: true,
+                    newHwid: brandNewGUID,
+                    motherboard: safeOptions.motherboard,
+                    ...results
+                });
             });
+
         } catch (crash) {
+
             console.error("[MAIN] Fatal Crash:", crash);
-            resolve(null);
+
+            resolve({
+                success: false,
+                error: "MAIN_CRASH"
+            });
         }
     });
 });
@@ -193,28 +219,49 @@ function updateRPCStatus(gameName) {
 }
 
 ipcMain.handle('launch-game', async (event, gameName, autoClose, licenseKey, injectionType) => {
-
-    console.log(`[MAIN] Key Received: ${licenseKey}`);
-
-    // 1. Data Normalization
     const finalType = injectionType || "external";
     const gameUpper = gameName.toUpperCase();
-    let fileName = "";
 
-    // 2. Filename Logic (Case-Sensitive for your assets folder)
-    if (gameUpper === 'CS2') {
-        fileName = (finalType === "dll") ? "Ai cheat.dll" : "Noxen.exe";
-    } else {
-        fileName = `${gameName.toUpperCase()}.exe`;
-    }
+    // 1. Determine the correct filename
+    let fileName = (gameUpper === 'CS2' && finalType === "dll") ? "Ai cheat.dll" : (gameUpper === 'CS2' ? "Noxen.exe" : `${gameUpper}.exe`);
 
-    const cheatPath = path.join(__dirname, 'assets', fileName);
+    // 2. THE PATH FIX: Step UP from 'loader' to the root 'assets' folder
+    // __dirname is .../loader/, so '..' takes us to the project root
+    const injectorPath = path.join(__dirname, '..', 'assets', 'Extreme Injector v3.exe');
+    const cheatPath = path.join(__dirname, '..', 'assets', fileName);
 
-    // DEBUG: This should now show your CS2X key correctly
-    console.log(`[MAIN] Launching ${gameUpper} | Type: ${finalType} | Key: ${licenseKey}`);
+    console.log(`[MAIN] Initializing ${finalType} for ${gameUpper}`);
 
     try {
-        // 3. EXECUTE C++ (Order: Game, Type, Path, Key)
+        // --- DLL INJECTOR LOGIC ---
+        if (gameUpper === 'CS2' && finalType === "dll") {
+
+            const cmd = `powershell -Command "Start-Process '${injectorPath}' -WindowStyle Hidden"`;
+
+            if (!fs.existsSync(injectorPath)) {
+                console.error(`❌ INJECTOR NOT FOUND AT: ${injectorPath}`);
+                return { status: "Error", message: "Injector file missing!" };
+            }
+
+            const quotedInjector = `"${injectorPath}"`;
+            const quotedCheat = `"${cheatPath}"`;
+
+            const { exec } = require('child_process');
+            const assetsPath = path.join(__dirname, '..', 'assets');
+
+
+            console.log(`[DEBUG] Executing Command: ${cmd}`);
+
+            exec(cmd, { shell: true }, (err) => {
+                if (err) {
+                    console.error("[LAUNCH ERROR] Failed to start injector:", err.message);
+                }
+            });
+
+            return { status: "Success", message: "DLL Injector Dispatched." };
+        }
+
+        // --- EXTERNAL LOGIC (C++) ---
         const success = spoofer.launchCheat(
             String(gameUpper),
             String(finalType),
@@ -223,8 +270,8 @@ ipcMain.handle('launch-game', async (event, gameName, autoClose, licenseKey, inj
         );
 
         if (success) {
-            // Discord RPC...
             if (autoClose) {
+                console.log("[MAIN] Auto-close active. Exiting in 3s...");
                 setTimeout(() => { app.quit(); }, 3000);
             }
             return { status: "Success", message: `${gameName} launched successfully!` };
@@ -289,8 +336,29 @@ ipcMain.on('toggle-discord', async (event, enabled) => {
 // Listener for Machine ID
 ipcMain.handle('get-machine-id', async () => {
     try {
-        return execSync('reg query "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Cryptography" /v "MachineGuid"').toString().split('REG_SZ')[1].trim();
-    } catch (e) { return "ERROR_READING_REG"; }
+
+        await new Promise(r => setTimeout(r, 1500));
+
+        const output = execSync(
+            'reg query "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Cryptography" /v MachineGuid',
+            { encoding: "utf8" }
+        );
+
+        const lines = output.split('\n');
+
+        for (const line of lines) {
+            if (line.includes("MachineGuid")) {
+                const parts = line.trim().split(/\s+/);
+                return parts[parts.length - 1];
+            }
+        }
+
+        return "GUID_NOT_FOUND";
+
+    } catch (err) {
+        console.error("[HWID READ ERROR]", err);
+        return "REG_ACCESS_FAILED";
+    }
 });
 
 // Listener for Baseboard Serial
