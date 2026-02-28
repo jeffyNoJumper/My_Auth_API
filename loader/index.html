@@ -86,8 +86,7 @@
         </div>
     </div>
 
-
-    <!-- 3. MAIN DASHBOARD -->
+            <!-- 3. MAIN DASHBOARD -->
     <div id="main-dashboard" class="screen">
         <nav class="top-nav">
             <div class="nav-left">
@@ -96,7 +95,6 @@
                 <button onclick="showTab('hwid')" id="btn-hwid" class="nav-btn">HWID</button>
                 <button onclick="showTab('spoofing')" id="btn-spoofing" class="nav-btn">SPOOFING</button>
                 <button onclick="showTab('settings')" id="btn-settings" class="nav-btn">CONFIG</button>
-                <button onclick="openModal('settings-modal')" id="btn-settings" class="nav-btn">SETTINGS</button>
             </div>
 
             <div class="nav-right">
@@ -120,6 +118,45 @@
                 </div>
             </div>
         </nav>
+
+        <!-- Home Tab -->
+        <div id="home-tab" class="tab-content active">
+            <div class="welcome-panel">
+                <h2 class="glow-text-cyan">SK ALL-IN-ONE v1.1.2</h2>
+                <p>Active User: <span id="home-username" style="color:var(--accent);">Pending...</span></p>
+
+                <div class="home-tile-grid">
+                    <div class="stat-tile">
+                        <small style="color:#666;">SUBSCRIPTION</small>
+                        <div id="home-exp" style="font-family: monospace;">--</div>
+                    </div>
+                    <div class="stat-tile">
+                        <small style="color:#666;">SERVER STATUS</small>
+                        <div style="color:#00ff88; font-weight:bold;">● ONLINE</div>
+                    </div>
+                    <div class="stat-tile">
+                        <small style="color:#666;">VERSION</small>
+                        <div>v1.1.2-STABLE</div>
+                    </div>
+                </div>
+
+                <!-- --- NEW: INJECTION PROGRESS SECTION --- -->
+                <div id="injection-status" class="hidden" style="margin-top: 25px; padding-top: 15px; border-top: 1px solid rgba(0, 242, 255, 0.1);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <span id="status-text" style="font-size: 10px; color: var(--accent); letter-spacing: 1px; font-weight: bold; text-transform: uppercase;">
+                            Waiting for selection...
+                        </span>
+                        <span id="status-percent" style="font-size: 10px; color: #555;">0%</span>
+                    </div>
+
+                    <div class="progress-container" style="width: 100%; height: 6px; background: #0a0a0a; border-radius: 4px; overflow: hidden; border: 1px solid #1a1a1a;">
+                        <div id="main-progress-bar" style="width: 0%; height: 100%; background: var(--accent); box-shadow: 0 0 15px var(--accent); transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);"></div>
+                    </div>
+                </div>
+                <!-- --------------------------------------- -->
+
+            </div>
+        </div>
 
         <!-- EXPIRY MODAL -->
         <div id="expiry-modal" class="modal-overlay hidden">
@@ -208,46 +245,8 @@
             </div>
         </div>
 
+
         <div class="content-area">
-            <!-- Home Tab -->
-            <div id="home-tab" class="tab-content active">
-                <div class="welcome-panel">
-                    <h2 class="glow-text-cyan">SK ALL-IN-ONE v1.1.2</h2>
-                    <p>Active User: <span id="home-username" style="color:var(--accent);">Pending...</span></p>
-
-                    <div class="home-tile-grid">
-                        <div class="stat-tile">
-                            <small style="color:#666;">SUBSCRIPTION</small>
-                            <div id="home-exp" style="font-family: monospace;">--</div>
-                        </div>
-                        <div class="stat-tile">
-                            <small style="color:#666;">SERVER STATUS</small>
-                            <div style="color:#00ff88; font-weight:bold;">● ONLINE</div>
-                        </div>
-                        <div class="stat-tile">
-                            <small style="color:#666;">VERSION</small>
-                            <div>v1.1.2-STABLE</div>
-                        </div>
-                    </div>
-
-                    <!-- --- NEW: INJECTION PROGRESS SECTION --- -->
-                    <div id="injection-status" class="hidden" style="margin-top: 25px; padding-top: 15px; border-top: 1px solid rgba(0, 242, 255, 0.1);">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                            <span id="status-text" style="font-size: 10px; color: var(--accent); letter-spacing: 1px; font-weight: bold; text-transform: uppercase;">
-                                Waiting for selection...
-                            </span>
-                            <span id="status-percent" style="font-size: 10px; color: #555;">0%</span>
-                        </div>
-
-                        <div class="progress-container" style="width: 100%; height: 6px; background: #0a0a0a; border-radius: 4px; overflow: hidden; border: 1px solid #1a1a1a;">
-                            <div id="main-progress-bar" style="width: 0%; height: 100%; background: var(--accent); box-shadow: 0 0 15px var(--accent); transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);"></div>
-                        </div>
-                    </div>
-                    <!-- --------------------------------------- -->
-
-                </div>
-            </div>
-
 
             <!-- Tab: Games -->
             <div id="games-tab" class="tab-content">
@@ -428,15 +427,10 @@
                                     onclick="startSpoofing()">
                                 EXECUTE SPOOF
                             </button>
-
                         </div>
-
                     </div>
-
                 </div>
-
             </div>
-
         </div>
 
 
@@ -459,7 +453,7 @@
                 <!-- Expanded Settings Panel -->
                 <div class="settings-panel">
                     <h3 class="glow-text-cyan">CLIENT_SETTINGS</h3>
-                    <p class="desc">Build: 1.0.4-Beta | Auth: Verified</p>
+                    <p class="desc">Build: 1.1.1-Beta | Auth: Verified</p>
 
                     <div class="settings-group">
                         <label class="switch-container">
@@ -494,7 +488,6 @@
             </div>
         </div>
     </div> <!-- End Content Area -->
-
     <!-- <script src="https://cdn.jsdelivr.net/npm/particles.js@2.0.0/particles.min.js"></script> -->
 
     <script src="./ui.js"></script>
