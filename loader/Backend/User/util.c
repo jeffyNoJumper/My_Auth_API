@@ -1,4 +1,4 @@
-﻿#include "stdafx.h"
+#include "stdafx.h"
 
 static WCHAR alphabet[] = L"abcdef012345789";
 
