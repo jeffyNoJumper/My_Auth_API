@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('api', {
         console.log("[PRELOAD] Forwarding Key:", key); // This will show in DevTools
         return ipcRenderer.invoke('launch-game', name, close, key, type);
     },
+
     toggleStreamProof: (enabled) => ipcRenderer.send('toggle-stream-proof', enabled),
     toggleDiscord: (enabled) => ipcRenderer.send('toggle-discord', enabled),
     getNews: () => ipcRenderer.invoke('get-news'),
