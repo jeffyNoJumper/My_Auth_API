@@ -3,48 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SK ALL IN-ONE Loader</title>
+    <title>SK ALL-IN-ONE</title>
     <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com">
 </head>
 <body>
-
-    <!-- CUSTOM TITLE BAR -->
-    <div class="title-bar">
-        <div class="drag-region">
-            <span class="brand">SK</span> ALL-IN-ONE
-        </div>
-        <div class="window-controls">
-            <button onclick="window.api.minimize()" class="control-btn">—</button>
-            <button onclick="window.api.close()" class="control-btn close-btn">×</button>
-        </div>
-    </div>
-
-    <!-- AUTO-UPDATER OVERLAY -->
-    <div id="update-overlay">
-        <div class="update-card">
-            <h2 class="glow-text-cyan">SYSTEM UPDATE</h2>
-            <p id="update-version">Checking for updates...</p>
-            <div id="update-news-prev" class="news-preview"></div>
-            <p id="update-status">Waiting for update check...</p>
-            <div id="update-terminal"></div>
-            <button id="update-btn" class="action-btn update-confirm" disabled>DOWNLOAD & INSTALL</button>
-        </div>
-    </div>
-
-
-    <!-- 1. BOOT SCREEN -->
-    <div id="boot-screen">
-        <div class="boot-container">
-            <h1 id="boot-status">Initializing...</h1>
-            <div class="spinner-container">
-                <div class="boot-spinner"></div>
-            </div>
-
-            <div class="progress-wrapper">
-                <div id="boot-progress"></div>
-            </div>
-        </div>
-    </div>
 
     <!-- 2. LOGIN SCREEN -->
     <div id="login-screen" class="screen">
@@ -86,170 +49,52 @@
         </div>
     </div>
 
-            <!-- 3. MAIN DASHBOARD -->
-    <div id="main-dashboard" class="screen">
-        <nav class="top-nav">
-            <div class="nav-left">
-                <button onclick="showTab('home')" id="btn-home" class="nav-btn active">HOME</button>
-                <button onclick="showTab('games')" id="btn-games" class="nav-btn">GAMES</button>
-                <button onclick="showTab('hwid')" id="btn-hwid" class="nav-btn">HWID</button>
-                <button onclick="showTab('spoofing')" id="btn-spoofing" class="nav-btn">SPOOFING</button>
-                <button onclick="showTab('settings')" id="btn-settings" class="nav-btn">CONFIG</button>
-            </div>
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <div class="drag-region"><span class="brand">SK</span> ALL-IN-ONE</div>
 
-            <div class="nav-right">
-                <div class="user-meta">
-                    <span id="status-dot" class="status-dot dot-online"></span>
-                    <span id="user-expiry" style="font-size: 10px; color: #888; margin-right: 10px;">EXP: --</span>
-                </div>
-
-                <div class="profile-trigger" onclick="toggleUserDropdown()" style="position:relative; cursor:pointer;">
-                    <img src="./imgs/default-profile.png" id="user-pic" class="glow-border" style="width: 35px; height: 35px; border-radius: 50%;">
-
-                    <div id="user-dropdown" class="dropdown-content hidden">
-                        <div class="dropdown-header" style="padding: 10px; font-size: 10px; color: #555; border-bottom: 1px solid #222;">MANAGE PROFILE</div>
-                        <!-- Corrected: Now opens the Modal -->
-                        <div class="dropdown-item" onclick="openModal('settings-modal')">👤 Edit Profile</div>
-                        <div class="dropdown-item" onclick="openSocial('discord')">💬 Discord</div>
-                        <div class="dropdown-item" onclick="openShop()">🛒 Shop / Support</div>
-                        <div style="height:1px; background:#333; margin:5px 0;"></div>
-                        <div class="dropdown-item logout-red" onclick="logout()" style="color:#ff4444;">🚪 Logout</div>
-                    </div>
-                </div>
-            </div>
-        </nav>
-
-        <!-- Home Tab -->
-        <div id="home-tab" class="tab-content active">
-            <div class="welcome-panel">
-                <h2 class="glow-text-cyan">SK ALL-IN-ONE v1.1.2</h2>
-                <p>Active User: <span id="home-username" style="color:var(--accent);">Pending...</span></p>
-
-                <div class="home-tile-grid">
-                    <div class="stat-tile">
-                        <small style="color:#666;">SUBSCRIPTION</small>
-                        <div id="home-exp" style="font-family: monospace;">--</div>
-                    </div>
-                    <div class="stat-tile">
-                        <small style="color:#666;">SERVER STATUS</small>
-                        <div style="color:#00ff88; font-weight:bold;">● ONLINE</div>
-                    </div>
-                    <div class="stat-tile">
-                        <small style="color:#666;">VERSION</small>
-                        <div>v1.1.2-STABLE</div>
-                    </div>
-                </div>
-
-                <!-- --- NEW: INJECTION PROGRESS SECTION --- -->
-                <div id="injection-status" class="hidden" style="margin-top: 25px; padding-top: 15px; border-top: 1px solid rgba(0, 242, 255, 0.1);">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                        <span id="status-text" style="font-size: 10px; color: var(--accent); letter-spacing: 1px; font-weight: bold; text-transform: uppercase;">
-                            Waiting for selection...
-                        </span>
-                        <span id="status-percent" style="font-size: 10px; color: #555;">0%</span>
-                    </div>
-
-                    <div class="progress-container" style="width: 100%; height: 6px; background: #0a0a0a; border-radius: 4px; overflow: hidden; border: 1px solid #1a1a1a;">
-                        <div id="main-progress-bar" style="width: 0%; height: 100%; background: var(--accent); box-shadow: 0 0 15px var(--accent); transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);"></div>
-                    </div>
-                </div>
-                <!-- --------------------------------------- -->
-
-            </div>
+        <div class="nav-group">
+            <a href="#" onclick="showTab('home')" id="btn-home" class="nav-item active">
+                <i class="fas fa-home"></i> Home
+            </a>
+            <a href="#" onclick="showTab('games')" id="btn-games" class="nav-item">
+                <i class="fas fa-gamepad"></i> Games
+            </a>
+            <a href="#" onclick="showTab('hwid')" id="btn-hwid" class="nav-item">
+                <i class="fas fa-microchip"></i> HWID
+            </a>
+            <a href="#" onclick="showTab('spoofing')" id="btn-spoofing" class="nav-item">
+                <i class="fas fa-infinity"></i> Spoofing
+            </a>
+            <a href="#" onclick="showTab('settings')" id="btn-settings" class="nav-item">
+                <i class="fas fa-cog"></i> Settings
+            </a>
         </div>
 
-        <!-- EXPIRY MODAL -->
-        <div id="expiry-modal" class="modal-overlay hidden">
-            <div class="modal-content glass-card" style="width: 350px; text-align: center; border: 1px solid var(--red);">
-                <div class="modal-header">
-                    <h3 style="color:var(--red); letter-spacing: 2px;">SESSION EXPIRED</h3>
-                </div>
-                <div class="modal-body" style="padding: 20px; text-align: center;">
-                    <!-- Alert Icon -->
-                    <div class="expiry-icon-container" style="margin-bottom: 20px;">
-                        <i class="fas fa-user-shield" style="font-size: 45px; color: var(--red); filter: drop-shadow(0 0 10px var(--red));"></i>
-                    </div>
-
-                    <!-- Status Labels -->
-                    <div style="background: rgba(255, 68, 68, 0.05); border: 1px solid rgba(255, 68, 68, 0.2); padding: 15px; border-radius: 8px; margin-bottom: 20px;">
-                        <h4 style="color: var(--red); margin: 0 0 5px 0; font-size: 14px; letter-spacing: 1px;">SUBSCRIPTION EXPIRED</h4>
-                        <p style="font-size: 11px; color: #888; margin: 0; line-height: 1.5;">
-                            Your session has been terminated by the <br>
-                            <span style="color: #ccc;">SK Security Authentication Server.</span>
-                        </p>
-                    </div>
-
-                    <p style="font-size: 10px; color: #555; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 15px;">
-                        Access to all modules has been <span style="color:var(--red)">Revoked</span>.
-                    </p>
-
-                    <!-- REVOKE Button -->
-                    <button onclick="forceLogout()" class="btn-primary" style="width: 100%; background: var(--red); color: white; border: none; padding: 12px; font-weight: 900; letter-spacing: 1px; border-radius: 4px; box-shadow: 0 4px 15px rgba(255, 68, 68, 0.3); cursor: pointer; transition: 0.3s;">
-                        RETURN TO AUTHENTICATION
-                    </button>
-                </div>
-            </div>
+        <div class="footer-nav">
+            <a href="#" class="nav-item"><i class="fab fa-discord"></i> Discord</a>
+            <a href="#" class="nav-item"><i class="fas fa-shopping-cart"></i> Shop / Support</a>
+            <a href="#" class="nav-item exit-btn"><i class="fas fa-sign-out-alt"></i> Exit</a>
+            <a href="#" class="nav-item"><i class="far fa-folder"></i> Resource folder</a>
+            <a href="#" class="nav-item"><i class="fas fa-wrench"></i> Change folder</a>
         </div>
+    </div>
 
-        <!-- CS2 MODULE SELECTION MODAL -->
-        <div id="cs2-modal" class="modal-overlay hidden">
-            <div class="modal-content glass-card" style="width: 400px; text-align: center;">
-                <div class="modal-header">
-                    <h3 class="glow-text-cyan">CS2 MODULE SELECT</h3>
-                </div>
-                <div class="modal-body">
-                    <p style="font-size: 11px; color: #777; margin-bottom: 20px;">Choose your preferred injection method for Counter-Strike 2.</p>
+    <!-- Main Content -->
+    <div class="main-content">
+        <!-- This is your "Window" container -->
+        <div id="tab-container" class="dashboard-card">
 
-                    <div class="choice-grid" style="display: flex; gap: 15px;">
-                        <div class="choice-item" onclick="submitCS2Choice('dll')" style="flex: 1; padding: 20px; border: 1px solid #333; cursor: pointer; border-radius: 8px;">
-                            <div style="color: var(--accent); font-size: 20px; margin-bottom: 10px;">⚙️</div>
-                            <span style="font-weight: bold; display: block;">INTERNAL</span>
-                            <small style="font-size: 9px; color: #555;">DLL Injection</small>
-                        </div>
-                        <div class="choice-item" onclick="submitCS2Choice('external')" style="flex: 1; padding: 20px; border: 1px solid #333; cursor: pointer; border-radius: 8px;">
-                            <div style="color: var(--accent); font-size: 20px; margin-bottom: 10px;">🚀</div>
-                            <span style="font-weight: bold; display: block;">EXTERNAL</span>
-                            <small style="font-size: 9px; color: #555;">EXE Overlay</small>
-                        </div>
-                    </div>
-
-                    <button onclick="submitCS2Choice('cancel')" class="btn-small" style="margin-top: 20px; width: 100%; background: transparent; border: 1px solid #444;">CANCEL</button>
-                </div>
+            <!-- Home Window (Matches showTab('home')) -->
+            <div id="home-tab" class="tab-content">
+                <h2>SK ALL-IN-ONE v1.1.2</h2>
+                <p class="subtitle">Welcome back, User</p>
+                <!-- Your home info/status goes here -->
             </div>
-        </div>
 
-        <!-- SETTINGS MODAL (Inside Main Dashboard but Fixed Position) -->
-        <div id="settings-modal" class="modal-overlay hidden">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h3 class="glow-text-cyan">ACCOUNT SETTINGS</h3>
-                    <span class="close-x" onclick="closeModal('settings-modal')" style="cursor:pointer;">&times;</span>
-                </div>
-                <div class="modal-body">
-                    <div class="pfp-edit-section" style="text-align:center; margin-bottom:15px;">
-                        <img src="./imgs/default-profile.png" id="modal-pfp" class="glow-border" style="width:80px; height:80px; border-radius:50%; object-fit:cover;">
-                        <br>
-                        <button class="mini-btn" onclick="document.getElementById('pfp-input').click()" style="margin-top:10px;">CHANGE PHOTO</button>
-                        <input type="file" id="pfp-input" hidden accept="image/*" onchange="previewImage(this)">
-                    </div>
-                    <div class="input-group">
-                        <label>NEW EMAIL</label>
-                        <input type="email" id="edit-email" placeholder="Update email...">
-                    </div>
-                    <div class="input-group">
-                        <label>NEW PASSWORD</label>
-                        <input type="password" id="edit-password" placeholder="New password...">
-                    </div>
-                    <button id="save-profile-btn" onclick="saveProfileChanges()" class="action-btn" style="width:100%; margin-top:10px;">SAVE CHANGES</button>
-                </div>
-            </div>
-        </div>
-
-
-        <div class="content-area">
-
-            <!-- Tab: Games -->
-            <div id="games-tab" class="tab-content">
+            <!-- Games Window (Matches showTab('games')) -->
+            <div id="games-tab" class="tab-content" style="display:none;">
+                <h2>Games Settings</h2>
                 <div class="steam-grid">
                     <div class="game-card card-green"
                          data-images="./imgs/fivem1.png, ./imgs/fivem2.png, ./imgs/fivem3.png"
@@ -278,9 +123,10 @@
                 </div>
             </div>
 
-            <!-- Tab: HWID -->
-            <div id="hwid-tab" class="tab-content">
-                <div class="hwid-panel">
+            <!-- HWID Window (Matches showTab('hwid')) -->
+            <div id="hwid-tab" class="tab-content" style="display:none;">
+                <h2>HWID Spoofer</h2>
+                <div id="hwid-list"></div> <div class="hwid-panel">
 
                     <!-- HEADER -->
                     <div class="hwid-header">
@@ -326,60 +172,54 @@
                 </div>
 
                 <p id="hwid-status" class="hwid-status-line"></p>
-
             </div>
-        </div>
 
+            <!-- Spoofing Window (Matches showTab('spoofing')) -->
+            <div id="spoofing-tab" class="tab-content" style="display:none;">
+                <h2>Spoofing Options</h2>
+                <div class="spoofer-panel">
 
-        <!-- Tab: Spoofing -->
-        <div id="spoofing-tab" class="tab-content">
-
-            <div class="spoofer-panel">
-
-                <!-- STATUS OVERVIEW -->
-                <div class="spoof-overview">
-                    <div class="overview-left">
+                    <!-- 1. HEADER SECTION (Status & Icon) -->
+                    <div class="spoof-header-row">
                         <div class="shield-icon">
                             <img src="imgs/shield.svg" alt="shield" class="shield-img">
                         </div>
 
-                        <div class="overview-right">
-                            <h2 id="spoof-main-status" class="status-inactive">
+                        <div class="status-text-group">
+                            <h2 id="spoof-main-status" class="status-inactive" data-i18n="spoof_status">
                                 NOT SPOOFED
                             </h2>
-                            <p id="spoof-subtext">
+                            <p id="spoof-subtext" data-i18n="spoof_desc">
                                 Your hardware identifiers are currently exposed.
                             </p>
                         </div>
+
+                        <!-- LOADER (Now positioned in header to save space) -->
+                        <div id="spoof-progress" class="hidden">
+                            <div class="spinner"></div>
+                            <p>Processing...</p>
+                        </div>
                     </div>
 
-                    <!-- MODE TOGGLE -->
-                    <div class="spoof-mode-toggle">
-                        <button id="mode-hwid" class="mode-btn active"
-                                onclick="setSpoofMode('hwid')">
-                            HWID (Permanent)
-                        </button>
-
-                        <button id="mode-traces" class="mode-btn"
-                                onclick="setSpoofMode('traces')">
-                            Traces (Temporary)
-                        </button>
+                    <!-- 2. MIDDLE SECTION (Mode Toggle) -->
+                    <div class="spoof-mode-container">
+                        <div class="spoof-mode-toggle">
+                            <button id="mode-hwid" class="mode-btn active" onclick="setSpoofMode('hwid')">
+                                HWID (Permanent)
+                            </button>
+                            <button id="mode-traces" class="mode-btn" onclick="setSpoofMode('traces')">
+                                Traces (Temporary)
+                            </button>
+                        </div>
                     </div>
 
-                    <!-- LOADER -->
-                    <div id="spoof-progress" class="hidden">
-                        <div class="spinner"></div>
-                        <p>Processing...</p>
-                    </div>
-
-                    <!-- GRID SECTION -->
+                    <!-- 3. BOTTOM SECTION (Main Grid) -->
                     <div class="spoof-grid">
 
-                        <!-- LEFT OPTIONS -->
-                        <div class="spoof-options">
-
-                            <label>Motherboard Type</label>
-                            <select id="motherboard-select">
+                        <!-- LEFT OPTIONS CARD -->
+                        <div class="spoof-card spoof-options">
+                            <div class="card-label">Motherboard Type</div>
+                            <select id="motherboard-select" class="styled-select">
                                 <option>ASUS</option>
                                 <option>MSI</option>
                                 <option>Gigabyte</option>
@@ -387,109 +227,103 @@
                                 <option>Other</option>
                             </select>
 
-                            <div class="toggle-row">
-                                <span>Auto BIOS Flash</span>
-                                <input type="checkbox" id="bios-flash">
-                            </div>
+                            <div class="toggle-list">
+                                <div class="toggle-row">
+                                    <span>Auto BIOS Flash</span>
+                                    <input type="checkbox" id="bios-flash">
+                                </div>
 
-                            <div class="toggle-row">
-                                <span>Clean Registry</span>
-                                <input type="checkbox" id="clean-reg">
-                            </div>
+                                <div class="toggle-row">
+                                    <span>Clean Registry</span>
+                                    <input type="checkbox" id="clean-reg">
+                                </div>
 
-                            <div class="toggle-row">
-                                <span>Clean Disk Traces</span>
-                                <input type="checkbox" id="clean-disk">
+                                <div class="toggle-row">
+                                    <span>Clean Disk Traces</span>
+                                    <input type="checkbox" id="clean-disk">
+                                </div>
                             </div>
-
                         </div>
 
                         <!-- RIGHT ACTION CARD -->
-                        <div class="spoof-action-card">
+                        <div class="spoof-card spoof-action-card">
+                            <div class="recommended-tag">RECOMMENDED</div>
 
-                            <div class="recommended-tag">
-                                RECOMMENDED
-                            </div>
-
-                            <h3 id="spoof-action-title">
-                                Natural Spoof
-                            </h3>
-
+                            <h3 id="spoof-action-title">Natural Spoof</h3>
                             <p id="spoof-action-desc">
                                 Firmware-level hardware masking for maximum persistence.
                             </p>
 
                             <div class="warning-box">
-                                WARNING: Permanent spoofing modifies firmware-level identifiers.
+                                <i class="fas fa-exclamation-triangle"></i>
+                                <span>WARNING: Permanent spoofing modifies firmware-level identifiers.</span>
                             </div>
 
-                            <button class="action-btn spoof-btn"
-                                    onclick="startSpoofing()">
+                            <button class="action-btn spoof-btn" onclick="startSpoofing()">
                                 EXECUTE SPOOF
                             </button>
                         </div>
                     </div>
                 </div>
             </div>
-        </div>
 
-
-        <!-- Tab: Settings -->
-        <div id="settings-tab" class="tab-content">
-            <div class="settings-layout">
-                <!-- New Revamped Terminal Section -->
-                <div class="news-section">
-                    <h3 class="glow-text-cyan">SYSTEM_TERMINAL</h3>
-                    <div class="terminal-box" id="main-terminal">
-                        <div id="news-feed-text" class="typewriter">> [STATUS] System operational...</div>
-                        <div class="terminal-line">> [LOG] Injection module standby.</div>
-                    </div>
-                    <div class="terminal-input-area">
-                        <span class="prompt">SK-USER:~$</span>
-                        <input type="text" id="terminal-cmd" placeholder="Enter command...">
-                    </div>
-                </div>
-
-                <!-- Expanded Settings Panel -->
-                <div class="settings-panel">
-                    <h3 class="glow-text-cyan">CLIENT_SETTINGS</h3>
-                    <p class="desc">Build: 1.1.1-Beta | Auth: Verified</p>
-
-                    <div class="settings-group">
-                        <label class="switch-container">
-                            <input type="checkbox" id="auto-launch">
-                            <span class="slider"></span> Auto-Launch on Start
-                        </label>
-
-                        <!-- NEW: Auto-Close Feature -->
-                        <label class="switch-container">
-                            <input type="checkbox" id="auto-close-launcher" checked>
-                            <span class="slider"></span> Auto-Close Launcher on Inject
-                        </label>
-
-                        <!-- NEW: Discord RPC Feature -->
-                        <label class="switch-container">
-                            <input type="checkbox" id="discord-rpc">
-                            <span class="slider"></span> Enable Discord Rich Presence
-                        </label>
-
-                        <!-- NEW: Stream Proof Feature -->
-                        <label class="switch-container">
-                            <input type="checkbox" id="stream-proof">
-                            <span class="slider"></span> Stream Proof (Hide Visuals)
-                        </label>
+            <!-- Settings Window (Matches showTab('settings')) -->
+            <div id="settings-tab" class="tab-content" style="display:none;">
+                <h2>Configuration</h2>
+                <div class="settings-layout">
+                    <!-- New Revamped Terminal Section -->
+                    <div class="news-section">
+                        <h3 class="glow-text-cyan">SYSTEM_TERMINAL</h3>
+                        <div class="terminal-box" id="main-terminal">
+                            <div id="news-feed-text" class="typewriter">> [STATUS] System operational...</div>
+                            <div class="terminal-line">> [LOG] Injection module standby.</div>
+                        </div>
+                        <div class="terminal-input-area">
+                            <span class="prompt">SK-USER:~$</span>
+                            <input type="text" id="terminal-cmd" placeholder="Enter command...">
+                        </div>
                     </div>
 
-                    <div class="action-buttons">
-                        <button class="btn-small" onclick="clearLogs()">CLEAR_LOGS</button>
-                        <button class="btn-small danger" onclick="resetConfig()">RESET_ALL</button>
+                    <!-- Expanded Settings Panel -->
+                    <div class="settings-panel">
+                        <h3 class="glow-text-cyan">CLIENT_SETTINGS</h3>
+                        <p class="desc">Build: 1.1.1-Beta | Auth: Verified</p>
+
+                        <div class="settings-group">
+                            <label class="switch-container">
+                                <input type="checkbox" id="auto-launch">
+                                <span class="slider"></span> Auto-Launch on Start
+                            </label>
+
+                            <!-- NEW: Auto-Close Feature -->
+                            <label class="switch-container">
+                                <input type="checkbox" id="auto-close-launcher">
+                                <span class="slider"></span> Auto-Close Launcher on Inject
+                            </label>
+
+                            <!-- NEW: Discord RPC Feature -->
+                            <label class="switch-container">
+                                <input type="checkbox" id="discord-rpc">
+                                <span class="slider"></span> Enable Discord Rich Presence
+                            </label>
+
+                            <!-- NEW: Stream Proof Feature -->
+                            <label class="switch-container">
+                                <input type="checkbox" id="stream-proof">
+                                <span class="slider"></span> Stream Proof (Hide Visuals)
+                            </label>
+                        </div>
+
+                        <div class="action-buttons">
+                            <button class="btn-small" onclick="clearLogs()">CLEAR_LOGS</button>
+                            <button class="btn-small danger" onclick="resetConfig()">RESET_ALL</button>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
-    </div> <!-- End Content Area -->
-    <!-- <script src="https://cdn.jsdelivr.net/npm/particles.js@2.0.0/particles.min.js"></script> -->
 
+        </div>
+    </div>
     <script src="./ui.js"></script>
 </body>
 </html>
