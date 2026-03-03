@@ -14,53 +14,62 @@ window.onload = async () => {
     // 1. IMMEDIATE PFP CHECK
     const savedPfp = localStorage.getItem('saved_profile_pic');
     const syncProfileUI = () => {
-        const navPfp = document.getElementById('user-pic');
-        const modalPfp = document.getElementById('modal-pfp');
         if (savedPfp) {
+            const navPfp = document.getElementById('user-pic');
+            const modalPfp = document.getElementById('modal-pfp');
             if (navPfp) navPfp.src = savedPfp;
             if (modalPfp) modalPfp.src = savedPfp;
+            console.log("✨ Persistent Profile Image Synchronized");
         }
     };
 
     syncProfileUI();
+
     await updateHWIDDisplay();
-    // await checkServer(); // Uncomment if your server check is ready
+    await checkServer();
 
-    // --- SESSION & EXPIRY GUARD ---
-    const savedExpiry = localStorage.getItem('expiry_date');
-    const savedEmail = localStorage.getItem('user_email');
-    const savedKey = localStorage.getItem('license_key');
+    const overlay = document.getElementById('update-overlay');
+    const currentVersion = localStorage.getItem('installedVersion') || '1.1.1';
+    const updateNeeded = await checkForUpdateAndPrompt(currentVersion);
 
-    if (savedExpiry && savedEmail && savedKey) {
-        const now = new Date().getTime();
-        const expTime = new Date(savedExpiry).getTime();
-
-        if (now >= expTime) {
-            console.warn("[SECURITY] Session expired. Wiping local data.");
-            localStorage.clear(); // Clean wipe
-            document.body.classList.add('login-active'); // Stay on login
-        } else {
-            console.log("[SECURITY] Session Valid. Initializing Heartbeat.");
-
-            // This will now work because it's defined above
-            startExpiryHeartbeat(savedExpiry);
-
-            // UPDATED FOR NEW LAYOUT: Reveal Sidebar and show Home
-            setTimeout(() => {
-                document.body.classList.remove('login-active');
-                const loginScreen = document.getElementById('login-screen');
-                if (loginScreen) loginScreen.style.display = 'none';
-
-                showTab('home'); // Load the first tab
-                syncProfileUI();
-                if (typeof updateUIForAccess === 'function') updateUIForAccess();
-            }, 500);
+    if (!updateNeeded) {
+        if (overlay) {
+            overlay.classList.add('hidden');
+            overlay.style.display = 'none';
         }
-    } else {
-        // No session: Show login screen
-        document.body.classList.add('login-active');
-        const loginScreen = document.getElementById('login-screen');
-        if (loginScreen) loginScreen.style.display = 'flex';
+
+        // --- SESSION & EXPIRY GUARD ---
+        const savedExpiry = localStorage.getItem('expiry_date');
+        const savedEmail = localStorage.getItem('user_email');
+        const savedKey = localStorage.getItem('license_key');
+
+        if (savedExpiry && savedEmail && savedKey) {
+            const now = new Date().getTime();
+            const expTime = new Date(savedExpiry).getTime();
+
+            // Check if user expired while app was closed
+            if (now >= expTime) {
+                console.warn("[SECURITY] Session expired. Wiping local data.");
+                localStorage.removeItem('user_email');
+                localStorage.removeItem('license_key');
+                localStorage.removeItem('expiry_date');
+                // Stay on login screen
+                //startBootSequence();
+            } else {
+                console.log("[SECURITY] Session Valid. Initializing Heartbeat.");
+
+                startExpiryHeartbeat(savedExpiry);
+
+                setTimeout(() => {
+                    switchScreen('login-screen', 'main-dashboard');
+                    syncProfileUI();
+                    updateUIForAccess();
+                }, 500);
+            }
+        } else {
+            // No saved session, just show login
+            //startBootSequence();
+        }
     }
 };
 function toggleDropdown() {
@@ -106,80 +115,75 @@ async function launchGame(gameName) {
     const key = localStorage.getItem('license_key');
     const autoCloseActive = document.getElementById('auto-close-launcher').checked;
 
-    // --- THE ID FIX: Target 'main-progress-bar' ---
-    const statusDiv = document.getElementById('injection-status');
+    // --- TARGET THE NEW MODAL OVERLAY ---
+    const injectionModal = document.getElementById('injection-modal');
     const bar = document.getElementById('main-progress-bar');
     const text = document.getElementById('status-text');
     const percentText = document.getElementById('status-percent');
 
     let injectionType = "external";
 
+    // --- CS2 MODAL LOGIC ---
     if (gameName.toLowerCase() === 'cs2') {
-        openModal('cs2-modal');
+        const cs2Modal = document.getElementById('cs2-modal');
+        cs2Modal.classList.remove('hidden'); // Open Selection
+
         injectionType = await new Promise((resolve) => {
-            window.submitCS2Choice = (choice) => { resolve(choice); };
+            window.submitCS2Choice = (choice) => {
+                cs2Modal.classList.add('hidden'); // Close Selection
+                resolve(choice);
+            };
         });
-        closeModal('cs2-modal');
+
         if (injectionType === 'cancel') {
             addTerminalLine("> [SYSTEM] CS2 Injection cancelled.");
             return;
         }
     }
 
-    // 1. Switch to Home Tab
-    showTab('home');
+    // --- START INJECTION OVERLAY ---
+    if (injectionModal && bar) {
+        injectionModal.classList.remove('hidden'); // Blackout screen
 
-    // 2. TRIGGER ANIMATION (With a tiny delay to ensure tab is visible)
-    if (statusDiv && bar) {
-        statusDiv.classList.remove('hidden');
-        statusDiv.style.display = 'block'; // Force display
-
+        // Step 1: Initial Pulse
         setTimeout(() => {
             bar.style.width = "45%";
             if (percentText) percentText.innerText = "45%";
-            if (text) {
-                text.innerText = `COMMUNICATING WITH ${gameName.toUpperCase()}...`;
-                text.style.color = "var(--accent)";
-            }
-        }, 50); // 50ms delay gives the UI time to "breathe"
+            if (text) text.innerText = `COMMUNICATING WITH ${gameName.toUpperCase()}...`;
+        }, 100);
     }
 
     addTerminalLine(`> [SYSTEM] Initializing ${gameName.toUpperCase()}...`);
 
-    const result = await window.api.launchCheat(
-        gameName,
-        autoCloseActive,
-        key,
-        injectionType
-    );
+    // --- THE BACKEND CALL ---
+    const result = await window.api.launchCheat(gameName, autoCloseActive, key, injectionType);
 
-    // 3. FINALIZE ANIMATION
+    // --- FINALIZE OVERLAY ---
     if (result.status === "Success") {
         if (bar) bar.style.width = "100%";
         if (percentText) percentText.innerText = "100%";
         if (text) {
             text.innerText = "INJECTION SUCCESSFUL!";
-            text.style.color = "#00ff88";
+            text.style.color = "#00ff88"; // Green for success
         }
 
         setTimeout(() => {
-            if (statusDiv) statusDiv.classList.add('hidden');
-            if (bar) bar.style.width = "0%";
-            if (percentText) percentText.innerText = "0%";
+            injectionModal.classList.add('hidden'); // Hide the overlay
+            // Reset for next time
+            bar.style.width = "0%";
+            percentText.innerText = "0%";
+            text.style.color = "var(--accent)";
         }, 3000);
     } else {
-        if (bar) bar.style.width = "0%";
-        if (percentText) percentText.innerText = "0%";
         if (text) {
-            text.innerText = "ACCESS DENIED / ERROR";
-            text.style.color = "#ff4444";
+            text.innerText = "INJECTION FAILED";
+            text.style.color = "#ff4444"; // Red for error
         }
+        setTimeout(() => injectionModal.classList.add('hidden'), 3000);
     }
 
-    const statusLabel = result.status === "Success" ? "[SUCCESS]" : "[ERROR]";
-    addTerminalLine(`> ${statusLabel} ${result.message}`);
+    addTerminalLine(`> ${result.status === "Success" ? "[SUCCESS]" : "[ERROR]"} ${result.message}`);
 }
-
 
 let resolveCS2;
 function submitCS2Choice(choice) {
@@ -188,23 +192,19 @@ function submitCS2Choice(choice) {
     }
 }
 
-/*
 function startBootSequence() {
     const bootScreen = document.getElementById('boot-screen');
     const bar = document.getElementById('boot-progress');
     const status = document.getElementById('boot-status');
 
-    // Add 'booting' class to hide sidebar/app in background
-    document.body.classList.add('booting');
-
     if (!bootScreen) {
-        console.error("Boot screen missing from HTML");
+        switchScreen('boot-screen', 'login-screen');
         return;
     }
 
-    // Force visibility for the start
     bootScreen.style.display = 'flex';
     bootScreen.style.opacity = '1';
+    bootScreen.style.zIndex = '10002';
 
     const interval = setInterval(() => {
         progress += Math.random() * 12;
@@ -222,26 +222,29 @@ function startBootSequence() {
         if (progress >= 100) {
             clearInterval(interval);
 
-            // Fade out Boot Screen
             bootScreen.style.opacity = '0';
+            bootScreen.style.pointerEvents = 'none';
+            bootScreen.style.transition = 'opacity 0.5s ease, visibility 0.5s';
 
             setTimeout(() => {
-                bootScreen.style.display = 'none';
+                switchScreen('boot-screen', 'login-screen');
 
-                // Show Login Screen
+                bootScreen.style.display = 'none';
+                bootScreen.style.visibility = 'hidden';
+                bootScreen.style.zIndex = '-1';
+                bootScreen.innerHTML = '';
+
                 const loginScreen = document.getElementById('login-screen');
                 if (loginScreen) {
-                    loginScreen.style.display = 'flex';
+                    loginScreen.style.zIndex = '2';
                     loginScreen.style.opacity = '1';
                 }
 
-                // If your script has loadNews(), trigger it now
-                if (typeof loadNews === 'function') loadNews();
+                loadNews();
             }, 500);
         }
-    }, 400); // 400ms feels slightly snappier than 600ms
+    }, 600);
 }
-*/
 
 document.addEventListener('DOMContentLoaded', () => {
     const settings = [
@@ -431,57 +434,44 @@ document.getElementById('reset-btn').addEventListener('click', async () => {
 
 // Updated Navigation Logic for 5 Tabs
 function showTab(tabName) {
-    console.log(`[UI] Attempting to switch to: ${tabName}`);
-
-    // 1. Sidebar Buttons: Remove 'active' from all '.nav-item'
-    const navItems = document.querySelectorAll('.nav-item');
-    navItems.forEach(btn => btn.classList.remove('active'));
-
-    // 2. Content Windows: Hide all '.tab-content'
-    const tabs = document.querySelectorAll('.tab-content');
-    tabs.forEach(tab => {
-        tab.style.display = 'none';
+    // 1. Hide all tab content windows (Removed the button reset here)
+    document.querySelectorAll('.tab-content').forEach(tab => {
         tab.classList.remove('active');
+        tab.style.display = 'none';
     });
 
-    // 3. Find the new targets
-    const selectedBtn = document.getElementById('btn-' + tabName);
+    // 2. Target only the content tab (Removed selectedBtn logic)
     const selectedTab = document.getElementById(tabName + '-tab');
 
-    // 4. Verification Check
-    if (!selectedTab) {
-        console.error(`[UI] Error: Could not find HTML element with ID: ${tabName}-tab`);
-        return;
+    if (selectedTab) {
+        selectedTab.classList.add('active');
+
+        // Handle specific display types for your tabs
+        if (tabName === 'settings') {
+            selectedTab.style.display = 'grid';
+            if (typeof loadNews === 'function') loadNews();
+        } else {
+            selectedTab.style.display = 'block';
+        }
     }
 
-    // 5. Execution
-    if (selectedBtn) selectedBtn.classList.add('active');
-    selectedTab.classList.add('active');
-
-    // Display Logic
-    if (tabName === 'settings') {
-        selectedTab.style.display = 'grid';
-        // Safe check for loadNews
-        if (typeof loadNews === "function") { loadNews(); }
-    } else {
-        selectedTab.style.display = 'block';
-    }
-
-    // --- Logic Hooks with Safe Checks ---
+    // --- Logic Hooks ---
     if (tabName === 'home') {
         const rpcEnabled = localStorage.getItem('discord-rpc') === 'true';
-        if (rpcEnabled && window.api && typeof window.api.toggleDiscord === "function") {
+        if (rpcEnabled && window.api) {
             window.api.toggleDiscord(true);
         }
     }
 
-    if (tabName === 'hwid' && typeof updateHWIDDisplay === "function") {
+    if (tabName === 'hwid' && typeof updateHWIDDisplay === 'function') {
         updateHWIDDisplay();
     }
 
-    // User Dropdown cleanup
+    // Close any open dropdowns
     const dropdown = document.getElementById('user-dropdown');
     if (dropdown) dropdown.classList.add('hidden');
+
+    console.log(`[UI] Switched to ${tabName.toUpperCase()} module. Sidebar highlight disabled.`);
 }
 
 async function updateHWIDDisplay() {
@@ -510,19 +500,17 @@ async function updateHWIDDisplay() {
     }
 }
 
-// Authentication 
 async function handleLogin() {
     const email = document.getElementById('login-email').value;
     const password = document.getElementById('login-password').value;
-    const key = document.getElementById('license-key').value;
     const rememberMe = document.getElementById('remember-me').checked;
     const btn = document.getElementById('login-btn');
 
-    if (!email || !password || !key) {
-        return alert("Please fill in all fields (Email, Password, and Key)!");
+    if (!email || !password) {
+        return alert("Please enter both Email and Password!");
     }
 
-    btn.innerHTML = `<div class="spinner"></div> VALIDATING...`;
+    btn.innerHTML = `<div class="spinner"></div> AUTHENTICATING...`;
     btn.disabled = true;
 
     try {
@@ -534,7 +522,6 @@ async function handleLogin() {
             body: JSON.stringify({
                 email: email,
                 password: password,
-                license_key: key,
                 hwid: realHWID
             })
         });
@@ -542,14 +529,10 @@ async function handleLogin() {
         const data = await response.json();
 
         if (data.token === "VALID") {
-
             localStorage.setItem('user_email', email);
             localStorage.setItem('expiry_date', data.expiry);
-            localStorage.setItem('license_key', key);
 
             startExpiryHeartbeat(data.expiry);
-
-            setSessionAccess(key);
 
             if (rememberMe) {
                 localStorage.setItem('remembered_email', email);
@@ -559,33 +542,74 @@ async function handleLogin() {
                 localStorage.removeItem('remembered_password');
             }
 
+            // Sync Profile Picture
             const userPic = document.getElementById('user-pic');
             const modalPfp = document.getElementById('modal-pfp');
+            const profileImg = data.profile_pic || 'imgs/default-profile.png';
 
-            if (data.profile_pic && data.profile_pic !== "") {
-                localStorage.setItem('saved_profile_pic', data.profile_pic);
-                if (userPic) userPic.src = data.profile_pic;
-                if (modalPfp) modalPfp.src = data.profile_pic;
-            } else {
+            localStorage.setItem('saved_profile_pic', profileImg);
+            if (userPic) userPic.src = profileImg;
+            if (modalPfp) modalPfp.src = profileImg;
 
-                const defaultImg = 'imgs/default-profile.png';
-                if (userPic) userPic.src = defaultImg;
-                if (modalPfp) modalPfp.src = defaultImg;
-            }
+            // Transition to Dashboard
+            document.body.classList.remove('login-active');
+            const loginScreen = document.getElementById('login-screen');
+            if (loginScreen) loginScreen.style.display = 'none';
 
-            switchScreen('login-screen', 'main-dashboard');
-
-            updateUIForAccess();
+            showTab('home');
+            if (typeof updateUIForAccess === 'function') updateUIForAccess();
 
         } else {
-            alert("Login Failed: " + (data.error || "Unknown Error"));
-            btn.innerHTML = "VALIDATE & LOGIN";
+            alert("Login Failed: " + (data.error || "Invalid Credentials"));
+            btn.innerHTML = "LOGIN";
             btn.disabled = false;
         }
     } catch (err) {
         console.error("Login Error:", err);
         alert("API Connection Error. Ensure your Render server is live.");
-        btn.innerHTML = "VALIDATE & LOGIN";
+        btn.innerHTML = "LOGIN";
+        btn.disabled = false;
+    }
+}
+
+async function handleRegister() {
+    const email = document.getElementById('reg-email').value;
+    const pass = document.getElementById('reg-password').value;
+    const confirm = document.getElementById('reg-confirm').value;
+    const btn = document.getElementById('register-btn');
+
+    if (!email || !pass || !confirm) return alert("All fields are required!");
+    if (pass !== confirm) return alert("Passwords do not match!");
+
+    btn.innerHTML = `<div class="spinner"></div> CREATING...`;
+    btn.disabled = true;
+
+    try {
+        const hwid = await window.api.getMachineID();
+
+        const response = await fetch('https://my-auth-api-1ykc.onrender.com', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                email: email,
+                password: pass,
+                hwid: hwid
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.status === "Success") {
+            alert("Account Created! You can now log in.");
+            closeModal('register-modal');
+        } else {
+            alert("Registration Failed: " + (data.error || "Unknown error"));
+        }
+    } catch (err) {
+        console.error("Register Error:", err);
+        alert("Failed to connect to registration server.");
+    } finally {
+        btn.innerHTML = "REGISTER NOW";
         btn.disabled = false;
     }
 }
@@ -788,7 +812,7 @@ function updateUIForAccess() {
     console.log(`[UI] Sync Complete for: ${email}`);
 }
 
-/*
+
 document.getElementById('toggle-password').addEventListener('click', function () {
     const passwordInput = document.getElementById('login-password');
     const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
@@ -834,24 +858,83 @@ window.addEventListener('DOMContentLoaded', async () => {
     }
     console.log(`[LOADER] Session Restored: ${savedEmail || 'Guest'} | Prefix: ${savedPrefix}`);
 });
-*/
 
 // --- MODAL CONTROLS ---
-// Open the Modal
-function openModal(id) {
+async function openModal(id) {
     const modal = document.getElementById(id);
     const dropdown = document.getElementById('user-dropdown');
 
     if (modal) {
-
         modal.classList.remove('hidden');
-        hideUserDropdown();
-
         if (dropdown) dropdown.classList.add('hidden');
+
+        // --- NEW: Sync Data for Settings Modal ---
+        if (id === 'settings-modal') {
+            const currentPfp = document.getElementById('user-pic').src;
+            const modalPfp = document.getElementById('modal-pfp');
+            if (modalPfp) modalPfp.src = currentPfp;
+
+            const hwidDisplay = document.getElementById('settings-hwid-display');
+            if (hwidDisplay) {
+                try {
+                    const realHWID = await window.api.getMachineID();
+                    hwidDisplay.innerText = realHWID;
+                } catch (err) {
+                    hwidDisplay.innerText = "ERROR FETCHING HWID";
+                }
+            }
+        }
 
         console.log("✅ Modal Opened:", id);
     } else {
         console.error("❌ Modal ID not found:", id);
+    }
+}
+
+async function redeemNewKey() {
+    const newKey = document.getElementById('edit-license-key').value;
+    const email = localStorage.getItem('user_email');
+    const redeemBtn = document.getElementById('redeem-key-btn');
+
+    if (!newKey) return alert("Please enter a valid license key!");
+
+    redeemBtn.innerText = "REDEEMING...";
+    redeemBtn.disabled = true;
+
+    try {
+        const hwid = await window.api.getMachineID();
+
+        // Using your existing login/redeem endpoint
+        const response = await fetch('https://my-auth-api-1ykc.onrender.com', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                email: email,
+                license_key: newKey,
+                hwid: hwid
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.status === "Success") {
+            alert("Subscription Updated Successfully!");
+            localStorage.setItem('expiry_date', data.new_expiry);
+            localStorage.setItem('license_key', newKey);
+
+            // Refresh UI components
+            startExpiryHeartbeat(data.new_expiry);
+            if (typeof updateUIForAccess === 'function') updateUIForAccess();
+            closeModal('settings-modal');
+        } else {
+            alert("Redeem Failed: " + (data.error || "Invalid Key"));
+        }
+    } catch (err) {
+        console.error("Redeem Error:", err);
+        alert("Failed to connect to Auth Server.");
+    } finally {
+        redeemBtn.innerText = "REDEEM KEY";
+        redeemBtn.disabled = false;
     }
 }
 
@@ -1322,11 +1405,10 @@ async function checkForUpdateAndPrompt() {
             overlay.classList.add('hidden');
             overlay.style.display = 'none';
         }
-        handleLogin();
+        startBootSequence();
         return false;
     }
 
-    /*
     // No update needed → hide overlay and start boot
     if (!latest || latest.version === currentVersion) {
         if (overlay) {
@@ -1392,282 +1474,275 @@ async function checkForUpdateAndPrompt() {
 
     return true;
 }
-*/
 
-    document.addEventListener("DOMContentLoaded", () => {
-        const cards = document.querySelectorAll(".game-card");
+document.addEventListener("DOMContentLoaded", () => {
+    const cards = document.querySelectorAll(".game-card");
 
-        cards.forEach(card => {
-            const imgElement = card.querySelector(".card-img");
-            const images = card.dataset.images.split(",");
-            let index = 0;
+    cards.forEach(card => {
+        const imgElement = card.querySelector(".card-img");
+        const images = card.dataset.images.split(",");
+        let index = 0;
 
-            // Set initial image
-            imgElement.src = images[index];
+        // Set initial image
+        imgElement.src = images[index];
 
-            // Rotate every 3 seconds
-            setInterval(() => {
-                index = (index + 1) % images.length;
+        // Rotate every 3 seconds
+        setInterval(() => {
+            index = (index + 1) % images.length;
 
-                imgElement.style.opacity = 0;
+            imgElement.style.opacity = 0;
 
-                setTimeout(() => {
-                    imgElement.src = images[index];
-                    imgElement.style.opacity = 1;
-                }, 200);
-
-            }, 3000);
-        });
-    });
-
-    function typeNews(text) {
-        const newsContainer = document.getElementById('news-feed-text');
-        if (!newsContainer) {
-            console.error("Critical: 'news-feed-text' element not found in HTML.");
-            return;
-        }
-
-        newsContainer.innerHTML = "";
-        let i = 0;
-        const speed = 30;
-
-        function type() {
-            if (i < text.length) {
-                newsContainer.innerHTML += text.charAt(i);
-                i++;
-                setTimeout(type, speed);
-            }
-        }
-        type();
-    }
-
-    // Updated News Loader
-
-    async function loadNews() {
-
-        if (newsLoaded) return;
-
-        try {
-            const news = await window.api.getNews();
-            const terminal = document.getElementById('main-terminal');
-
-            if (news) {
-                const lines = news.split('\n');
-
-                const feedContainer = document.getElementById('news-feed-text');
-                if (feedContainer) feedContainer.innerHTML = "";
-
-                lines.forEach((line, index) => {
-                    setTimeout(() => {
-                        addTerminalLine(line);
-                    }, index * 150);
-                });
-                newsLoaded = true;
-            } else {
-                addTerminalLine("> [SYSTEM] Online: No new announcements.");
-            }
-        } catch (err) {
-            console.error("News Load Error:", err);
-            addTerminalLine("> [ERROR] Failed to synchronize news feed.");
-        }
-    }
-
-    // Terminal Input Handler
-    const terminalInput = document.getElementById('terminal-cmd');
-    if (terminalInput) {
-        terminalInput.addEventListener('keypress', function (e) {
-            if (e.key === 'Enter') {
-                const cmd = e.target.value.trim().toLowerCase();
-                if (cmd !== "") {
-                    addTerminalLine(`SK-USER:~$ ${cmd}`);
-
-                    if (cmd === 'clear') {
-                        document.getElementById('main-terminal').innerHTML = '<div id="news-feed-text" class="typewriter"></div>';
-                    } else if (cmd === 'help') {
-                        addTerminalLine("> Available: status, inject, version, clear");
-                    } else if (cmd === 'status') {
-                        addTerminalLine("> [SYSTEM] Security: Secure | Modules: Loaded");
-                    } else {
-                        addTerminalLine(`> Unknown command: ${cmd}`);
-                    }
-
-                    e.target.value = "";
-                    const box = document.getElementById('main-terminal');
-                    box.scrollTop = box.scrollHeight;
-                }
-            }
-        });
-    }
-
-    function addTerminalLine(text) {
-        const box = document.getElementById('main-terminal');
-        if (!box) return;
-        const line = document.createElement('div');
-        line.className = 'terminal-line';
-        line.innerText = text;
-        box.appendChild(line);
-    }
-
-    // --- SETTINGS ACTIONS ---
-    function clearLogs() {
-        const terminal = document.getElementById('main-terminal');
-        if (terminal) {
-            terminal.innerHTML = '<div id="news-feed-text" class="typewriter">> [SYSTEM] Logs cleared. Bufferring for reset...</div>';
-            newsLoaded = false;
-            console.log("[UI] Terminal logs cleared by user.");
-        }
-    }
-    function resetConfig() {
-        const confirmed = confirm("WARNING: This will reset all saved settings and preferences and preforme a restart of the loader. Continue?");
-
-        if (confirmed) {
-
-            localStorage.clear();
-
-            const checkboxes = document.querySelectorAll('.switch-container input[type="checkbox"]');
-            checkboxes.forEach(cb => {
-                if (cb.id === 'auto-close-launcher') {
-                    cb.checked = true;
-                } else {
-                    cb.checked = false;
-                }
-            });
-
-            addTerminalLine("> [SYSTEM] Configuration reset. Reloading UI...");
             setTimeout(() => {
-                window.location.reload();
-            }, 1500);
+                imgElement.src = images[index];
+                imgElement.style.opacity = 1;
+            }, 200);
+
+        }, 3000);
+    });
+});
+
+function typeNews(text) {
+    const newsContainer = document.getElementById('news-feed-text');
+    if (!newsContainer) {
+        console.error("Critical: 'news-feed-text' element not found in HTML.");
+        return;
+    }
+
+    newsContainer.innerHTML = "";
+    let i = 0;
+    const speed = 30;
+
+    function type() {
+        if (i < text.length) {
+            newsContainer.innerHTML += text.charAt(i);
+            i++;
+            setTimeout(type, speed);
         }
     }
+    type();
+}
 
-    // --- UI CONTROLS ---
-    function toggleUserDropdown() {
-        const dropdown = document.getElementById('user-dropdown');
-        if (dropdown) dropdown.classList.toggle('hidden');
+// Updated News Loader
 
+async function loadNews() {
+
+    if (newsLoaded) return;
+
+    try {
+        const news = await window.api.getNews();
+        const terminal = document.getElementById('main-terminal');
+
+        if (news) {
+            const lines = news.split('\n');
+
+            const feedContainer = document.getElementById('news-feed-text');
+            if (feedContainer) feedContainer.innerHTML = "";
+
+            lines.forEach((line, index) => {
+                setTimeout(() => {
+                    addTerminalLine(line);
+                }, index * 150);
+            });
+            newsLoaded = true;
+        } else {
+            addTerminalLine("> [SYSTEM] Online: No new announcements.");
+        }
+    } catch (err) {
+        console.error("News Load Error:", err);
+        addTerminalLine("> [ERROR] Failed to synchronize news feed.");
     }
+}
 
-    function openShop() {
+// Terminal Input Handler
+const terminalInput = document.getElementById('terminal-cmd');
+if (terminalInput) {
+    terminalInput.addEventListener('keypress', function (e) {
+        if (e.key === 'Enter') {
+            const cmd = e.target.value.trim().toLowerCase();
+            if (cmd !== "") {
+                addTerminalLine(`SK-USER:~$ ${cmd}`);
 
-        window.api.openExternal("https://discord.gg/RG7bEgrHF9");
+                if (cmd === 'clear') {
+                    document.getElementById('main-terminal').innerHTML = '<div id="news-feed-text" class="typewriter"></div>';
+                } else if (cmd === 'help') {
+                    addTerminalLine("> Available: status, inject, version, clear");
+                } else if (cmd === 'status') {
+                    addTerminalLine("> [SYSTEM] Security: Secure | Modules: Loaded");
+                } else {
+                    addTerminalLine(`> Unknown command: ${cmd}`);
+                }
+
+                e.target.value = "";
+                const box = document.getElementById('main-terminal');
+                box.scrollTop = box.scrollHeight;
+            }
+        }
+    });
+}
+
+function addTerminalLine(text) {
+    const box = document.getElementById('main-terminal');
+    if (!box) return;
+    const line = document.createElement('div');
+    line.className = 'terminal-line';
+    line.innerText = text;
+    box.appendChild(line);
+}
+
+// --- SETTINGS ACTIONS ---
+function clearLogs() {
+    const terminal = document.getElementById('main-terminal');
+    if (terminal) {
+        terminal.innerHTML = '<div id="news-feed-text" class="typewriter">> [SYSTEM] Logs cleared. Bufferring for reset...</div>';
+        newsLoaded = false;
+        console.log("[UI] Terminal logs cleared by user.");
+    }
+}
+function resetConfig() {
+    const confirmed = confirm("WARNING: This will reset all saved settings and preferences and preforme a restart of the loader. Continue?");
+
+    if (confirmed) {
+
+        localStorage.clear();
+
+        const checkboxes = document.querySelectorAll('.switch-container input[type="checkbox"]');
+        checkboxes.forEach(cb => {
+            if (cb.id === 'auto-close-launcher') {
+                cb.checked = true;
+            } else {
+                cb.checked = false;
+            }
+        });
+
+        addTerminalLine("> [SYSTEM] Configuration reset. Reloading UI...");
+        setTimeout(() => {
+            window.location.reload();
+        }, 1500);
+    }
+}
+
+// --- UI CONTROLS ---
+function toggleUserDropdown() {
+    const dropdown = document.getElementById('user-dropdown');
+    if (dropdown) dropdown.classList.toggle('hidden');
+
+}
+
+function openShop() {
+
+    window.api.openExternal("https://discord.gg/RG7bEgrHF9");
+    hideUserDropdown();
+}
+
+function openSocial(platform) {
+    const links = {
+        'discord': 'https://discord.gg/vCrBfRsRvb',
+        'github': 'https://github.com/jeffyNoJumper?tab=repositories'
+    };
+    if (links[platform]) {
+        window.api.openExternal(links[platform]);
         hideUserDropdown();
     }
+}
 
-    function openSocial(platform) {
-        const links = {
-            'discord': 'https://discord.gg/vCrBfRsRvb',
-            'github': 'https://github.com/jeffyNoJumper?tab=repositories'
-        };
-        if (links[platform]) {
-            window.api.openExternal(links[platform]);
-            hideUserDropdown();
-        }
+function hideUserDropdown() {
+    const dropdown = document.getElementById('user-dropdown');
+    if (dropdown) {
+        dropdown.classList.add('hidden');
+
+        console.log("[UI] Dropdown Hidden");
     }
+}
 
-    function hideUserDropdown() {
-        const dropdown = document.getElementById('user-dropdown');
-        if (dropdown) {
-            dropdown.classList.add('hidden');
-
-            console.log("[UI] Dropdown Hidden");
-        }
-    }
-
-    // --- SESSION CONTROL ---
-    function logout() {
-        localStorage.removeItem('user_prefix');
-        if (!document.getElementById('remember-me').checked) {
-            localStorage.removeItem('license_key');
-            hideUserDropdown();
-        }
-        location.reload();
-    }
-
-    let expiryCheckInterval = null;
-
-    function startExpiryHeartbeat(expiryDate) {
-        if (expiryCheckInterval) clearInterval(expiryCheckInterval);
-
-        const expiryTime = new Date(expiryDate).getTime();
-
-        expiryCheckInterval = setInterval(() => {
-            const now = new Date().getTime();
-            if (now >= expiryTime) {
-                console.log("[SECURITY] License Expired during runtime.");
-                clearInterval(expiryCheckInterval);
-                alert("Your license has expired. Returning to login.");
-                window.location.reload();
-            }
-        }, 30000);
-    }
-
-    // 3. The Expiry Sequence (Required so the heartbeat doesn't crash)
-    function triggerExpirySequence() {
-        alert("Your license has expired. The application will now close.");
-        // Force the user back to the login screen
-        const loginScreen = document.getElementById('login-screen');
-        if (loginScreen) {
-            loginScreen.style.display = 'flex';
-            loginScreen.style.opacity = '1';
-            document.body.classList.add('login-active');
-        }
-    }
-
-    function forceLogout() {
-
-        localStorage.removeItem('user_email');
+// --- SESSION CONTROL ---
+function logout() {
+    localStorage.removeItem('user_prefix');
+    if (!document.getElementById('remember-me').checked) {
         localStorage.removeItem('license_key');
-
-        if (expiryCheckInterval) clearInterval(expiryCheckInterval);
-
-        location.reload();
+        hideUserDropdown();
     }
+    location.reload();
+}
 
-    // 1. Translation Dictionary
-    const translations = {
-        en: { home: "HOME", games: "GAMES", hwid: "HWID", spoof: "SPOOFING", config: "CONFIG", logout: "Logout", edit: "Edit Profile", disc: "Discord", shop: "Shop / Support" },
-        ru: { home: "ГЛАВНАЯ", games: "ИГРЫ", hwid: "ЖЕЛЕЗО", spoof: "СПУФИНГ", config: "КОНФИГ", logout: "Выйти", edit: "Профиль", disc: "Дискорд", shop: "Магазин" },
-        zh: { home: "首页", games: "游戏", hwid: "硬件 ID", spoof: "伪装", config: "设置", logout: "登出", edit: "编辑资料", disc: "Discord", shop: "商店 / 支持" },
-        de: { home: "START", games: "SPIELE", hwid: "HWID", spoof: "SPOOFING", config: "KONFIG", logout: "Abmelden", edit: "Profil", disc: "Discord", shop: "Shop" },
-        fr: { home: "ACCUEIL", games: "JEUX", hwid: "HWID", spoof: "SPOOFING", config: "CONFIG", logout: "Déconnexion", edit: "Profil", disc: "Discord", shop: "Boutique" },
-        tr: { home: "ANA SAYFA", games: "OYUNLAR", hwid: "HWID", spoof: "SPOOFING", config: "AYARLAR", logout: "Çıkış Yap", edit: "Profil", disc: "Discord", shop: "Mağaza" },
-        pt: { home: "INÍCIO", games: "JOGOS", hwid: "HWID", spoof: "SPOOFING", config: "CONFIG", logout: "Sair", edit: "Perfil", disc: "Discord", shop: "Loja" },
-        sp: { home: "INICIO", games: "JUEGOS", hwid: "HWID", spoof: "SPOOFING", config: "CONFIG", logout: "Cerrar Sesión", edit: "Perfil", disc: "Discord", shop: "Tienda" }
-    };
+function startExpiryHeartbeat(expiryDate) {
+    // Clear any existing timer first
+    if (expiryCheckInterval) clearInterval(expiryCheckInterval);
 
-    // 2. Language Toggle Function
-    function toggleLangDropdown() {
-        const dropdown = document.getElementById('lang-dropdown');
-        dropdown.classList.toggle('hidden');
-    }
+    const expiryTime = new Date(expiryDate).getTime();
 
-    // 3. Main Translation Function
-    function changeLanguage(lang) {
-        const data = translations[lang];
-        if (!data) return;
+    expiryCheckInterval = setInterval(() => {
+        const now = new Date().getTime();
 
-        // Updates all elements with 'data-i18n' attribute
-        document.querySelectorAll('[data-i18n]').forEach(el => {
-            const key = el.getAttribute('data-i18n');
-            if (data[key]) {
-                el.innerText = data[key];
-            }
-        });
+        if (now >= expiryTime) {
+            console.log("[SECURITY] License Expired during runtime.");
+            clearInterval(expiryCheckInterval);
+            triggerExpirySequence();
+        }
+    }, 30000); // Check every 30 seconds
+}
 
-        // Update the button visual (Switching 'sp' to 'ES' for Spanish standard)
-        const displayLang = lang === 'sp' ? 'ES' : lang.toUpperCase();
-        document.getElementById('current-lang-btn').innerHTML = `<i class="fas fa-globe"></i> ${displayLang}`;
+function triggerExpirySequence() {
 
-        // Save preference to memory
-        localStorage.setItem('preferred_lang', lang);
+    openModal('expiry-modal');
 
-        // Close the menu
-        document.getElementById('lang-dropdown').classList.add('hidden');
-    }
+    document.querySelectorAll('.nav-btn').forEach(btn => btn.style.pointerEvents = 'none');
 
-    // 4. Load saved language on startup (Add this inside your window.onload)
-    function initLanguage() {
-        const saved = localStorage.getItem('preferred_lang') || 'en';
-        changeLanguage(saved);
-    }
+    // 3. Play a subtle error sound if you want
+    // new Audio('assets/error.mp3').play();
+}
+
+function forceLogout() {
+
+    localStorage.removeItem('user_email');
+    localStorage.removeItem('license_key');
+
+    if (expiryCheckInterval) clearInterval(expiryCheckInterval);
+
+    location.reload();
+}
+
+// 1. Translation Dictionary
+const translations = {
+    en: { home: "HOME", games: "GAMES", hwid: "HWID", spoof: "SPOOFING", config: "CONFIG", logout: "Logout", edit: "Edit Profile", disc: "Discord", shop: "Shop / Support" },
+    ru: { home: "ГЛАВНАЯ", games: "ИГРЫ", hwid: "ЖЕЛЕЗО", spoof: "СПУФИНГ", config: "КОНФИГ", logout: "Выйти", edit: "Профиль", disc: "Дискорд", shop: "Магазин" },
+    zh: { home: "首页", games: "游戏", hwid: "硬件 ID", spoof: "伪装", config: "设置", logout: "登出", edit: "编辑资料", disc: "Discord", shop: "商店 / 支持" },
+    de: { home: "START", games: "SPIELE", hwid: "HWID", spoof: "SPOOFING", config: "KONFIG", logout: "Abmelden", edit: "Profil", disc: "Discord", shop: "Shop" },
+    fr: { home: "ACCUEIL", games: "JEUX", hwid: "HWID", spoof: "SPOOFING", config: "CONFIG", logout: "Déconnexion", edit: "Profil", disc: "Discord", shop: "Boutique" },
+    tr: { home: "ANA SAYFA", games: "OYUNLAR", hwid: "HWID", spoof: "SPOOFING", config: "AYARLAR", logout: "Çıkış Yap", edit: "Profil", disc: "Discord", shop: "Mağaza" },
+    pt: { home: "INÍCIO", games: "JOGOS", hwid: "HWID", spoof: "SPOOFING", config: "CONFIG", logout: "Sair", edit: "Perfil", disc: "Discord", shop: "Loja" },
+    sp: { home: "INICIO", games: "JUEGOS", hwid: "HWID", spoof: "SPOOFING", config: "CONFIG", logout: "Cerrar Sesión", edit: "Perfil", disc: "Discord", shop: "Tienda" }
+};
+
+// 2. Language Toggle Function
+function toggleLangDropdown() {
+    const dropdown = document.getElementById('lang-dropdown');
+    dropdown.classList.toggle('hidden');
+}
+
+// 3. Main Translation Function
+function changeLanguage(lang) {
+    const data = translations[lang];
+    if (!data) return;
+
+    // Updates all elements with 'data-i18n' attribute
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        if (data[key]) {
+            el.innerText = data[key];
+        }
+    });
+
+    const displayLang = lang === 'sp' ? 'ES' : lang.toUpperCase();
+    document.getElementById('current-lang-btn').innerHTML = `<i class="fas fa-globe"></i> ${displayLang}`;
+
+    // Save preference to memory
+    localStorage.setItem('preferred_lang', lang);
+
+    // Close the menu
+    document.getElementById('lang-dropdown').classList.add('hidden');
+}
+
+function initLanguage() {
+    const saved = localStorage.getItem('preferred_lang') || 'en';
+    changeLanguage(saved);
 }
