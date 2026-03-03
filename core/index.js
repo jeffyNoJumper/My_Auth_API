@@ -349,66 +349,49 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
 // --- USER LOGIN ---
 app.post('/login', async (req, res) => {
     try {
-        const { email, password, license_key, hwid } = req.body;
+        const { email, password, hwid } = req.body;
 
-        if (!email || !password || !license_key) {
-            return res.json({ error: "Missing required fields" });
+        // 1. Only require Email and Password now
+        if (!email || !password) {
+            return res.json({ error: "Missing required fields (Email/Password)" });
         }
 
         const cleanEmail = email.toLowerCase().trim();
-        const cleanKey = license_key.toUpperCase().trim();
         const cleanPass = password.trim();
 
-        const user = await User.findOne({ license_key: cleanKey });
+        // 2. Find the user by EMAIL instead of license_key
+        const user = await User.findOne({ email: cleanEmail });
 
-        if (!user) return res.json({ error: "Invalid License Key" });
-
-        const isNewUser = !user.password || user.email.includes('pending_');
-
-        if (isNewUser) {
-
-            const emailCheck = await User.findOne({ email: cleanEmail });
-            if (emailCheck && emailCheck.license_key !== cleanKey) {
-                return res.json({ error: "This email is already registered to another key." });
-            }
-
-            user.email = cleanEmail;
-            user.password = cleanPass;
-            await user.save();
-            console.log(`[AUTH] Key ${cleanKey} registered to: ${cleanEmail}`);
+        if (!user) {
+            return res.json({ error: "User not found. Please register first." });
         }
 
-        else {
-            if (user.email !== cleanEmail || user.password !== cleanPass) {
-                return res.json({ error: "Invalid Email or Password for this key." });
-            }
+        // 3. Verify the Password
+        if (user.password !== cleanPass) {
+            return res.json({ error: "Invalid Email or Password." });
         }
 
+        // --- Keep your existing checks (Banned/Paused/Expired/HWID) ---
         if (user.is_banned) return res.json({ error: "Account Banned" });
         if (user.is_paused) return res.json({ error: "Subscription Paused" });
 
-        // --- 5. ACTIVATION: Start the timer on first login ---
-        if (!user.expiry_date || user.expiry_date === null) {
-            const now = new Date();
-            const expiry = new Date();
-
+        // Activation logic (if they have a key but it's not activated yet)
+        if (!user.expiry_date) {
             const days = (typeof user.duration_days === 'number') ? user.duration_days : 0.0416;
-
+            const expiry = new Date();
             if (days >= 999) {
                 expiry.setFullYear(expiry.getFullYear() + 50);
             } else {
-                const msToAdd = Math.floor(days * 24 * 60 * 60 * 1000);
-                expiry.setTime(now.getTime() + msToAdd);
+                expiry.setTime(expiry.getTime() + (days * 24 * 60 * 60 * 1000));
             }
-
             user.expiry_date = expiry;
             await user.save();
-            console.log(`[AUTH] Key ${cleanKey} activated for ${days} days (${Math.round(msToAdd / 60000)} minutes).`);
         }
 
         if (new Date() > user.expiry_date) return res.json({ error: "Subscription Expired" });
 
-        if (!user.hwid || user.hwid === "null" || user.hwid === null) {
+        // HWID Logic
+        if (!user.hwid) {
             user.hwid = hwid;
             await user.save();
         } else if (user.hwid !== hwid) {
@@ -419,7 +402,8 @@ app.post('/login', async (req, res) => {
             token: "VALID",
             expiry: user.expiry_date,
             profile_pic: user.profile_pic || '',
-            games: user.games || []
+            games: user.games || [],
+            license_key: user.license_key
         });
 
     } catch (err) {
