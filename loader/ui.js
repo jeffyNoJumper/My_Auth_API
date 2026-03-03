@@ -587,7 +587,7 @@ async function handleRegister() {
     try {
         const hwid = await window.api.getMachineID();
 
-        const response = await fetch('https://my-auth-api-1ykc.onrender.com', {
+        const response = await fetch('https://my-auth-api-1ykc.onrender.com/register', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -909,7 +909,7 @@ async function redeemNewKey() {
         const hwid = await window.api.getMachineID();
         if (hwidDisplay) hwidDisplay.innerText = hwid;
 
-        const response = await fetch('https://my-auth-api-1ykc.onrender.com', {
+        const response = await fetch('https://my-auth-api-1ykc.onrender.com/redeemnewkey', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, license_key: newKey, hwid })
