@@ -915,28 +915,30 @@ async function redeemNewKey() {
             body: JSON.stringify({ email, license_key: newKey, hwid })
         });
 
+        // --- THE CRITICAL FIX: STOP IF NOT OK (Avoids the HTML/JSON Crash) ---
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error("Server Error Response:", errorText);
+            throw new Error(`Server returned ${response.status}. The /redeem route is missing or the server is down.`);
+        }
+
         const data = await response.json();
 
         if (data.status === "Success") {
             alert("Subscription Updated!");
             localStorage.setItem('expiry_date', data.new_expiry);
+            localStorage.setItem('license_key', newKey); // Keep the key updated
+
             if (typeof startExpiryHeartbeat === 'function') startExpiryHeartbeat(data.new_expiry);
+            if (typeof updateUIForAccess === 'function') updateUIForAccess();
+
             closeModal('settings-modal');
         } else {
             alert("Error: " + (data.error || "Invalid Key"));
         }
     } catch (err) {
         console.error("Full Error Object:", err);
-        // CHANGE THIS:
-        // alert("Failed to connect to Auth Server.");
-        // TO THIS:
         alert("Connection Error: " + err.message);
-    }
- finally {
-        if (redeemBtn) {
-            redeemBtn.innerText = "REDEEM KEY";
-            redeemBtn.disabled = false;
-        }
     }
 }
 
