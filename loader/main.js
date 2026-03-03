@@ -71,7 +71,7 @@ app.setAppUserModelId("com.sk.allinone");
 function createWindow() {
     mainWindow = new BrowserWindow({
         width: 820,
-        height: 720,
+        height: 760,
         frame: false,
         resizable: false,
         icon: path.join(__dirname, 'imgs/SK_App_Icon.ico'),
@@ -102,6 +102,7 @@ ipcMain.on('window-minimize', () => {
     if (mainWindow) mainWindow.minimize();
 });
 
+/*
 // --- 3. AUTO-UPDATER LOGIC ---
 autoUpdater.autoDownload = false;
 
@@ -143,6 +144,7 @@ autoUpdater.on('error', (err) => {
 ipcMain.on('log-to-terminal', (event, message) => {
     console.log('[UPDATE LOG]', message);
 });
+*/
 
 ipcMain.handle('start-spoof', async (event, options) => {
 
@@ -261,6 +263,17 @@ ipcMain.handle('launch-game', async (event, gameName, autoClose, licenseKey, inj
             return { status: "Success", message: "DLL Injector Dispatched." };
         }
 
+        if (rpcClient) {
+            rpcClient.setActivity({
+                details: `In-Game: ${gameUpper}`,
+                state: '⚡ [MODULAR_DLL_ACTIVE]',
+                startTimestamp: new Date(),
+                largeImageKey: 'logo',
+            }).catch(() => { });
+        }
+
+        return { status: "Success", message: "DLL Injector Dispatched." };
+
         // --- EXTERNAL LOGIC (C++) ---
         const success = spoofer.launchCheat(
             String(gameUpper),
@@ -270,6 +283,16 @@ ipcMain.handle('launch-game', async (event, gameName, autoClose, licenseKey, inj
         );
 
         if (success) {
+            // --- DISCORD UPDATE ---
+            if (rpcClient) {
+                rpcClient.setActivity({
+                    details: `In-Game: ${gameUpper}`,
+                    state: '🛡️ [STATUS_UNDETECTED]',
+                    startTimestamp: new Date(),
+                    largeImageKey: 'logo',
+                }).catch(() => { });
+            }
+
             if (autoClose) {
                 console.log("[MAIN] Auto-close active. Exiting in 3s...");
                 setTimeout(() => { app.quit(); }, 3000);
@@ -287,31 +310,43 @@ ipcMain.handle('launch-game', async (event, gameName, autoClose, licenseKey, inj
 
 
 ipcMain.on('toggle-stream-proof', (event, enabled) => {
-    // This makes the window black for OBS and Discord screenshare
     if (mainWindow) {
-        mainWindow.setExclusionFromCapture(enabled);
-        console.log(`[MAIN] Stream Proof: ${enabled ? 'ENABLED' : 'DISABLED'}`);
+        // Just send a message back to the UI to hide specific elements
+        mainWindow.webContents.send('apply-stream-proof', enabled);
+        console.log(`[MAIN] UI Stream Proof Mode: ${enabled ? 'ON' : 'OFF'}`);
     }
 });
 
-ipcMain.on('toggle-discord', async (event, enabled) => {
-    // 1. If turning OFF
+
+
+// Add 'gameName' as a second parameter (it will be null when toggling from settings)
+ipcMain.on('toggle-discord', async (event, enabled, gameName = null) => {
+
+    // 1. If turning OFF (Standard Toggle)
     if (!enabled) {
         if (rpcClient) {
-            console.log("🧹 Sending Clear Signal...");
-            // Force the profile to go blank first
+            console.log("🧹 Clearing Discord Profile...");
             await rpcClient.clearActivity().catch(() => { });
-            // WAIT - Discord needs a moment to update your profile
-            await new Promise(resolve => setTimeout(resolve, 1000));
-
+            await new Promise(resolve => setTimeout(resolve, 800));
             await rpcClient.destroy().catch(() => { });
             rpcClient = null;
-            console.log("🛑 RPC Connection Severed.");
         }
         return;
     }
 
-    // 2. If turning ON
+    // 2. If ALREADY ON (Update for Injection)
+    if (enabled && rpcClient && gameName) {
+        console.log(`[DISCORD] Updating Activity: ${gameName}`);
+        return rpcClient.setActivity({
+            details: `In-Game: ${gameName.toUpperCase()}`,
+            state: '⚡ [STATUS_MODULAR_ACTIVE]',
+            startTimestamp: new Date(),
+            largeImageKey: 'logo',
+            instance: false,
+        }).catch(() => { });
+    }
+
+    // 3. If turning ON (First Connection)
     if (enabled && !rpcClient) {
         rpcClient = new RPC.Client({ transport: 'ipc' });
 
@@ -326,9 +361,7 @@ ipcMain.on('toggle-discord', async (event, enabled) => {
             }).catch(() => { });
         });
 
-        rpcClient.login({ clientId: CLIENT_ID }).catch(() => {
-            rpcClient = null;
-        });
+        rpcClient.login({ clientId: CLIENT_ID }).catch(() => { rpcClient = null; });
     }
 });
 
