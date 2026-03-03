@@ -926,9 +926,13 @@ async function redeemNewKey() {
             alert("Error: " + (data.error || "Invalid Key"));
         }
     } catch (err) {
-        console.error("Redeem Error:", err);
-        alert("Failed to connect to Auth Server.");
-    } finally {
+        console.error("Full Error Object:", err);
+        // CHANGE THIS:
+        // alert("Failed to connect to Auth Server.");
+        // TO THIS:
+        alert("Connection Error: " + err.message);
+    }
+ finally {
         if (redeemBtn) {
             redeemBtn.innerText = "REDEEM KEY";
             redeemBtn.disabled = false;
