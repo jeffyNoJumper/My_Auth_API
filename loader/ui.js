@@ -11,7 +11,6 @@ const shell = window.api.shell;
 let currentUserPrefix = localStorage.getItem('user_prefix') || "";
 
 window.onload = async () => {
-    // 1. IMMEDIATE PFP CHECK
     const savedPfp = localStorage.getItem('saved_profile_pic');
     const syncProfileUI = () => {
         if (savedPfp) {
@@ -19,59 +18,60 @@ window.onload = async () => {
             const modalPfp = document.getElementById('modal-pfp');
             if (navPfp) navPfp.src = savedPfp;
             if (modalPfp) modalPfp.src = savedPfp;
-            console.log("✨ Persistent Profile Image Synchronized");
         }
     };
 
     syncProfileUI();
-
     await updateHWIDDisplay();
-    await checkServer();
+    await checkServer(); 
 
     const overlay = document.getElementById('update-overlay');
-    const currentVersion = localStorage.getItem('installedVersion') || '1.1.1';
-    const updateNeeded = await checkForUpdateAndPrompt(currentVersion);
+    if (overlay) overlay.classList.add('hidden');
 
-    if (!updateNeeded) {
-        if (overlay) {
-            overlay.classList.add('hidden');
-            overlay.style.display = 'none';
-        }
+    // --- SESSION & EXPIRY GUARD ---
+    const savedExpiry = localStorage.getItem('expiry_date');
+    const savedEmail = localStorage.getItem('user_email');
+    const savedKey = localStorage.getItem('license_key');
+    const rememberMe = localStorage.getItem('remember-me') === 'true';
 
-        // --- SESSION & EXPIRY GUARD ---
-        const savedExpiry = localStorage.getItem('expiry_date');
-        const savedEmail = localStorage.getItem('user_email');
-        const savedKey = localStorage.getItem('license_key');
+    // 1. Force the login screen to be active initially
+    document.body.classList.add('login-active');
 
-        if (savedExpiry && savedEmail && savedKey) {
-            const now = new Date().getTime();
-            const expTime = new Date(savedExpiry).getTime();
+    if (rememberMe && savedExpiry && savedEmail && savedKey) {
+        const now = new Date().getTime();
+        const expTime = new Date(savedExpiry).getTime();
 
-            // Check if user expired while app was closed
-            if (now >= expTime) {
-                console.warn("[SECURITY] Session expired. Wiping local data.");
-                localStorage.removeItem('user_email');
-                localStorage.removeItem('license_key');
-                localStorage.removeItem('expiry_date');
-                // Stay on login screen
-                //startBootSequence();
-            } else {
-                console.log("[SECURITY] Session Valid. Initializing Heartbeat.");
+        if (now < expTime) {
+            console.log("[SECURITY] Valid session found. Prompting for Auto-Login.");
 
-                startExpiryHeartbeat(savedExpiry);
+            
+            openModal('auto-login-modal');
 
-                setTimeout(() => {
-                    switchScreen('login-screen', 'main-dashboard');
-                    syncProfileUI();
-                    updateUIForAccess();
-                }, 500);
-            }
+            updateHomeTabUI();
+
+            // Update modal text with their email
+            const userDisplay = document.getElementById('auto-login-user');
+            if (userDisplay) userDisplay.innerText = savedEmail;
+
+            
+            document.getElementById('login-email').value = savedEmail;
+            document.getElementById('login-password').value = localStorage.getItem('remembered_password') || '';
+
+            return;
         } else {
-            // No saved session, just show login
-            //startBootSequence();
+            console.warn("[SECURITY] Session expired. Wiping local data.");
+            localStorage.clear();
         }
     }
+
+    console.log("[SYSTEM] No valid session. Awaiting manual login.");
 };
+
+function cancelAutoLogin() {
+    closeModal('auto-login-modal');
+    document.getElementById('login-email').value = '';
+    document.getElementById('login-password').value = '';
+}
 function toggleDropdown() {
     document.getElementById('user-dropdown').classList.toggle('hidden');
 }
@@ -115,7 +115,6 @@ async function launchGame(gameName) {
     const key = localStorage.getItem('license_key');
     const autoCloseActive = document.getElementById('auto-close-launcher').checked;
 
-    // --- TARGET THE NEW MODAL OVERLAY ---
     const injectionModal = document.getElementById('injection-modal');
     const bar = document.getElementById('main-progress-bar');
     const text = document.getElementById('status-text');
@@ -145,7 +144,6 @@ async function launchGame(gameName) {
     if (injectionModal && bar) {
         injectionModal.classList.remove('hidden'); // Blackout screen
 
-        // Step 1: Initial Pulse
         setTimeout(() => {
             bar.style.width = "45%";
             if (percentText) percentText.innerText = "45%";
@@ -155,10 +153,8 @@ async function launchGame(gameName) {
 
     addTerminalLine(`> [SYSTEM] Initializing ${gameName.toUpperCase()}...`);
 
-    // --- THE BACKEND CALL ---
     const result = await window.api.launchCheat(gameName, autoCloseActive, key, injectionType);
 
-    // --- FINALIZE OVERLAY ---
     if (result.status === "Success") {
         if (bar) bar.style.width = "100%";
         if (percentText) percentText.innerText = "100%";
@@ -168,8 +164,7 @@ async function launchGame(gameName) {
         }
 
         setTimeout(() => {
-            injectionModal.classList.add('hidden'); // Hide the overlay
-            // Reset for next time
+            injectionModal.classList.add('hidden');
             bar.style.width = "0%";
             percentText.innerText = "0%";
             text.style.color = "var(--accent)";
@@ -190,60 +185,6 @@ function submitCS2Choice(choice) {
     if (resolveCS2) {
         resolveCS2(choice);
     }
-}
-
-function startBootSequence() {
-    const bootScreen = document.getElementById('boot-screen');
-    const bar = document.getElementById('boot-progress');
-    const status = document.getElementById('boot-status');
-
-    if (!bootScreen) {
-        switchScreen('boot-screen', 'login-screen');
-        return;
-    }
-
-    bootScreen.style.display = 'flex';
-    bootScreen.style.opacity = '1';
-    bootScreen.style.zIndex = '10002';
-
-    const interval = setInterval(() => {
-        progress += Math.random() * 12;
-        if (progress > 100) progress = 100;
-
-        if (bar) bar.style.width = progress + '%';
-
-        if (status) {
-            if (progress <= 20) status.innerText = "Loading secure environment...";
-            else if (progress <= 60) status.innerText = "Establishing secure API connection...";
-            else if (progress <= 90) status.innerText = "Verifying system integrity...";
-            else status.innerText = "Bypassing Anti-Cheat Hooks...";
-        }
-
-        if (progress >= 100) {
-            clearInterval(interval);
-
-            bootScreen.style.opacity = '0';
-            bootScreen.style.pointerEvents = 'none';
-            bootScreen.style.transition = 'opacity 0.5s ease, visibility 0.5s';
-
-            setTimeout(() => {
-                switchScreen('boot-screen', 'login-screen');
-
-                bootScreen.style.display = 'none';
-                bootScreen.style.visibility = 'hidden';
-                bootScreen.style.zIndex = '-1';
-                bootScreen.innerHTML = '';
-
-                const loginScreen = document.getElementById('login-screen');
-                if (loginScreen) {
-                    loginScreen.style.zIndex = '2';
-                    loginScreen.style.opacity = '1';
-                }
-
-                loadNews();
-            }, 500);
-        }
-    }, 600);
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -431,16 +372,13 @@ document.getElementById('reset-btn').addEventListener('click', async () => {
     }
 });
 
-
-// Updated Navigation Logic for 5 Tabs
 function showTab(tabName) {
-    // 1. Hide all tab content windows (Removed the button reset here)
+
     document.querySelectorAll('.tab-content').forEach(tab => {
         tab.classList.remove('active');
         tab.style.display = 'none';
     });
 
-    // 2. Target only the content tab (Removed selectedBtn logic)
     const selectedTab = document.getElementById(tabName + '-tab');
 
     if (selectedTab) {
@@ -500,39 +438,52 @@ async function updateHWIDDisplay() {
     }
 }
 
-async function handleLogin() {
+async function handleLogin(isAutoLogin = false) {
     const email = document.getElementById('login-email').value;
     const password = document.getElementById('login-password').value;
     const rememberMe = document.getElementById('remember-me').checked;
     const btn = document.getElementById('login-btn');
 
-    if (!email || !password) {
-        return alert("Please enter both Email and Password!");
+    // --- NEW: SESSION INTERCEPT ---
+    const savedEmail = localStorage.getItem('user_email');
+    const savedPass = localStorage.getItem('remembered_password');
+    const savedExpiry = localStorage.getItem('expiry_date');
+
+    // If we have saved data, the inputs match, and it's NOT an auto-login bypass yet...
+    if (!isAutoLogin && email === savedEmail && password === savedPass && savedExpiry) {
+        const now = new Date().getTime();
+        const expTime = new Date(savedExpiry).getTime();
+
+        if (now < expTime) {
+            console.log("[AUTH] Matching session found. Triggering Modal.");
+            openModal('auto-login-modal');
+            const userDisplay = document.getElementById('auto-login-user');
+            if (userDisplay) userDisplay.innerText = email;
+            return;
+        }
     }
+
+    // --- NORMAL API LOGIN LOGIC ---
+    if (!email || !password) return alert("Please enter both Email and Password!");
 
     btn.innerHTML = `<div class="spinner"></div> AUTHENTICATING...`;
     btn.disabled = true;
 
     try {
         const realHWID = await window.api.getMachineID();
-
         const response = await fetch('https://my-auth-api-1ykc.onrender.com/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                email: email,
-                password: password,
-                hwid: realHWID
-            })
+            body: JSON.stringify({ email, password, hwid: realHWID })
         });
 
         const data = await response.json();
 
         if (data.token === "VALID") {
+            // Save Session Data
             localStorage.setItem('user_email', email);
             localStorage.setItem('expiry_date', data.expiry);
-
-            startExpiryHeartbeat(data.expiry);
+            localStorage.setItem('remember-me', rememberMe);
 
             if (rememberMe) {
                 localStorage.setItem('remembered_email', email);
@@ -542,19 +493,18 @@ async function handleLogin() {
                 localStorage.removeItem('remembered_password');
             }
 
-            // Sync Profile Picture
-            const userPic = document.getElementById('user-pic');
-            const modalPfp = document.getElementById('modal-pfp');
+            // Start Services
+            if (typeof startExpiryHeartbeat === 'function') startExpiryHeartbeat(data.expiry);
+
             const profileImg = data.profile_pic || 'imgs/default-profile.png';
-
             localStorage.setItem('saved_profile_pic', profileImg);
-            if (userPic) userPic.src = profileImg;
-            if (modalPfp) modalPfp.src = profileImg;
 
-            // Transition to Dashboard
+            // Reveal Dashboard
             document.body.classList.remove('login-active');
             const loginScreen = document.getElementById('login-screen');
             if (loginScreen) loginScreen.style.display = 'none';
+
+            updateHomeTabUI();
 
             showTab('home');
             if (typeof updateUIForAccess === 'function') updateUIForAccess();
@@ -566,11 +516,33 @@ async function handleLogin() {
         }
     } catch (err) {
         console.error("Login Error:", err);
-        alert("API Connection Error. Ensure your Render server is live.");
+        alert("API Connection Error. Ensure your [Render Server](https://render.com) is live.");
         btn.innerHTML = "LOGIN";
         btn.disabled = false;
     }
 }
+
+function updateHomeTabUI() {
+    const email = localStorage.getItem('user_email');
+    const expiry = localStorage.getItem('expiry_date');
+
+    // Update the Welcome Greeting
+    const welcomeText = document.getElementById('home-welcome');
+    if (welcomeText && email) {
+        
+        const username = email.split('@')[0].toUpperCase();
+        welcomeText.innerText = `Welcome back, ${username}`;
+    }
+
+    // Update the Subscription Tile
+    const homeExp = document.getElementById('home-exp');
+    if (homeExp && expiry) {
+        const date = new Date(expiry).toLocaleDateString();
+        homeExp.innerText = date;
+        homeExp.style.color = "#1abc9c";
+    }
+}
+
 
 async function handleRegister() {
     const email = document.getElementById('reg-email').value;
@@ -680,18 +652,22 @@ window.addEventListener('DOMContentLoaded', () => {
 function hasAccess(gameName) {
     const accessMap = {
         'CS2': 'CS2X',
-        'VALORANT': 'VALX',
-        'WARZONE': 'WZX',
-        'GTAV': 'GTAX',
+        'FiveM': 'FIVM',
+        'GTAV': 'GTAV',     // Changed from GTAX to GTAV to match your server
+        'WARZONE': 'WARZ',  // Changed from WZX to WARZ to match your server
         'FORTNITE': 'FRTX'
     };
 
-    if (currentUserPrefix === "ALLX") return true;
+    const prefix = currentUserPrefix || localStorage.getItem('user_prefix');
 
-    if (currentUserPrefix === accessMap[gameName]) {
+    // ALLX bypasses all checks
+    if (prefix === "ALLX") return true;
+
+    if (prefix === accessMap[gameName]) {
         return true;
     }
-    alert(`Access Denied! Your key (${currentUserPrefix}) is not valid for ${gameName}.`);
+
+    alert(`Access Denied! Your key (${prefix}) is not valid for ${gameName}.`);
     return false;
 }
 
@@ -899,7 +875,6 @@ async function redeemNewKey() {
 
     if (!newKey) return alert("Please enter a valid license key!");
 
-    // Safe Update: Check if element exists before changing text
     if (redeemBtn) {
         redeemBtn.innerText = "REDEEMING...";
         redeemBtn.disabled = true;
@@ -915,30 +890,43 @@ async function redeemNewKey() {
             body: JSON.stringify({ email, license_key: newKey, hwid })
         });
 
-        // --- THE CRITICAL FIX: STOP IF NOT OK (Avoids the HTML/JSON Crash) ---
         if (!response.ok) {
             const errorText = await response.text();
             console.error("Server Error Response:", errorText);
-            throw new Error(`Server returned ${response.status}. The /redeem route is missing or the server is down.`);
+            throw new Error(`Server error (${response.status}).`);
         }
 
         const data = await response.json();
 
         if (data.status === "Success") {
-            alert("Subscription Updated!");
-            localStorage.setItem('expiry_date', data.new_expiry);
-            localStorage.setItem('license_key', newKey); // Keep the key updated
+            alert("Subscription Updated Successfully!");
 
+            // 1. Update the stored license key string
+            localStorage.setItem('license_key', newKey);
+            localStorage.setItem('expiry_date', data.new_expiry);
+
+            // 2. CRITICAL: Update the prefix (e.g., change from CS2X to ALLX)
+            setSessionAccess(newKey);
+
+            // 3. Refresh UI & Heartbeat
             if (typeof startExpiryHeartbeat === 'function') startExpiryHeartbeat(data.new_expiry);
             if (typeof updateUIForAccess === 'function') updateUIForAccess();
 
             closeModal('settings-modal');
+            console.log(`[AUTH] Key Upgraded to: ${newKey}`);
         } else {
-            alert("Error: " + (data.error || "Invalid Key"));
+            // Handle logical errors (Invalid Key, Already Used, etc.)
+            alert("Redeem Failed: " + (data.error || "Unknown Error"));
         }
     } catch (err) {
-        console.error("Full Error Object:", err);
+        console.error("Redeem Error:", err);
         alert("Connection Error: " + err.message);
+    } finally {
+        // ALWAYS reset the button so the user can try again if it fails
+        if (redeemBtn) {
+            redeemBtn.innerText = "REDEEM KEY";
+            redeemBtn.disabled = false;
+        }
     }
 }
 
@@ -1380,105 +1368,6 @@ async function checkServer() {
     }
 }
 
-async function checkForUpdateAndPrompt() {
-    const currentVersion = '1.1.1';
-    const overlay = document.getElementById('update-overlay');
-    const status = document.getElementById('update-status');
-    const btn = document.getElementById('update-btn');
-    const terminal = document.getElementById('update-terminal');
-
-    // Helper to log specifically to the update terminal
-    const logToUpdateTerminal = (msg, isHeader = false) => {
-        if (!terminal) return;
-        const line = document.createElement('div');
-        line.style.marginBottom = '2px';
-        line.style.color = isHeader ? 'var(--cyan)' : '#e0e0e0';
-        line.innerText = isHeader ? `> ${msg}` : `  ${msg}`;
-        terminal.appendChild(line);
-        terminal.scrollTop = terminal.scrollHeight;
-    };
-
-    let latest;
-    try {
-        // Clear terminal for a fresh start
-        if (terminal) terminal.innerHTML = '<div>> Initializing version check...</div>';
-        latest = await window.api.checkVersion(currentVersion);
-    } catch (err) {
-        if (terminal) terminal.innerHTML = `<div style="color:var(--red)">> ERROR: Connection failed.</div>`;
-        if (overlay) {
-            overlay.classList.add('hidden');
-            overlay.style.display = 'none';
-        }
-        startBootSequence();
-        return false;
-    }
-
-    // No update needed → hide overlay and start boot
-    if (!latest || latest.version === currentVersion) {
-        if (overlay) {
-            overlay.classList.add('hidden');
-            overlay.style.display = 'none';
-        }
-        startBootSequence();
-        return false;
-    }
-
-    // Update available → show overlay
-    if (overlay) {
-        overlay.classList.remove('hidden');
-        overlay.style.display = 'flex';
-    }
-
-    // Clear terminal and show update info
-    if (terminal) {
-        terminal.innerHTML = '';
-        logToUpdateTerminal('SYSTEM UPDATE DETECTED', true);
-        logToUpdateTerminal(`Update Found: v${latest.version}`, true);
-        logToUpdateTerminal(latest.message || 'Standard stability improvements.');
-    }
-
-    if (status) status.innerText = 'System update available.';
-
-    if (btn) {
-        btn.disabled = false;
-        btn.onclick = async () => {
-            try {
-                btn.disabled = true;
-                if (status) status.innerText = 'Downloading update...';
-
-                logToUpdateTerminal('----------------------------');
-                logToUpdateTerminal('Initiating secure download...', true);
-
-                const filePath = await window.api.downloadUpdate(latest.url);
-
-                logToUpdateTerminal('SUCCESS: Package downloaded and verified.', true);
-
-                // Save latest version so overlay can be skipped
-                localStorage.setItem('installedVersion', latest.version);
-
-                if (status) status.innerText = 'Launching installer...';
-
-                await window.api.runUpdate(filePath);
-
-                // Close old loader window so overlay isn't left hanging
-                window.close();
-
-            } catch (err) {
-                if (status) status.innerText = `Update Failed`;
-                btn.disabled = false;
-
-                logToUpdateTerminal(`CRITICAL ERROR: ${err.message}`, true);
-
-                if (terminal && terminal.lastChild) {
-                    terminal.lastChild.style.color = 'var(--red)';
-                }
-            }
-        };
-    }
-
-    return true;
-}
-
 document.addEventListener("DOMContentLoaded", () => {
     const cards = document.querySelectorAll(".game-card");
 
@@ -1625,6 +1514,25 @@ function resetConfig() {
     }
 }
 
+window.electronAPI.onApplyStreamProof((enabled) => {
+    // Select the specific elements you want to "hide" from the stream
+    const sensitiveUI = document.querySelectorAll('.accent-text, .terminal-box, .glow-text-cyan');
+
+    sensitiveUI.forEach(el => {
+        if (enabled) {
+            el.style.filter = "blur(15px)"; // Blurs the text
+            el.style.opacity = "0.05";     // Makes it almost invisible
+            el.style.pointerEvents = "none"; // Prevents clicking while hidden
+        } else {
+            el.style.filter = "none";
+            el.style.opacity = "1";
+            el.style.pointerEvents = "auto";
+        }
+    });
+
+    console.log(`[UI] Stream Proof Visibles: ${enabled ? 'HIDDEN' : 'VISIBLE'}`);
+});
+
 // --- UI CONTROLS ---
 function toggleUserDropdown() {
     const dropdown = document.getElementById('user-dropdown');
@@ -1696,13 +1604,39 @@ function triggerExpirySequence() {
 }
 
 function forceLogout() {
-
+    // Clear the session data so auto-login can't trigger
     localStorage.removeItem('user_email');
     localStorage.removeItem('license_key');
+    localStorage.removeItem('remembered-password')
 
-    if (expiryCheckInterval) clearInterval(expiryCheckInterval);
+    // Stop the expiry background check
+    if (typeof expiryCheckInterval !== 'undefined' && expiryCheckInterval) {
+        clearInterval(expiryCheckInterval);
+    }
 
-    location.reload();
+    // 3. Clear the Discord status (optional but recommended)
+    if (window.api && window.api.toggleDiscord) {
+        window.api.toggleDiscord(false);
+    }
+
+    // Hide the main dashboard
+    const mainApp = document.getElementById('main-app');
+    if (mainApp) mainApp.style.display = 'none';
+
+    // Show the login screen
+    const loginPanel = document.getElementById('login-panel');
+    if (loginPanel) {
+        loginPanel.style.display = 'block';
+
+        // Clear the input field so they have to re-type/paste
+        const keyInput = document.getElementById('license-key');
+        if (keyInput) {
+            keyInput.value = '';
+            keyInput.placeholder = "ENTER NEW LICENSE KEY...";
+        }
+    }
+
+    console.log("> [AUTH] Session terminated. Returning to login...");
 }
 
 // 1. Translation Dictionary
