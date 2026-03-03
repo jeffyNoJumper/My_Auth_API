@@ -560,6 +560,65 @@ app.post('/admin/add-time', async (req, res) => {
     }
 });
 
+app.post('/redeem', async (req, res) => {
+    const { email, license_key, hwid } = req.body;
+
+    try {
+        // 1. Find the new license key (ensure it exists and hasn't been linked to an email yet)
+        const newKeyData = await User.findOne({
+            license_key: license_key.toUpperCase().trim(),
+            email: { $exists: false } // Only redeemable if not already linked to an account
+        });
+
+        if (!newKeyData) {
+            return res.status(404).json({
+                status: "Error",
+                error: "Invalid or already redeemed license key."
+            });
+        }
+
+        // 2. Find the current user who is redeeming the key
+        const user = await User.findOne({ email: email.toLowerCase().trim() });
+        if (!user) {
+            return res.status(404).json({ status: "Error", error: "User account not found." });
+        }
+
+        // 3. Determine how much time to add 
+        const daysToAdd = newKeyData.days_allowed || 30;
+
+        // 4. Calculate New Expiry
+        let currentExpiry = user.expiry_date ? new Date(user.expiry_date) : new Date();
+        // If already expired, start from NOW. If active, add to existing.
+        let baseDate = (currentExpiry > new Date()) ? currentExpiry : new Date();
+
+        baseDate.setDate(baseDate.getDate() + daysToAdd);
+        user.expiry_date = baseDate;
+
+        // 5. Update User HWID if not set (or keep existing)
+        if (!user.hwid || user.hwid === "NOT CAPTURED") {
+            user.hwid = hwid;
+        }
+
+        // 6. Delete the key so it can't be used again
+        await User.deleteOne({ _id: newKeyData._id });
+
+        // 7. Save the updated user
+        await user.save();
+
+        console.log(`[AUTH] Success: ${email} redeemed ${daysToAdd} days via ${license_key}`);
+
+        res.json({
+            status: "Success",
+            message: `Successfully added ${daysToAdd} days!`,
+            new_expiry: user.expiry_date
+        });
+
+    } catch (err) {
+        console.error("[REDEEM] Error:", err);
+        res.status(500).json({ status: "Error", error: "Database update failed" });
+    }
+});
+
 
 app.get('/health', (req, res) => {
     res.json({
