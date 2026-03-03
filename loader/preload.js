@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('api', {
     },
 
     toggleStreamProof: (enabled) => ipcRenderer.send('toggle-stream-proof', enabled),
+    onApplyStreamProof: (callback) => ipcRenderer.on('apply-stream-proof', (event, enabled) => callback(enabled)),
     toggleDiscord: (enabled) => ipcRenderer.send('toggle-discord', enabled),
     getNews: () => ipcRenderer.invoke('get-news'),
 
