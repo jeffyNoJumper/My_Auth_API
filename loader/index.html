@@ -9,7 +9,7 @@
 </head>
 <body>
 
-    <!-- 2. LOGIN SCREEN -->
+    <!-- 2. LOGIN SCREEN (Updated) -->
     <div id="login-screen" class="screen">
         <div class="login-card">
             <div class="card-header">
@@ -17,7 +17,6 @@
                 <p>Enter your credentials to access the loader</p>
             </div>
 
-            <!-- NEW: Email & Password Fields -->
             <div class="input-group">
                 <label for="login-email">EMAIL ADDRESS</label>
                 <input type="email" id="login-email" placeholder="user@example.com">
@@ -27,24 +26,20 @@
                 <label for="login-password">PASSWORD</label>
                 <div class="input-relative">
                     <input type="password" id="login-password" placeholder="••••••••">
-                    <span id="toggle-password" class="eye-icon">SHOW</span>
+                    <span id="toggle-password" onclick="togglePasswordVisibility('login-password')" class="eye-icon">SHOW</span>
                 </div>
             </div>
 
-            <div class="input-group">
-                <label for="license-key">LICENSE KEY</label>
-                <input type="text" id="license-key" placeholder="ENTER-LICENSE-KEY-HERE-XXX">
-            </div>
-
-            <!-- NEW: Remember Me Checkbox -->
             <div class="login-options">
                 <label class="remember-me">
                     <input type="checkbox" id="remember-me">
                     <span>REMEMBER ME</span>
                 </label>
+                <!-- Trigger for Register Modal -->
+                <a href="#" onclick="openModal('register-modal')" style="color: var(--accent-teal); font-size: 11px; text-decoration: none; font-weight: bold;">CREATE ACCOUNT</a>
             </div>
 
-            <button onclick="handleLogin()" id="login-btn">VALIDATE & LOGIN</button>
+            <button onclick="handleLogin()" id="login-btn">LOGIN</button>
             <div id="login-loader" class="spinner hidden"></div>
         </div>
     </div>
@@ -54,7 +49,7 @@
         <div class="drag-region"><span class="brand">SK</span> ALL-IN-ONE</div>
 
         <div class="nav-group">
-            <a href="#" onclick="showTab('home')" id="btn-home" class="nav-item active">
+            <a href="#" onclick="showTab('home')" id="btn-home" class="nav-item">
                 <i class="fas fa-home"></i> Home
             </a>
             <a href="#" onclick="showTab('games')" id="btn-games" class="nav-item">
@@ -72,29 +67,78 @@
         </div>
 
         <div class="footer-nav">
-            <a href="#" class="nav-item"><i class="fab fa-discord"></i> Discord</a>
-            <a href="#" class="nav-item"><i class="fas fa-shopping-cart"></i> Shop / Support</a>
-            <a href="#" class="nav-item exit-btn"><i class="fas fa-sign-out-alt"></i> Exit</a>
-            <a href="#" class="nav-item"><i class="far fa-folder"></i> Resource folder</a>
-            <a href="#" class="nav-item"><i class="fas fa-wrench"></i> Change folder</a>
+            <a href="#" class="nav-item" onclick="openSocial('discord')">
+                <i class="fab fa-discord"></i> Discord
+            </a>
+            <a href="#" class="nav-item" onclick="openShop()">
+                <i class="fas fa-shopping-cart"></i> Shop / Support
+            </a>
+            <a href="#" class="nav-item exit-btn" onclick="logout()">
+                <i class="fas fa-sign-out-alt"></i> Exit
+            </a>
+            <div class="profile-section" style="padding-top: 15px; border-top: 1px solid #333; margin-top: 10px; position: relative;">
+
+                <!-- User Dropdown Menu -->
+                <div id="user-dropdown" class="dropdown-content hidden">
+                    <div class="dropdown-item" onclick="openSocial('github')">
+                        <i class="fab fa-github"></i> GitHub
+                    </div>
+                    <div class="dropdown-item" onclick="copyLicense()">
+                        <i class="fas fa-key"></i> Copy License
+                    </div>
+                    <div class="dropdown-item exit-btn" onclick="logout()">
+                        <i class="fas fa-sign-out-alt"></i> Log Out
+                    </div>
+                </div>
+
+                <!-- Profile Trigger -->
+                <div class="profile-trigger" onclick="openModal('settings-modal')" style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                    <div style="position: relative; flex-shrink: 0;">
+                        <img src="./imgs/default-profile.png"
+                             id="user-pic"
+                             class="glow-border"
+                             style="width: 38px; height: 38px; border-radius: 50%; border: 2px solid #333; object-fit: cover;">
+
+                        <span id="status-dot" class="status-dot dot-online"
+                              style="position: absolute; bottom: 0; right: 0; width: 10px; height: 10px; background: #2ecc71; border: 2px solid #1e1e1e; border-radius: 50%;"></span>
+                    </div>
+
+                    <div class="user-meta" style="overflow: hidden;">
+                        <div id="user-display-name" style="font-size: 0.85rem; font-weight: bold; color: white; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">User</div>
+                        <div id="user-expiry" style="font-size: 10px; color: #888; white-space: nowrap;">EXP: --</div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
     <!-- Main Content -->
     <div class="main-content">
-        <!-- This is your "Window" container -->
         <div id="tab-container" class="dashboard-card">
 
             <!-- Home Window (Matches showTab('home')) -->
             <div id="home-tab" class="tab-content">
                 <h2>SK ALL-IN-ONE v1.1.2</h2>
                 <p class="subtitle">Welcome back, User</p>
-                <!-- Your home info/status goes here -->
+                <div class="home-tile-grid">
+                    <div class="stat-tile">
+                        <small style="color:#666;">SUBSCRIPTION</small>
+                        <div id="home-exp" style="font-family: monospace;">--</div>
+                    </div>
+                    <div class="stat-tile">
+                        <small style="color:#666;">SERVER STATUS</small>
+                        <div style="color:#00ff88; font-weight:bold;">● ONLINE</div>
+                    </div>
+                    <div class="stat-tile">
+                        <small style="color:#666;">VERSION</small>
+                        <div>v1.1.1-STABLE</div>
+                    </div>
+                </div>
             </div>
 
             <!-- Games Window (Matches showTab('games')) -->
             <div id="games-tab" class="tab-content" style="display:none;">
-                <h2>Games Settings</h2>
+                <h2>Game <span class="accent-text">Options</span></h2>
                 <div class="steam-grid">
                     <div class="game-card card-green"
                          data-images="./imgs/fivem1.png, ./imgs/fivem2.png, ./imgs/fivem3.png"
@@ -125,13 +169,12 @@
 
             <!-- HWID Window (Matches showTab('hwid')) -->
             <div id="hwid-tab" class="tab-content" style="display:none;">
-                <h2>HWID Spoofer</h2>
+                <h2>HWID <span class="accent-text">Spoofer</span></h2>
                 <div id="hwid-list"></div> <div class="hwid-panel">
 
                     <!-- HEADER -->
                     <div class="hwid-header">
                         <div class="lock-icon">
-                            <img src="imgs/lock.png" alt="lock" class="lock-img">
                         </div>
                         <h2 id="hwid-main-status" class="inactive">HWID LINKED</h2>
                         <p class="hwid-subtext">Your current hardware fingerprint details.</p>
@@ -176,7 +219,7 @@
 
             <!-- Spoofing Window (Matches showTab('spoofing')) -->
             <div id="spoofing-tab" class="tab-content" style="display:none;">
-                <h2>Spoofing Options</h2>
+                <h2>Spoofing <span class="accent-text">Options</span></h2>
                 <div class="spoofer-panel">
 
                     <!-- 1. HEADER SECTION (Status & Icon) -->
@@ -197,7 +240,6 @@
                         <!-- LOADER (Now positioned in header to save space) -->
                         <div id="spoof-progress" class="hidden">
                             <div class="spinner"></div>
-                            <p>Processing...</p>
                         </div>
                     </div>
 
@@ -269,7 +311,7 @@
 
             <!-- Settings Window (Matches showTab('settings')) -->
             <div id="settings-tab" class="tab-content" style="display:none;">
-                <h2>Configuration</h2>
+                <h2>User <span class="accent-text">Configuration</span></h2>
                 <div class="settings-layout">
                     <!-- New Revamped Terminal Section -->
                     <div class="news-section">
@@ -324,6 +366,191 @@
 
         </div>
     </div>
+
+    <!-- REGISTRATION MODAL -->
+    <div id="register-modal" class="modal-overlay hidden">
+        <div class="modal-content glass-card" style="width: 380px;">
+            <div class="modal-header">
+                <h3 class="glow-text-cyan">CREATE ACCOUNT</h3>
+                <span class="close-x" onclick="closeModal('register-modal')">&times;</span>
+            </div>
+            <div class="modal-body">
+                <p style="font-size: 11px; color: #888; margin-bottom: 20px;">Register with a valid email to begin your session.</p>
+
+                <div class="input-group">
+                    <label>EMAIL ADDRESS</label>
+                    <input type="email" id="reg-email" placeholder="Enter email...">
+                </div>
+                <div class="input-group">
+                    <label>PASSWORD</label>
+                    <input type="password" id="reg-password" placeholder="Create password...">
+                </div>
+                <div class="input-group">
+                    <label>CONFIRM PASSWORD</label>
+                    <input type="password" id="reg-confirm" placeholder="Repeat password...">
+                </div>
+
+                <button id="register-btn" onclick="handleRegister()" class="action-btn" style="width: 100%; margin-top: 15px; background: var(--accent-teal); color: #000; font-weight: bold;">REGISTER NOW</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- CS2 MODULE SELECTION MODAL -->
+    <div id="cs2-modal" class="modal-overlay hidden">
+        <div class="modal-content glass-card" style="width: 400px; text-align: center; padding: 25px; border-radius: 16px; backdrop-filter: blur(12px); box-shadow: 0 0 40px rgba(0,255,255,0.1); border: 1px solid rgba(0,255,255,0.2);">
+
+            <div class="modal-header">
+                <h3 class="glow-text-cyan" style="font-size: 22px; margin-bottom: 15px;">CS2 MODULE SELECT</h3>
+            </div>
+
+            <div class="modal-body">
+                <p style="font-size: 12px; color: #aaa; margin-bottom: 25px;">Choose your preferred injection method for Counter-Strike 2.</p>
+
+                <div class="choice-grid" style="display: flex; gap: 15px;">
+
+                    <div class="choice-item" onclick="submitCS2Choice('dll')"
+                         style="flex: 1; padding: 25px; border-radius: 12px; cursor: pointer; background: rgba(0,0,0,0.25); border: 1px solid rgba(0,255,255,0.3); transition: all 0.2s ease; box-shadow: 0 0 10px rgba(0,255,255,0.05);">
+                        <div style="color: var(--accent); font-size: 22px; margin-bottom: 12px;">⚙️</div>
+                        <span style="font-weight: bold; display: block; font-size: 14px; color: #eee;">INTERNAL</span>
+                        <small style="font-size: 10px; color: #bbb;">DLL Injection</small>
+                    </div>
+
+                    <div class="choice-item" onclick="submitCS2Choice('external')"
+                         style="flex: 1; padding: 25px; border-radius: 12px; cursor: pointer; background: rgba(0,0,0,0.25); border: 1px solid rgba(0,255,255,0.3); transition: all 0.2s ease; box-shadow: 0 0 10px rgba(0,255,255,0.05);">
+                        <div style="color: var(--accent); font-size: 22px; margin-bottom: 12px;">🚀</div>
+                        <span style="font-weight: bold; display: block; font-size: 14px; color: #eee;">EXTERNAL</span>
+                        <small style="font-size: 10px; color: #bbb;">EXE Overlay</small>
+                    </div>
+
+                </div>
+
+                <button onclick="submitCS2Choice('cancel')"
+                        class="btn-small"
+                        style="margin-top: 25px; width: 100%; background: transparent; border: 1px solid rgba(0,255,255,0.3); color: #aaa; padding: 10px 0; border-radius: 10px; transition: all 0.2s ease;">
+                    CANCEL
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        #cs2-modal .choice-item:hover {
+            background: rgba(0,255,255,0.15);
+            box-shadow: 0 0 20px rgba(0,255,255,0.4);
+            transform: translateY(-2px);
+        }
+
+        #cs2-modal .btn-small:hover {
+            background: rgba(0,255,255,0.05);
+            border-color: var(--accent);
+            color: #fff;
+        }
+    </style>
+
+    <!-- --- INJECTION PROGRESS SECTION --- -->
+    <div id="injection-modal" class="modal-overlay hidden">
+        <div class="glass-card" style="width: 400px; padding: 30px; border-radius: 12px; background: rgba(10,10,10,0.95); border: 1px solid rgba(0, 242, 255, 0.2); text-align: center;">
+
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <span id="status-text" style="font-size: 11px; color: var(--accent); letter-spacing: 1.5px; font-weight: bold; text-transform: uppercase;">
+                    INITIALIZING...
+                </span>
+                <span id="status-percent" style="font-size: 12px; color: #fff; font-weight: bold;">0%</span>
+            </div>
+
+            <!-- The Progress Bar -->
+            <div class="progress-container" style="width: 100%; height: 8px; background: #000; border-radius: 4px; overflow: hidden; border: 1px solid #222;">
+                <div id="main-progress-bar" style="width: 0%; height: 100%; background: var(--accent); box-shadow: 0 0 15px var(--accent); transition: width 0.4s ease;"></div>
+            </div>
+
+            <p style="font-size: 10px; color: #555; margin-top: 20px; text-transform: uppercase; letter-spacing: 1px;">
+                Please wait while we secure the connection...
+            </p>
+        </div>
+    </div>
+
+
+    <!-- EXPIRY MODAL -->
+    <div id="expiry-modal" class="modal-overlay hidden">
+        <div class="modal-content glass-card" style="width: 350px; text-align: center; border: 1px solid var(--red);">
+            <div class="modal-header">
+                <h3 style="color:var(--red); letter-spacing: 2px;">SESSION EXPIRED</h3>
+            </div>
+            <div class="modal-body" style="padding: 20px; text-align: center;">
+                <!-- Alert Icon -->
+                <div class="expiry-icon-container" style="margin-bottom: 20px;">
+                    <i class="fas fa-user-shield" style="font-size: 45px; color: var(--red); filter: drop-shadow(0 0 10px var(--red));"></i>
+                </div>
+
+                <!-- Status Labels -->
+                <div style="background: rgba(255, 68, 68, 0.05); border: 1px solid rgba(255, 68, 68, 0.2); padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                    <h4 style="color: var(--red); margin: 0 0 5px 0; font-size: 14px; letter-spacing: 1px;">SUBSCRIPTION EXPIRED</h4>
+                    <p style="font-size: 11px; color: #888; margin: 0; line-height: 1.5;">
+                        Your session has been terminated by the <br>
+                        <span style="color: #ccc;">SK Security Authentication Server.</span>
+                    </p>
+                </div>
+
+                <p style="font-size: 10px; color: #555; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 15px;">
+                    Access to all modules has been <span style="color:var(--red)">Revoked</span>.
+                </p>
+
+                <!-- REVOKE Button -->
+                <button onclick="forceLogout()" class="btn-primary" style="width: 100%; background: var(--red); color: white; border: none; padding: 12px; font-weight: 900; letter-spacing: 1px; border-radius: 4px; box-shadow: 0 4px 15px rgba(255, 68, 68, 0.3); cursor: pointer; transition: 0.3s;">
+                    RETURN TO AUTHENTICATION
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- SETTINGS MODAL (Updated with Subscription Key Logic) -->
+    <div id="settings-modal" class="modal-overlay hidden">
+        <div class="modal-content glass-card" style="width: 420px;">
+            <div class="modal-header">
+                <h3 class="glow-text-cyan">ACCOUNT SETTINGS</h3>
+                <span class="close-x" onclick="closeModal('settings-modal')">&times;</span>
+            </div>
+
+            <div class="modal-body">
+                <!-- Profile Section -->
+                <div class="pfp-edit-section" style="text-align:center; margin-bottom:15px;">
+                    <img src="./imgs/default-profile.png" id="modal-pfp" class="glow-border" style="width:80px; height:80px; border-radius:50%; object-fit:cover;">
+                    <br>
+                    <button class="mini-btn" onclick="document.getElementById('pfp-input').click()" style="margin-top:10px;">CHANGE PHOTO</button>
+                    <input type="file" id="pfp-input" hidden accept="image/*" onchange="previewImage(this)">
+                </div>
+
+                <!-- Credentials -->
+                <div class="input-group">
+                    <label>NEW EMAIL</label>
+                    <input type="email" id="edit-email" placeholder="Update email...">
+                </div>
+                <div class="input-group">
+                    <label>NEW PASSWORD</label>
+                    <input type="password" id="edit-password" placeholder="New password...">
+                </div>
+
+                <!-- --- SUBSCRIPTION KEY REDEMPTION --- -->
+                <div class="input-group" style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #333;">
+                    <label style="color: #f1c40f;">REDEEM NEW LICENSE KEY</label>
+                    <input type="text" id="edit-license-key" placeholder="ENTER-NEW-KEY-HERE">
+                </div>
+
+                <div style="display: flex; gap: 10px; margin-top: 15px;">
+                    <button onclick="saveProfileChanges()" class="action-btn" style="flex: 1;">SAVE PROFILE</button>
+                    <button onclick="redeemNewKey()" class="action-btn" style="flex: 1; background: #f1c40f; color: #000;">REDEEM KEY</button>
+                </div>
+
+                <!-- Hardware Footer -->
+                <div style="margin-top: 25px; text-align: center; border-top: 1px solid #222; padding-top: 10px;">
+                    <p style="font-size: 9px; color: #555; font-family: monospace; margin: 0;">
+                        MACHINE_ID: <span id="settings-hwid-display" style="color: #888;">FETCHING...</span>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="./ui.js"></script>
 </body>
 </html>
