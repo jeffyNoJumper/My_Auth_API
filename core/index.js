@@ -560,52 +560,56 @@ app.post('/admin/add-time', async (req, res) => {
     }
 });
 
+// --- USER: REDEEM VOUCHER KEY ---
 app.post('/redeem', async (req, res) => {
-    const { email, license_key, hwid } = req.body;
-
     try {
-        // 1. Find the new license key (ensure it exists and hasn't been linked to an email yet)
-        const newKeyData = await User.findOne({
+        const { email, license_key, hwid } = req.body;
+
+        if (!email || !license_key) {
+            return res.status(400).json({ status: "Error", error: "Missing email or key." });
+        }
+
+        // 1. Find the Voucher Key (A key that exists in DB but has no real email yet)
+        const voucher = await User.findOne({
             license_key: license_key.toUpperCase().trim(),
-            email: { $exists: false } // Only redeemable if not already linked to an account
+            email: { $regex: /pending_/i } // Checks for your "pending_..." prefix logic
         });
 
-        if (!newKeyData) {
+        if (!voucher) {
             return res.status(404).json({
                 status: "Error",
-                error: "Invalid or already redeemed license key."
+                error: "Invalid or already used license key."
             });
         }
 
-        // 2. Find the current user who is redeeming the key
+        // 2. Find the Active User account
         const user = await User.findOne({ email: email.toLowerCase().trim() });
         if (!user) {
-            return res.status(404).json({ status: "Error", error: "User account not found." });
+            return res.status(404).json({ status: "Error", error: "Account not found." });
         }
 
-        // 3. Determine how much time to add 
-        const daysToAdd = newKeyData.days_allowed || 30;
+        const daysToAdd = parseFloat(voucher.duration_days) || 30;
 
-        // 4. Calculate New Expiry
+        // 4. Update Expiry: If expired, start from now. If active, add to existing.
         let currentExpiry = user.expiry_date ? new Date(user.expiry_date) : new Date();
-        // If already expired, start from NOW. If active, add to existing.
         let baseDate = (currentExpiry > new Date()) ? currentExpiry : new Date();
 
         baseDate.setDate(baseDate.getDate() + daysToAdd);
         user.expiry_date = baseDate;
 
-        // 5. Update User HWID if not set (or keep existing)
-        if (!user.hwid || user.hwid === "NOT CAPTURED") {
-            user.hwid = hwid;
+        // 5. Update Games: Merge games from the voucher into the user account
+        if (voucher.games && Array.isArray(voucher.games)) {
+            const updatedGames = new Set([...user.games, ...voucher.games]);
+            user.games = Array.from(updatedGames);
         }
 
-        // 6. Delete the key so it can't be used again
-        await User.deleteOne({ _id: newKeyData._id });
+        // 6. Nuke the Voucher (So it can't be used again)
+        await User.deleteOne({ _id: voucher._id });
 
-        // 7. Save the updated user
+        // 7. Save the active user
         await user.save();
 
-        console.log(`[AUTH] Success: ${email} redeemed ${daysToAdd} days via ${license_key}`);
+        console.log(`[REDEEM] ${email} redeemed ${daysToAdd} days via ${license_key}`);
 
         res.json({
             status: "Success",
@@ -614,8 +618,8 @@ app.post('/redeem', async (req, res) => {
         });
 
     } catch (err) {
-        console.error("[REDEEM] Error:", err);
-        res.status(500).json({ status: "Error", error: "Database update failed" });
+        console.error("[REDEEM ERROR]", err);
+        res.status(500).json({ status: "Error", error: "Internal server error." });
     }
 });
 
