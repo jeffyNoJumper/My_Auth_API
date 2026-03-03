@@ -909,7 +909,7 @@ async function redeemNewKey() {
         const hwid = await window.api.getMachineID();
         if (hwidDisplay) hwidDisplay.innerText = hwid;
 
-        const response = await fetch('https://my-auth-api-1ykc.onrender.com/redeemnewkey', {
+        const response = await fetch('https://my-auth-api-1ykc.onrender.com', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, license_key: newKey, hwid })
