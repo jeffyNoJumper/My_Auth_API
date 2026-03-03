@@ -892,49 +892,47 @@ async function openModal(id) {
 }
 
 async function redeemNewKey() {
-    const newKey = document.getElementById('edit-license-key').value;
+    const newKey = document.getElementById('edit-license-key')?.value;
     const email = localStorage.getItem('user_email');
     const redeemBtn = document.getElementById('redeem-key-btn');
+    const hwidDisplay = document.getElementById('settings-hwid-display');
 
     if (!newKey) return alert("Please enter a valid license key!");
 
-    redeemBtn.innerText = "REDEEMING...";
-    redeemBtn.disabled = true;
+    // Safe Update: Check if element exists before changing text
+    if (redeemBtn) {
+        redeemBtn.innerText = "REDEEMING...";
+        redeemBtn.disabled = true;
+    }
 
     try {
         const hwid = await window.api.getMachineID();
+        if (hwidDisplay) hwidDisplay.innerText = hwid;
 
-        // Using your existing login/redeem endpoint
         const response = await fetch('https://my-auth-api-1ykc.onrender.com', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                email: email,
-                license_key: newKey,
-                hwid: hwid
-            })
+            body: JSON.stringify({ email, license_key: newKey, hwid })
         });
 
         const data = await response.json();
 
         if (data.status === "Success") {
-            alert("Subscription Updated Successfully!");
+            alert("Subscription Updated!");
             localStorage.setItem('expiry_date', data.new_expiry);
-            localStorage.setItem('license_key', newKey);
-
-            // Refresh UI components
-            startExpiryHeartbeat(data.new_expiry);
-            if (typeof updateUIForAccess === 'function') updateUIForAccess();
+            if (typeof startExpiryHeartbeat === 'function') startExpiryHeartbeat(data.new_expiry);
             closeModal('settings-modal');
         } else {
-            alert("Redeem Failed: " + (data.error || "Invalid Key"));
+            alert("Error: " + (data.error || "Invalid Key"));
         }
     } catch (err) {
         console.error("Redeem Error:", err);
         alert("Failed to connect to Auth Server.");
     } finally {
-        redeemBtn.innerText = "REDEEM KEY";
-        redeemBtn.disabled = false;
+        if (redeemBtn) {
+            redeemBtn.innerText = "REDEEM KEY";
+            redeemBtn.disabled = false;
+        }
     }
 }
 
@@ -1732,6 +1730,7 @@ function changeLanguage(lang) {
         }
     });
 
+    // Update the button visual (Switching 'sp' to 'ES' for Spanish standard)
     const displayLang = lang === 'sp' ? 'ES' : lang.toUpperCase();
     document.getElementById('current-lang-btn').innerHTML = `<i class="fas fa-globe"></i> ${displayLang}`;
 
@@ -1742,6 +1741,7 @@ function changeLanguage(lang) {
     document.getElementById('lang-dropdown').classList.add('hidden');
 }
 
+// 4. Load saved language on startup (Add this inside your window.onload)
 function initLanguage() {
     const saved = localStorage.getItem('preferred_lang') || 'en';
     changeLanguage(saved);
