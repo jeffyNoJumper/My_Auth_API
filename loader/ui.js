@@ -5,6 +5,8 @@ let countdownInterval;
 let progress = 0;
 let newsLoaded = false;
 let expiryCheckInterval = null;
+let isAuthProcessActive = false;
+let autoLoginModalShown = false; // prevents modal showing twice (onload vs manual Login click)
 
 const shell = window.api.shell;
 
@@ -23,7 +25,7 @@ window.onload = async () => {
 
     syncProfileUI();
     await updateHWIDDisplay();
-    await checkServer(); 
+    await checkServer();
 
     const overlay = document.getElementById('update-overlay');
     if (overlay) overlay.classList.add('hidden');
@@ -42,18 +44,13 @@ window.onload = async () => {
         const expTime = new Date(savedExpiry).getTime();
 
         if (now < expTime) {
+            if (autoLoginModalShown) return; // already shown by handleLogin intercept
+            autoLoginModalShown = true;
             console.log("[SECURITY] Valid session found. Prompting for Auto-Login.");
-
-            
             openModal('auto-login-modal');
-
             updateHomeTabUI();
-
-            // Update modal text with their email
             const userDisplay = document.getElementById('auto-login-user');
             if (userDisplay) userDisplay.innerText = savedEmail;
-
-            
             document.getElementById('login-email').value = savedEmail;
             document.getElementById('login-password').value = localStorage.getItem('remembered_password') || '';
 
@@ -69,6 +66,8 @@ window.onload = async () => {
 
 function cancelAutoLogin() {
     closeModal('auto-login-modal');
+    isAuthProcessActive = false;
+    autoLoginModalShown = false;
     document.getElementById('login-email').value = '';
     document.getElementById('login-password').value = '';
 }
@@ -214,6 +213,16 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
+function toggleShadowWarning() {
+    const isChecked = document.getElementById('deep-clean').checked;
+    const warning = document.getElementById('shadow-warning');
+    if (isChecked) {
+        warning.classList.remove('hidden');
+    } else {
+        warning.classList.add('hidden');
+    }
+}
+
 function handleSettingChange(id, value) {
     addTerminalLine(`> [CONFIG] Executing ${id.toUpperCase()}...`);
 
@@ -309,20 +318,32 @@ window.addEventListener('DOMContentLoaded', () => {
                 syncProfileImage();
 
                 try {
-                    const key = localStorage.getItem('license_key');
-                    // FIX: Pointing to the correct /update-profile route
+                    const rawKey = localStorage.getItem('license_key');
+                    const key = rawKey ? rawKey.trim().toUpperCase() : null;
+
+                    // FIX: Added the endpoint '/update-profile' to the URL
                     const res = await fetch('https://my-auth-api-1ykc.onrender.com', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             license_key: key,
-                            profile_pic: base64Image
+                            profile_pic: base64Image // This is the Base64 string
                         })
                     });
+
                     const data = await res.json();
-                    if (data.success) console.log("✅ Profile pic synced to Render DB");
+
+                    if (res.ok && data.success) {
+                        console.log("✅ Profile pic synced to Render DB");
+                        // Optional: Update any other UI elements with the new PFP
+                        if (document.getElementById('modal-pfp')) {
+                            document.getElementById('modal-pfp').src = base64Image;
+                        }
+                    } else {
+                        console.error("❌ Server rejected update:", data.error || res.statusText);
+                    }
                 } catch (err) {
-                    console.error("❌ Failed to sync profile pic to DB", err);
+                    console.error("❌ Network or Server Error:", err);
                 }
             };
             reader.readAsDataURL(file);
@@ -439,38 +460,43 @@ async function updateHWIDDisplay() {
 }
 
 async function handleLogin(isAutoLogin = false) {
+    if (isAuthProcessActive) return;
+
     const email = document.getElementById('login-email').value;
     const password = document.getElementById('login-password').value;
     const rememberMe = document.getElementById('remember-me').checked;
     const btn = document.getElementById('login-btn');
 
-    // --- NEW: SESSION INTERCEPT ---
     const savedEmail = localStorage.getItem('user_email');
     const savedPass = localStorage.getItem('remembered_password');
     const savedExpiry = localStorage.getItem('expiry_date');
 
-    // If we have saved data, the inputs match, and it's NOT an auto-login bypass yet...
+    // --- AUTO-LOGIN INTERCEPT: show modal once, don't block LOGIN NOW ---
     if (!isAutoLogin && email === savedEmail && password === savedPass && savedExpiry) {
         const now = new Date().getTime();
         const expTime = new Date(savedExpiry).getTime();
 
         if (now < expTime) {
-            console.log("[AUTH] Matching session found. Triggering Modal.");
+            if (autoLoginModalShown) return; // modal already open, avoid double-open
+            autoLoginModalShown = true;
+            console.log("[AUTH] Matching session found. Showing Auto-Login modal.");
             openModal('auto-login-modal');
             const userDisplay = document.getElementById('auto-login-user');
             if (userDisplay) userDisplay.innerText = email;
+            isAuthProcessActive = false; // so LOGIN NOW in modal can run
             return;
         }
     }
 
-    // --- NORMAL API LOGIN LOGIC ---
     if (!email || !password) return alert("Please enter both Email and Password!");
 
-    btn.innerHTML = `<div class="spinner"></div> AUTHENTICATING...`;
+    isAuthProcessActive = true;
+    btn.innerHTML = `<div class="spinner"></div> <span>AUTHENTICATING...</span>`;
     btn.disabled = true;
 
     try {
         const realHWID = await window.api.getMachineID();
+
         const response = await fetch('https://my-auth-api-1ykc.onrender.com/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -480,7 +506,28 @@ async function handleLogin(isAutoLogin = false) {
         const data = await response.json();
 
         if (data.token === "VALID") {
-            // Save Session Data
+            // --- CRITICAL FIX: FORCE UI SYNC ---
+            const hwidDisplay = document.getElementById('info-hwid');
+            const emailDisplay = document.getElementById('info-email');
+            const statusDisplay = document.getElementById('manage-status');
+
+            if (hwidDisplay) {
+                hwidDisplay.innerText = realHWID; // Forces swap of PENDING_HWID
+                hwidDisplay.style.color = "var(--accent)";
+                hwidDisplay.style.textShadow = "0 0 8px var(--accent-glow)";
+            }
+            if (emailDisplay) emailDisplay.innerText = email;
+            if (statusDisplay) {
+                statusDisplay.innerText = "ACTIVE"; // Matches your Admin Panel text
+                statusDisplay.style.color = "var(--accent)";
+            }
+
+            // --- SAVE SESSION DATA ---
+            if (data.license_key) {
+                localStorage.setItem('license_key', data.license_key.toUpperCase());
+                setSessionAccess(data.license_key);
+            }
+
             localStorage.setItem('user_email', email);
             localStorage.setItem('expiry_date', data.expiry);
             localStorage.setItem('remember-me', rememberMe);
@@ -488,37 +535,72 @@ async function handleLogin(isAutoLogin = false) {
             if (rememberMe) {
                 localStorage.setItem('remembered_email', email);
                 localStorage.setItem('remembered_password', password);
-            } else {
-                localStorage.removeItem('remembered_email');
-                localStorage.removeItem('remembered_password');
             }
 
-            // Start Services
+            // Start Heartbeat & PFP
             if (typeof startExpiryHeartbeat === 'function') startExpiryHeartbeat(data.expiry);
 
             const profileImg = data.profile_pic || 'imgs/default-profile.png';
             localStorage.setItem('saved_profile_pic', profileImg);
+            document.querySelectorAll('#user-pic, #modal-pfp').forEach(img => img.src = profileImg);
 
-            // Reveal Dashboard
+            // Transition UI — show dashboard only after valid login
+            closeModal('auto-login-modal');
+            autoLoginModalShown = false;
             document.body.classList.remove('login-active');
+            document.body.classList.add('logged-in');
             const loginScreen = document.getElementById('login-screen');
             if (loginScreen) loginScreen.style.display = 'none';
 
-            updateHomeTabUI();
+            const dash = document.getElementById('dashboard-wrapper');
+            if (dash) dash.style.display = 'flex';
 
+            if (typeof updateHomeTabUI === 'function') updateHomeTabUI();
             showTab('home');
+
+            // This refreshes the whole UI state
             if (typeof updateUIForAccess === 'function') updateUIForAccess();
 
+            // --- FIX: Always reset button and auth state so loader "finishes" and future logins work ---
+            isAuthProcessActive = false;
+            btn.innerHTML = "LOGIN";
+            btn.disabled = false;
         } else {
             alert("Login Failed: " + (data.error || "Invalid Credentials"));
+            isAuthProcessActive = false;
             btn.innerHTML = "LOGIN";
             btn.disabled = false;
         }
     } catch (err) {
         console.error("Login Error:", err);
-        alert("API Connection Error. Ensure your [Render Server](https://render.com) is live.");
+        alert("API Connection Error.");
+        isAuthProcessActive = false;
         btn.innerHTML = "LOGIN";
         btn.disabled = false;
+    }
+}
+
+async function updateUserInfoDisplay(email, status = "Online") {
+    // 1. Get the actual hardware ID from the computer
+    const realHWID = await window.api.getMachineID();
+
+    // 2. Select the elements from your HTML
+    const emailEl = document.getElementById('info-email');
+    const hwidEl = document.getElementById('info-hwid');
+    const statusEl = document.getElementById('manage-status');
+
+    // 3. Apply the Updates
+    if (emailEl) emailEl.innerText = email;
+
+    if (hwidEl) {
+        hwidEl.innerText = realHWID; // Replace PENDING_HWID
+        hwidEl.style.color = "var(--accent)"; // Change color to #0095ff
+        hwidEl.style.textShadow = "0 0 8px var(--accent-glow)"; // Add a subtle glow
+    }
+
+    if (statusEl) {
+        statusEl.innerText = status;
+        statusEl.style.color = "var(--accent)"; // Change from Red to Blue
     }
 }
 
@@ -529,7 +611,7 @@ function updateHomeTabUI() {
     // Update the Welcome Greeting
     const welcomeText = document.getElementById('home-welcome');
     if (welcomeText && email) {
-        
+
         const username = email.split('@')[0].toUpperCase();
         welcomeText.innerText = `Welcome back, ${username}`;
     }
@@ -953,40 +1035,67 @@ function previewImage(input) {
 
 // --- SAVE TO RENDER & LOCAL ---
 async function saveProfileChanges() {
-    const email = document.getElementById('edit-email').value;
-    const password = document.getElementById('edit-password').value;
-    const key = localStorage.getItem('license_key');
+    const emailInput = document.getElementById('edit-email');
+    const passwordInput = document.getElementById('edit-password');
     const btn = document.getElementById('save-profile-btn');
 
+    // Silent check: Pull the key saved during the initial login
+    const savedKey = localStorage.getItem('license_key');
+
+    if (!savedKey) {
+        alert("Session Error: No active login found. Please restart the app.");
+        return;
+    }
+
     btn.innerText = "SAVING...";
+    btn.disabled = true;
 
     try {
-        const response = await fetch(`${API}/update-profile`, {
+        const cleanAPI = API.replace(/\/$/, "");
+
+        const response = await fetch(`${cleanAPI}/update-profile`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                license_key: key,
-                email: email || null,
-                password: password || null,
+                // We send the key automatically so the user doesn't have to
+                license_key: savedKey.trim().toUpperCase(),
+                email: emailInput.value || null,
+                password: passwordInput.value || null,
                 profile_pic: window.tempPfp || null
             })
         });
 
+        // Parse the response
+        const contentType = response.headers.get("content-type");
+        if (!response.ok || !contentType || !contentType.includes("application/json")) {
+            throw new Error(`Server Error: ${response.status}`);
+        }
+
         const data = await response.json();
+
         if (data.success) {
-            // Update Local Storage so it persists on restart
-            if (email) localStorage.setItem('user_email', email);
+            // Update local storage so the UI updates instantly
+            if (emailInput.value) localStorage.setItem('user_email', emailInput.value);
+
             if (window.tempPfp) {
                 localStorage.setItem('saved_profile_pic', window.tempPfp);
-                document.getElementById('user-pic').src = window.tempPfp;
+                // Update all instances of the profile picture in the UI
+                const pfpElements = document.querySelectorAll('#user-pic, #modal-pfp');
+                pfpElements.forEach(img => img.src = window.tempPfp);
             }
 
             alert("Success! Profile updated.");
-            closeModal('settings-modal');
-            updateUIForAccess(); // Refresh the home tab name
+            if (typeof closeModal === 'function') closeModal('settings-modal');
+        } else {
+            alert("Error: " + data.error);
         }
-    } catch (e) { alert("Failed to connect to server."); }
-    btn.innerText = "SAVE CHANGES";
+    } catch (e) {
+        console.error("Save Profile Error:", e);
+        alert("Failed to connect to server. Check your connection.");
+    } finally {
+        btn.innerText = "SAVE CHANGES";
+        btn.disabled = false;
+    }
 }
 
 // --- LOAD SAVED PFP ON STARTUP ---
@@ -999,21 +1108,34 @@ function loadSavedPfp() {
 }
 
 async function startSpoofing() {
-
     const loader = document.getElementById("spoof-progress");
+    const isDeepClean = document.getElementById("deep-clean").checked;
 
     if (spoofState === "running") return;
+
+    // CRITICAL: Shadow ban protection check
+    if (isDeepClean) {
+        const confirmClean = window.confirm(
+            "WARNING: Deep Clean will wipe game logs and traces.\n\n" +
+            "To escape a shadow ban, you MUST use a NEW game account after this.\n" +
+            "Logging into a flagged account will RE-BAN your hardware immediately.\n\n" +
+            "Do you wish to proceed?"
+        );
+        if (!confirmClean) return;
+    }
 
     spoofState = "running";
     loader.classList.remove("hidden");
 
     try {
-
         const options = {
             motherboard: document.getElementById("motherboard-select").value,
             biosFlash: document.getElementById("bios-flash").checked,
             cleanReg: document.getElementById("clean-reg").checked,
             cleanDisk: document.getElementById("clean-disk").checked,
+
+            // NEW: Pass deep clean flag to C++ backend
+            deepClean: isDeepClean,
 
             // mode mapping
             user: currentSpoofMode === "hwid",
@@ -1022,32 +1144,29 @@ async function startSpoofing() {
 
         console.log("[UI] Sending spoof request:", options);
 
-        const result =
-            await window.api.startSpoof(options);
+        // Ensure your preload/main process is updated to pass 'deepClean' to the C++ binding
+        const result = await window.api.startSpoof(options);
 
         loader.classList.add("hidden");
 
         if (result && result.success) {
-
             updateSpoofStatus(
-                currentSpoofMode === "hwid"
-                    ? "perm"
-                    : "temp"
+                currentSpoofMode === "hwid" ? "perm" : "temp"
             );
 
             localStorage.setItem(
                 "spoofState",
-                currentSpoofMode === "hwid"
-                    ? "perm"
-                    : "temp"
+                currentSpoofMode === "hwid" ? "perm" : "temp"
             );
+
+            // Success Notification
+            alert("Spoof Complete! Please RESTART your PC before launching the game.");
 
         } else {
             updateSpoofStatus("inactive");
         }
 
     } catch (err) {
-
         console.error("[UI SPOOF ERROR]", err);
         loader.classList.add("hidden");
         updateSpoofStatus("inactive");
@@ -1514,7 +1633,7 @@ function resetConfig() {
     }
 }
 
-window.electronAPI.onApplyStreamProof((enabled) => {
+window.api.onApplyStreamProof((enabled) => {
     // Select the specific elements you want to "hide" from the stream
     const sensitiveUI = document.querySelectorAll('.accent-text, .terminal-box, .glow-text-cyan');
 
@@ -1568,6 +1687,7 @@ function hideUserDropdown() {
 
 // --- SESSION CONTROL ---
 function logout() {
+    document.body.classList.remove('logged-in');
     localStorage.removeItem('user_prefix');
     if (!document.getElementById('remember-me').checked) {
         localStorage.removeItem('license_key');
@@ -1604,10 +1724,20 @@ function triggerExpirySequence() {
 }
 
 function forceLogout() {
+    // Hide dashboard and show login again
+    document.body.classList.remove('logged-in');
+    document.body.classList.add('login-active');
     // Clear the session data so auto-login can't trigger
     localStorage.removeItem('user_email');
     localStorage.removeItem('license_key');
     localStorage.removeItem('remembered-password')
+
+    document.getElementById('info-email').innerText = "---";
+    document.getElementById('info-hwid').innerText = "PENDING_HWID";
+    document.getElementById('info-hwid').style.color = "#607d8b";
+    document.getElementById('info-hwid').style.textShadow = "none";
+    document.getElementById('manage-status').innerText = "Offline";
+    document.getElementById('manage-status').style.color = "var(--red)";
 
     // Stop the expiry background check
     if (typeof expiryCheckInterval !== 'undefined' && expiryCheckInterval) {
@@ -1619,21 +1749,22 @@ function forceLogout() {
         window.api.toggleDiscord(false);
     }
 
-    // Hide the main dashboard
+    // Hide the main dashboard (handled by removing .logged-in)
     const mainApp = document.getElementById('main-app');
     if (mainApp) mainApp.style.display = 'none';
 
-    // Show the login screen
+    closeModal('expiry-modal');
+    // Show the login screen again
+    const loginScreen = document.getElementById('login-screen');
+    if (loginScreen) loginScreen.style.display = 'flex';
     const loginPanel = document.getElementById('login-panel');
-    if (loginPanel) {
-        loginPanel.style.display = 'block';
+    if (loginPanel) loginPanel.style.display = 'block';
 
-        // Clear the input field so they have to re-type/paste
-        const keyInput = document.getElementById('license-key');
-        if (keyInput) {
-            keyInput.value = '';
-            keyInput.placeholder = "ENTER NEW LICENSE KEY...";
-        }
+    // Clear the input field so they have to re-type/paste
+    const keyInput = document.getElementById('license-key');
+    if (keyInput) {
+        keyInput.value = '';
+        keyInput.placeholder = "ENTER NEW LICENSE KEY...";
     }
 
     console.log("> [AUTH] Session terminated. Returning to login...");
