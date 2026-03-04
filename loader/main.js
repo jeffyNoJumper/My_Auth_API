@@ -39,7 +39,7 @@ function startSecurityMonitor() {
             triggerReaction("Debugger Attachment Detected");
         }
 
-        exec('tasklist', (err, stdout) => {
+        exec('tasklist', { windowsHide: true }, (err, stdout) => {
             if (err) return;
             const activeProcess = stdout.toLowerCase();
 
@@ -74,8 +74,10 @@ function createWindow() {
         height: 760,
         frame: false,
         resizable: false,
+        transparent: true,
+        center: true,
         icon: path.join(__dirname, 'imgs/SK_App_Icon.ico'),
-        backgroundColor: '#050505',
+        // backgroundColor: '#050505', 
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             partition: 'persist:sk_loader',
@@ -90,6 +92,8 @@ function createWindow() {
 
     mainWindow.once('ready-to-show', () => {
         autoUpdater.checkForUpdatesAndNotify();
+        mainWindow.center(); 
+        mainWindow.show();
     });
 }
 
@@ -156,7 +160,6 @@ ipcMain.handle('start-spoof', async (event, options) => {
 
         motherboard: options?.motherboard || "Other",
 
-        // ---- BOOLEAN FLAGS (C++ EXPECTS THESE) ----
         disk: Boolean(options?.disk ?? true),
         guid: Boolean(options?.guid ?? true),
         kernel: Boolean(options?.kernel ?? true),
@@ -166,25 +169,32 @@ ipcMain.handle('start-spoof', async (event, options) => {
         cleanDisk: Boolean(options?.cleanDisk ?? true),
         biosFlash: Boolean(options?.biosFlash ?? false),
 
+        // Shadow Ban Protection Flag
+        deepClean: Boolean(options?.deepClean ?? false),
+
         // ---- GENERATED HWID ----
         newMachineGuid: String(brandNewGUID)
     };
 
-    console.log("[MAIN] Spoof Config:", safeOptions);
+    console.log("[MAIN] Spoof Config (Deep Clean: " + safeOptions.deepClean + "):", safeOptions);
 
     return new Promise((resolve) => {
         try {
-
             console.log(
                 `[MAIN] Writing Registry ID: ${safeOptions.newMachineGuid}`
             );
 
+            // This sends the safeOptions (including deepClean) to your binding.cpp
             spoofer.runSpoofer(safeOptions, (err, results) => {
 
                 if (err) {
                     console.error("[MAIN] C++ Error:", err);
                     resolve({ success: false });
                     return;
+                }
+
+                if (safeOptions.deepClean) {
+                    console.log("[MAIN] Deep Clean Traces & Volume ID sequence triggered.");
                 }
 
                 resolve({
@@ -196,9 +206,7 @@ ipcMain.handle('start-spoof', async (event, options) => {
             });
 
         } catch (crash) {
-
             console.error("[MAIN] Fatal Crash:", crash);
-
             resolve({
                 success: false,
                 error: "MAIN_CRASH"
@@ -254,7 +262,7 @@ ipcMain.handle('launch-game', async (event, gameName, autoClose, licenseKey, inj
 
             console.log(`[DEBUG] Executing Command: ${cmd}`);
 
-            exec(cmd, { shell: true }, (err) => {
+            exec(cmd, { shell: true, windowsHide: true }, (err) => {
                 if (err) {
                     console.error("[LAUNCH ERROR] Failed to start injector:", err.message);
                 }
@@ -374,7 +382,7 @@ ipcMain.handle('get-machine-id', async () => {
 
         const output = execSync(
             'reg query "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Cryptography" /v MachineGuid',
-            { encoding: "utf8" }
+            { encoding: "utf8", windowsHide: true }
         );
 
         const lines = output.split('\n');
