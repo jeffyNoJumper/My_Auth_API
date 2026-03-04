@@ -212,22 +212,51 @@ bool SpoofDisk() {
     return false;
 }
 
+bool SpoofVolumeID() {
+    // Generate a random 8-digit hex (e.g., ABCD-1234)
+    std::string newId = GenerateRandomString(4) + "-" + GenerateRandomString(4);
+    std::string cmd = "volumeid64.exe C: " + newId + " /accepteula";
+    exec(cmd.c_str());
+    return true;
+}
+
+void DeepCleanTraces() {
+    // Delete common game-linked folders
+    exec("rd /s /q %LocalAppData%\\Riot_Games"); // Example for Valorant
+    exec("rd /s /q %AppData%\\Battle.net");     // Example for COD/Warzone
+
+    // Delete tracking Registry keys
+    exec("reg delete \"HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\ProfileList\" /f");
+
+    // Clear Windows Event Logs (anti-cheats check these for crashes/flags)
+    exec("wevtutil cl Setup & wevtutil cl System & wevtutil cl Application");
+}
+
 class SpoofWorker : public Napi::AsyncWorker {
 public:
-    SpoofWorker(Napi::Function& callback, std::string mb, bool flash, bool reg, bool disk)
+    // 1. Update constructor to include m_deepClean
+    SpoofWorker(Napi::Function& callback, std::string mb, bool flash, bool reg, bool disk, bool deepClean)
         : Napi::AsyncWorker(callback),
-        m_motherboard(mb), m_biosFlash(flash), m_cleanReg(reg), m_cleanDisk(disk),
+        m_motherboard(mb), m_biosFlash(flash), m_cleanReg(reg), m_cleanDisk(disk), m_deepClean(deepClean),
         uStatus(false), kStatus(false), dStatus(false) {
     }
 
     void Execute() override {
+        // Run your standard spoofers
         uStatus = run_user_spoof(m_motherboard.c_str(), m_biosFlash, m_cleanReg);
         kStatus = run_kernel_spoof();
 
+        
+        if (m_deepClean) {
+            DeepCleanTraces(); // Wipes the "Shadow Ban" files/registry breadcrumbs
+        }
+
         if (m_cleanDisk) {
-            dStatus = SpoofDisk();
+            SpoofVolumeID();   // Changes the physical Volume ID
+            dStatus = true;
         }
     }
+
 
     void OnOK() override {
         Napi::HandleScope scope(Env());
@@ -240,7 +269,7 @@ public:
 
 private:
     std::string m_motherboard;
-    bool m_biosFlash, m_cleanReg, m_cleanDisk;
+    bool m_biosFlash, m_cleanReg, m_cleanDisk, m_deepClean;
     bool uStatus, kStatus, dStatus;
 };
 
@@ -256,22 +285,24 @@ Napi::Value RunSpooferAsync(const Napi::CallbackInfo& info) {
     Napi::Object options = info[0].As<Napi::Object>();
     Napi::Function cb = info[1].As<Napi::Function>();
 
-    // 2. SAFE EXTRACTION (Prevents Fatal Error if property is missing)
-    // We check .Has() or use .ToString() fallback to ensure stability
+    // 2. SAFE EXTRACTION
     std::string motherboard = options.Has("motherboard") ? options.Get("motherboard").ToString().Utf8Value() : "Auto";
     bool biosFlash = options.Has("biosFlash") ? options.Get("biosFlash").ToBoolean().Value() : false;
     bool cleanReg = options.Has("cleanReg") ? options.Get("cleanReg").ToBoolean().Value() : true;
     bool cleanDisk = options.Has("cleanDisk") ? options.Get("cleanDisk").ToBoolean().Value() : true;
 
-    // 3. CAPTURE THE NEW GUID (For the Registry Reset)
+    // NEW: Extract the deepClean flag for Shadow Ban protection
+    bool deepClean = options.Has("deepClean") ? options.Get("deepClean").ToBoolean().Value() : false;
+
+    // 3. CAPTURE THE NEW GUID
     if (options.Has("newMachineGuid")) {
         std::string newGuid = options.Get("newMachineGuid").ToString().Utf8Value();
-        // Trigger the Registry Write immediately before the worker starts
         SetMachineID(newGuid);
     }
 
-    // 4. Create the worker with the UI data
-    SpoofWorker* worker = new SpoofWorker(cb, motherboard, biosFlash, cleanReg, cleanDisk);
+    // 4. Create the worker (Now passing 6 arguments)
+    // Make sure your SpoofWorker constructor is updated to accept 'deepClean' as the last bool
+    SpoofWorker* worker = new SpoofWorker(cb, motherboard, biosFlash, cleanReg, cleanDisk, deepClean);
     worker->Queue();
 
     return env.Undefined();
