@@ -7,6 +7,7 @@ const cors = require('cors');
 // --- 1. HANDLE MODELS SAFELY ---
 if (mongoose.models.User) delete mongoose.models.User;
 
+const bcrypt = require('bcryptjs');
 const User = require('../src/user');
 
 const app = express();
@@ -209,7 +210,13 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
 
             case 'reset-hwid':
                 try {
-                    // 1. Find the pending request to get the IDs
+                    const oldHwid = user.hwid || "NOT_SET";
+                    // Always clear the key's HWID lock so next login (e.g. after spoof) can bind the new HWID
+                    user.hwid = null;
+                    await user.save();
+                    console.log(`[✅] HWID lock cleared for key: ${license_key} (old HWID: ${oldHwid})`);
+
+                    // If there was a pending request, also approve it and restore time
                     const pendingReqList = await mongoose.connection.collection('requests')
                         .find({ license_key: license_key.toUpperCase(), status: "PENDING" })
                         .sort({ date: -1 }).limit(1).toArray();
@@ -224,23 +231,18 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                         if (days >= 999) {
                             newExpiry.setFullYear(newExpiry.getFullYear() + 50); // Lifetime
                         } else {
-
                             const msToAdd = Math.floor(days * 24 * 60 * 60 * 1000);
                             newExpiry.setTime(now.getTime() + msToAdd);
                         }
 
-                        // Update User
-                        user.hwid = null;
                         user.expiry_date = newExpiry;
                         await user.save();
 
-                        // Update Request Status
                         await mongoose.connection.collection('requests').updateOne(
                             { _id: reqData._id },
                             { $set: { status: "APPROVED" } }
                         );
 
-                        // DISCORD LOG: SHOW OLD VS NEW + RESTORED TIME
                         const DISCORD_WEBHOOK = "https://discord.com/api/webhooks/1375161068317573253/mK3ucW0iJcN9nj96LJ1L_0bSeCtx-dQMedS9kxvdz49Qhpsd1GCfWb3fRydp_b1Z1OT_";
                         const maskedKey = license_key.substring(0, 5) + "****-****";
 
@@ -265,8 +267,10 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                             })
                         });
                         console.log(`[✅] Approved & Time Restored for: ${license_key}`);
+                        return res.json({ success: true, message: "HWID lock cleared & time restored." });
                     }
-                    return res.json({ success: true, message: "Approved & Time Restored" });
+
+                    return res.json({ success: true, message: "HWID lock cleared. Next login will bind the new HWID." });
                 } catch (err) {
                     console.error("Reset Error:", err);
                     return res.json({ success: false, error: "Database sync failed" });
@@ -346,36 +350,90 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
     }
 });
 
+// -- USER REGISTRATION --
+app.post('/register', async (req, res) => {
+    try {
+        const { email, password, hwid } = req.body;
+
+        if (!email || !password) {
+            return res.json({ status: "Error", error: "Missing Email or Password" });
+        }
+
+        const cleanEmail = email.toLowerCase().trim();
+
+        // --- 1. STRICT EMAIL DOMAIN FILTER ---
+        const allowedDomains = /@(gmail|yahoo|outlook|icloud|hotmail|live|me)\.(com|net|org)$/;
+        if (!allowedDomains.test(cleanEmail)) {
+            return res.json({
+                status: "Error",
+                error: "Please use a valid provider (Gmail, Yahoo, Outlook, or iCloud)."
+            });
+        }
+
+        // 2. Check existence
+        const existingUser = await User.findOne({ email: cleanEmail });
+        if (existingUser) {
+            return res.json({ status: "Error", error: "Email already in use." });
+        }
+
+        // 3. SECURE HASHING
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(password.trim(), salt);
+
+        // 4. CREATE USER (No Expiry / No automatic sub)
+        const newUser = new User({
+            email: cleanEmail,
+            password: hashedPassword,
+            hwid: hwid || null,
+            expiry_date: null,
+            license_key: "PENDING_ACTIVATION"
+        });
+
+        await newUser.save();
+
+        // --- 5. SUCCESS RESPONSE WITH PROMPT ---
+        res.json({
+            status: "Success",
+            message: "Account Created! Log in and click your PROFILE ICON to redeem your subscription key."
+        });
+
+    } catch (err) {
+        console.error("Register Error:", err);
+        res.status(500).json({ error: "Internal Server Error" });
+    }
+});
+
 // --- USER LOGIN ---
 app.post('/login', async (req, res) => {
     try {
         const { email, password, hwid } = req.body;
 
-        // 1. Only require Email and Password now
         if (!email || !password) {
-            return res.json({ error: "Missing required fields (Email/Password)" });
+            return res.json({ error: "Missing Email or Password" });
         }
 
         const cleanEmail = email.toLowerCase().trim();
         const cleanPass = password.trim();
 
-        // 2. Find the user by EMAIL instead of license_key
+        // 1. Find user by email
         const user = await User.findOne({ email: cleanEmail });
 
         if (!user) {
-            return res.json({ error: "User not found. Please register first." });
+            return res.json({ error: "Account not found. Please register first." });
         }
 
-        // 3. Verify the Password
-        if (user.password !== cleanPass) {
+        // 2. Verify Hashed Password
+        // This replaces the old (user.password !== cleanPass) check
+        const isMatch = await bcrypt.compare(cleanPass, user.password);
+        if (!isMatch) {
             return res.json({ error: "Invalid Email or Password." });
         }
 
-        // --- Keep your existing checks (Banned/Paused/Expired/HWID) ---
+        // 3. Status Checks
         if (user.is_banned) return res.json({ error: "Account Banned" });
         if (user.is_paused) return res.json({ error: "Subscription Paused" });
 
-        // Activation logic (if they have a key but it's not activated yet)
+        // 4. Activation Logic (Initialize expiry if missing)
         if (!user.expiry_date) {
             const days = (typeof user.duration_days === 'number') ? user.duration_days : 0.0416;
             const expiry = new Date();
@@ -388,16 +446,22 @@ app.post('/login', async (req, res) => {
             await user.save();
         }
 
-        if (new Date() > user.expiry_date) return res.json({ error: "Subscription Expired" });
+        // 5. Expiry Check
+        if (new Date() > new Date(user.expiry_date)) {
+            return res.json({ error: "Subscription Expired" });
+        }
 
-        // HWID Logic
+        // 6. HWID Logic
         if (!user.hwid) {
+            // First time login - link the HWID
             user.hwid = hwid;
             await user.save();
         } else if (user.hwid !== hwid) {
+            // HWID doesn't match the one on file
             return res.json({ error: "HWID Mismatch. Please request a reset." });
         }
 
+        // 7. Success Response
         res.json({
             token: "VALID",
             expiry: user.expiry_date,
