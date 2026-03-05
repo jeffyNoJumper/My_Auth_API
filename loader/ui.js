@@ -631,10 +631,12 @@ async function handleRegister() {
     const confirm = document.getElementById('reg-confirm').value;
     const btn = document.getElementById('register-btn');
 
+    // 1. Basic UI Validation
     if (!email || !pass || !confirm) return alert("All fields are required!");
     if (pass !== confirm) return alert("Passwords do not match!");
 
-    btn.innerHTML = `<div class="spinner"></div> CREATING...`;
+    // 2. UI State - Loading
+    btn.innerHTML = `<div class="spinner"></div> <span>CREATING...</span>`;
     btn.disabled = true;
 
     try {
@@ -650,26 +652,36 @@ async function handleRegister() {
             })
         });
 
+        // 3. Handle HTML/Server Errors (The "Unexpected Token <" Fix)
         const contentType = response.headers.get("content-type");
         if (!response.ok || !contentType || !contentType.includes("application/json")) {
-            const errorBody = await response.text();
-            console.error("Server Error HTML:", errorBody);
-            throw new Error(`Server Error ${response.status}: Check Render Logs.`);
+            const errorText = await response.text();
+            console.error("Critical Server Error:", errorText);
+            throw new Error(`Server Error (${response.status}). Check backend logs.`);
         }
 
         const data = await response.json();
 
+        // 4. Success - Show prompt to click Profile Icon for Key Redemption
         if (data.status === "Success") {
-            alert("Account Created! You can now log in.");
+            // This shows your custom "Click Profile Icon" message from the backend
+            alert(data.message || "Account Created! Please log in to redeem your key.");
             closeModal('register-modal');
+
+            // Optional: Auto-fill the login email for them
+            const loginEmail = document.getElementById('login-email');
+            if (loginEmail) loginEmail.value = email;
+
         } else {
+            // Shows specific errors (e.g., "Invalid Provider", "Email in use")
             alert("Registration Failed: " + (data.error || "Unknown error"));
         }
+
     } catch (err) {
         console.error("Register Error:", err);
-        alert(err.message);
-        alert("Failed to connect to registration server.");
+        alert("Connection Failed: " + err.message);
     } finally {
+        // 5. Reset UI State
         btn.innerHTML = "REGISTER NOW";
         btn.disabled = false;
     }
