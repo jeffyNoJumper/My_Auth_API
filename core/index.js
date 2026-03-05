@@ -380,13 +380,13 @@ app.post('/register', async (req, res) => {
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password.trim(), salt);
 
-        // 4. CREATE USER (No Expiry / No automatic sub)
+        // 4. CREATE USER (Completely Clean State)
         const newUser = new User({
             email: cleanEmail,
             password: hashedPassword,
             hwid: hwid || null,
-            expiry_date: null,
-            license_key: "PENDING_ACTIVATION"
+            expiry_date: null, // No subscription time yet
+            license_key: null  // FIXED: No "PENDING_ACTIVATION" filler
         });
 
         await newUser.save();
