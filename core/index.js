@@ -61,8 +61,8 @@ function verifyAdmin(req, res, next) {
 // --- 2. CREATE KEY ---
 app.post('/admin/create-key', verifyAdmin, async (req, res) => {
     try {
-        const { days, games, email, password } = req.body;
-        const daysNum = parseFloat(days);
+        const { days, games } = req.body;
+        const daysNum = parseFloat(days) || 30;
 
         const gamePrefixMap = {
             "CS2": "CS2X",
@@ -72,35 +72,41 @@ app.post('/admin/create-key', verifyAdmin, async (req, res) => {
             "All-Access": "ALLX"
         };
 
+        // Generate the Key with the correct Prefix
         const firstGame = Array.isArray(games) ? games[0] : games;
-
         const prefix = gamePrefixMap[firstGame] || "GENR";
 
-        const randomPart = crypto.randomBytes(6).toString('hex').toUpperCase().match(/.{4}/g).join('-');
-        const newKey = `${prefix}-${randomPart}`;
+        // Generates a clean key like: CS2X-ABCD-1234
+        const randomPart = crypto.randomBytes(4).toString('hex').toUpperCase();
+        const randomPart2 = crypto.randomBytes(4).toString('hex').toUpperCase();
+        const newKey = `${prefix}-${randomPart}-${randomPart2}`;
 
+        // Create the VOUCHER Document
         const userData = {
             license_key: newKey,
             duration_days: daysNum,
             games: Array.isArray(games) ? games : [games],
-            email: email ? email.toLowerCase() : `pending_${randomPart}@auth.com`,
-            password: password || null,
+            email: `pending_${newKey.toLowerCase()}@vouchers.internal`,
+            password: "VOUCHER_PROTECTED", // Placeholder
             hwid: null,
-            expiry_date: null
+            expiry_date: null,
+            is_banned: false
         };
 
         const newUser = new User(userData);
         await newUser.save();
 
+        console.log(`[ADMIN] Key Created: ${newKey} (${daysNum} days)`);
+
         res.json({
             success: true,
             key: newKey,
-            expiry: null,
-            games: newUser.games
+            message: "Voucher saved. User must register normally and redeem this key."
         });
+
     } catch (err) {
         console.error("Create Key Error:", err);
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: "Database conflict or error." });
     }
 });
 
