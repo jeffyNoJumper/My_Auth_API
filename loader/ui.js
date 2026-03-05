@@ -558,10 +558,9 @@ async function handleLogin(isAutoLogin = false) {
             if (typeof updateHomeTabUI === 'function') updateHomeTabUI();
             showTab('home');
 
-            // This refreshes the whole UI state
             if (typeof updateUIForAccess === 'function') updateUIForAccess();
 
-            // --- FIX: Always reset button and auth state so loader "finishes" and future logins work ---
+            
             isAuthProcessActive = false;
             btn.innerHTML = "LOGIN";
             btn.disabled = false;
@@ -651,6 +650,13 @@ async function handleRegister() {
             })
         });
 
+        const contentType = response.headers.get("content-type");
+        if (!response.ok || !contentType || !contentType.includes("application/json")) {
+            const errorBody = await response.text();
+            console.error("Server Error HTML:", errorBody);
+            throw new Error(`Server Error ${response.status}: Check Render Logs.`);
+        }
+
         const data = await response.json();
 
         if (data.status === "Success") {
@@ -661,6 +667,7 @@ async function handleRegister() {
         }
     } catch (err) {
         console.error("Register Error:", err);
+        alert(err.message);
         alert("Failed to connect to registration server.");
     } finally {
         btn.innerHTML = "REGISTER NOW";
