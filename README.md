@@ -44,14 +44,19 @@ Built with **C# WinForms** for the frontend and a **C++ DLL** for injection and 
 - Stream proof mode hides visuals for safe streaming
 - Integrated terminal logs for spoofing and hardware status
 
-*Spoofer Example Screenshot:*  
-![Spoofer Example](examples/spoofer.png)
+*Spoofer / HWID Example Screenshots:*  
+![Spoofer Example](examples/spoofer.PNG)
+![HWID Example](examples/HWID.PNG)
 
 ### Account & Authentication
 - License key authentication with server verification
 - Profile picture sync via backend API
 - HWID reset requests
 - Discord Rich Presence support
+
+*Registration / Account Screenshots:*
+![Registration Example](examples/register_account.PNG)
+![Session Expired Example](examples/session_expired.PNG)
 
 ### Updater
 - Automatic update notifications
