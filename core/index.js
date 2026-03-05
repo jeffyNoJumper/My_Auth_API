@@ -611,58 +611,72 @@ app.post('/admin/add-time', async (req, res) => {
 // --- USER: REDEEM VOUCHER KEY ---
 app.post('/redeem', async (req, res) => {
     try {
-        const { email, license_key, hwid } = req.body;
+        const { email, license_key } = req.body;
 
         if (!email || !license_key) {
-            return res.status(400).json({ status: "Error", error: "Missing email or key." });
+            return res.json({ status: "Error", error: "Missing email or key." });
         }
 
-        // 1. Find the Voucher Key (A key that exists in DB but has no real email yet)
+        const cleanKey = license_key.toUpperCase().trim();
+        const cleanEmail = email.toLowerCase().trim();
+
+        // 1. Find the Voucher (The unassigned key in your DB)
+        // This looks for a record that HAS the key but IS NOT yet tied to a real user email
         const voucher = await User.findOne({
-            license_key: license_key.toUpperCase().trim(),
-            email: { $regex: /pending_/i } // Checks for your "pending_..." prefix logic
+            license_key: cleanKey,
+            $or: [
+                { email: { $regex: /pending_/i } }, // Your current prefix logic
+                { email: null }                     // Extra safety for blank keys
+            ]
         });
 
         if (!voucher) {
-            return res.status(404).json({
+            return res.json({
                 status: "Error",
-                error: "Invalid or already used license key."
+                error: "Invalid, expired, or already used license key."
             });
         }
 
-        // 2. Find the Active User account
-        const user = await User.findOne({ email: email.toLowerCase().trim() });
+        // 2. Find the logged-in User account
+        const user = await User.findOne({ email: cleanEmail });
         if (!user) {
-            return res.status(404).json({ status: "Error", error: "Account not found." });
+            return res.json({ status: "Error", error: "Account not found." });
         }
 
+        // 3. Calculate Time to Add
         const daysToAdd = parseFloat(voucher.duration_days) || 30;
 
-        // 4. Update Expiry: If expired, start from now. If active, add to existing.
-        let currentExpiry = user.expiry_date ? new Date(user.expiry_date) : new Date();
-        let baseDate = (currentExpiry > new Date()) ? currentExpiry : new Date();
+        // Use existing expiry if it's in the future; otherwise, start from right now
+        let baseDate = (user.expiry_date && new Date(user.expiry_date) > new Date())
+            ? new Date(user.expiry_date)
+            : new Date();
 
         baseDate.setDate(baseDate.getDate() + daysToAdd);
         user.expiry_date = baseDate;
 
-        // 5. Update Games: Merge games from the voucher into the user account
+        // 4. Update Games (Merge the voucher's games into the user's list)
         if (voucher.games && Array.isArray(voucher.games)) {
-            const updatedGames = new Set([...user.games, ...voucher.games]);
+            const updatedGames = new Set([...(user.games || []), ...voucher.games]);
             user.games = Array.from(updatedGames);
         }
 
-        // 6. Nuke the Voucher (So it can't be used again)
+        // 5. Update the User's License Key field
+        // This replaces 'null' with the actual key they just used
+        user.license_key = cleanKey;
+
+        // 6. Delete the Voucher record so it can't be reused
         await User.deleteOne({ _id: voucher._id });
 
         // 7. Save the active user
         await user.save();
 
-        console.log(`[REDEEM] ${email} redeemed ${daysToAdd} days via ${license_key}`);
+        console.log(`[REDEEM] ${cleanEmail} activated ${daysToAdd} days via ${cleanKey}`);
 
         res.json({
             status: "Success",
-            message: `Successfully added ${daysToAdd} days!`,
-            new_expiry: user.expiry_date
+            message: `Success! Added ${daysToAdd} days to your account.`,
+            new_expiry: user.expiry_date,
+            license_key: user.license_key
         });
 
     } catch (err) {
