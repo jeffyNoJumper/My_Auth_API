@@ -259,6 +259,71 @@ body.logged-in .main-content {
     max-width: 400px;
 }
 
+.modal-icon {
+    font-size: 3rem;
+    color: #00f3ff; /* Neon Blue */
+    margin-bottom: 15px;
+    filter: drop-shadow(0 0 10px rgba(0, 243, 255, 0.5));
+}
+
+/* Status Badge */
+.status-badge {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 5px;
+}
+
+    .status-badge p {
+        margin: 0;
+        font-size: 0.75rem;
+        letter-spacing: 1.5px;
+        color: #00f3ff;
+        text-transform: uppercase;
+    }
+
+.pulse-dot {
+    width: 6px;
+    height: 6px;
+    background: #00f3ff;
+    border-radius: 50%;
+    animation: pulse 1.5s infinite;
+}
+
+/* User Info Styling */
+.auth-details {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    color: rgba(255, 255, 255, 0.7);
+    font-family: 'Segoe UI', sans-serif;
+    margin-top: 10px;
+}
+
+.cancel-btn i {
+    margin-right: 5px;
+    font-size: 0.8rem;
+}
+
+@keyframes pulse {
+    0% {
+        transform: scale(1);
+        opacity: 1;
+    }
+
+    50% {
+        transform: scale(1.5);
+        opacity: 0.5;
+    }
+
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
 /* Sidebar Styling */
 .sidebar {
     width: 250px;
