@@ -39,7 +39,7 @@ function startSecurityMonitor() {
             triggerReaction("Debugger Attachment Detected");
         }
 
-        exec('tasklist', { windowsHide: true }, (err, stdout) => {
+        exec('tasklist', (err, stdout) => {
             if (err) return;
             const activeProcess = stdout.toLowerCase();
 
@@ -262,7 +262,7 @@ ipcMain.handle('launch-game', async (event, gameName, autoClose, licenseKey, inj
 
             console.log(`[DEBUG] Executing Command: ${cmd}`);
 
-            exec(cmd, { shell: true, windowsHide: true }, (err) => {
+            exec(cmd, { shell: true }, (err) => {
                 if (err) {
                     console.error("[LAUNCH ERROR] Failed to start injector:", err.message);
                 }
@@ -382,7 +382,7 @@ ipcMain.handle('get-machine-id', async () => {
 
         const output = execSync(
             'reg query "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Cryptography" /v MachineGuid',
-            { encoding: "utf8", windowsHide: true }
+            { encoding: "utf8" }
         );
 
         const lines = output.split('\n');
