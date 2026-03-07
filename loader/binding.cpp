@@ -9,6 +9,8 @@
 #include <stdexcept>
 #include <array>
 #include <shellapi.h>
+#include <Shlwapi.h>
+#pragma comment(lib, "Shlwapi.lib")
 
 extern "C" {
     bool run_user_spoof(const char* motherboard, bool biosFlash, bool cleanReg);
@@ -213,23 +215,75 @@ bool SpoofDisk() {
 }
 
 bool SpoofVolumeID() {
-    // Generate a random 8-digit hex (e.g., ABCD-1234)
+
     std::string newId = GenerateRandomString(4) + "-" + GenerateRandomString(4);
-    std::string cmd = "volumeid64.exe C: " + newId + " /accepteula";
+
+    std::string exe =
+        "C:\\Users\\mac98\\Desktop\\Projects\\My_Auth_API-main\\My_Auth_API-main\\loader\\bin\\Volumeid64.exe";
+
+    std::string cmd =
+        "\"" + exe + "\" C: " + newId + " /accepteula";
+
     exec(cmd.c_str());
+
     return true;
 }
 
+std::string GenerateHex(int length) {
+    const std::string charset = "0123456789ABCDEF";
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<> dist(0, charset.size() - 1);
+
+    std::string result;
+    for (int i = 0; i < length; ++i)
+        result += charset[dist(gen)];
+
+    return result;
+}
+
 void DeepCleanTraces() {
-    // Delete common game-linked folders
-    exec("rd /s /q %LocalAppData%\\Riot_Games"); // Example for Valorant
-    exec("rd /s /q %AppData%\\Battle.net");     // Example for COD/Warzone
 
-    // Delete tracking Registry keys
-    exec("reg delete \"HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\ProfileList\" /f");
+    // -------------------------
+    // STEAM / VALVE (CS2)
+    // -------------------------
+    exec("rd /s /q %ProgramFiles(x86)%\\Steam\\logs");
+    exec("rd /s /q %ProgramFiles(x86)%\\Steam\\userdata");
+    exec("rd /s /q %LocalAppData%\\Steam");
+    exec("reg delete \"HKCU\\Software\\Valve\\Steam\" /f");
 
-    // Clear Windows Event Logs (anti-cheats check these for crashes/flags)
-    exec("wevtutil cl Setup & wevtutil cl System & wevtutil cl Application");
+
+    // -------------------------
+    // ROCKSTAR (GTA V / FiveM)
+    // -------------------------
+    exec("rd /s /q %LocalAppData%\\Rockstar Games");
+    exec("rd /s /q %UserProfile%\\Documents\\Rockstar Games");
+    exec("rd /s /q %LocalAppData%\\FiveM");
+    exec("rd /s /q %AppData%\\CitizenFX");
+
+    exec("reg delete \"HKCU\\Software\\Rockstar Games\" /f");
+
+
+    // -------------------------
+    // ACTIVISION / CALL OF DUTY
+    // -------------------------
+    exec("rd /s /q %ProgramData%\\Battle.net");
+    exec("rd /s /q %AppData%\\Battle.net");
+    exec("rd /s /q %LocalAppData%\\Battle.net");
+
+    exec("reg delete \"HKLM\\SOFTWARE\\Activision\" /f");
+    exec("reg delete \"HKCU\\Software\\Blizzard Entertainment\" /f");
+
+
+    // -------------------------
+    // WINDOWS TRACKING
+    // -------------------------
+    exec("reg delete \"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\RecentDocs\" /f");
+
+    // Clear event logs
+    exec("wevtutil cl Setup");
+    exec("wevtutil cl System");
+    exec("wevtutil cl Application");
 }
 
 class SpoofWorker : public Napi::AsyncWorker {
@@ -246,13 +300,14 @@ public:
         uStatus = run_user_spoof(m_motherboard.c_str(), m_biosFlash, m_cleanReg);
         kStatus = run_kernel_spoof();
 
-        
+
         if (m_deepClean) {
             DeepCleanTraces(); // Wipes the "Shadow Ban" files/registry breadcrumbs
         }
 
         if (m_cleanDisk) {
-            SpoofVolumeID();   // Changes the physical Volume ID
+            SpoofDisk();        // registry serial
+            SpoofVolumeID();    // real volume id
             dStatus = true;
         }
     }
