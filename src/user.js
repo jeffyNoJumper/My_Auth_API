@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const userSchema = new mongoose.Schema({
     email: { type: String, required: true, unique: true, sparse: true },
     password: { type: String, required: true },
-    license_key: { type: String, required: false, unique: true, default: null },
+    license_key: { type: String, required: false, unique: true, sparse: true, default: null },
     hwid: { type: String, default: null },
 
     expiry_date: { type: Date, required: false, default: null },
