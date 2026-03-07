@@ -1,12 +1,12 @@
 const mongoose = require('mongoose');
 
 const userSchema = new mongoose.Schema({
-    email: { type: String, required: false, unique: true, sparse: true, default: null },
-    password: { type: String, required: false, default: null },
-    license_key: { type: String, required: true, unique: true },
+    email: { type: String, required: true, unique: true, sparse: true },
+    password: { type: String, required: true },
+    license_key: { type: String, required: false, unique: true, default: null },
     hwid: { type: String, default: null },
 
-    expiry_date: { type: mongoose.Schema.Types.Mixed, required: false, default: null },
+    expiry_date: { type: Date, required: false, default: null },
 
     duration_days: { type: Number, default: 30 },
 
@@ -14,8 +14,8 @@ const userSchema = new mongoose.Schema({
     is_paused: { type: Boolean, default: false },
     games: { type: [String], default: [] }
 }, {
-    timestamps: { type: mongoose.Schema.Types.Mixed }, 
+    timestamps: true,
     strict: false
 });
 
-module.exports = mongoose.model('User', userSchema);
+module.exports = mongoose.model('User', userSchema); 
