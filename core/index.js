@@ -2,7 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const crypto = require('crypto');
-const bcrypt = require("bcrypt");
+const bcrypt = require("bcryptjs");
 const cors = require('cors');
 
 // --- 1. HANDLE MODELS SAFELY ---
