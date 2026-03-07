@@ -7,7 +7,6 @@ const cors = require('cors');
 // --- 1. HANDLE MODELS SAFELY ---
 if (mongoose.models.User) delete mongoose.models.User;
 
-const bcrypt = require('bcryptjs');
 const User = require('../src/user');
 
 const app = express();
@@ -61,8 +60,8 @@ function verifyAdmin(req, res, next) {
 // --- 2. CREATE KEY ---
 app.post('/admin/create-key', verifyAdmin, async (req, res) => {
     try {
-        const { days, games } = req.body;
-        const daysNum = parseFloat(days) || 30;
+        const { days, games, email, password } = req.body;
+        const daysNum = parseFloat(days);
 
         const gamePrefixMap = {
             "CS2": "CS2X",
@@ -72,41 +71,35 @@ app.post('/admin/create-key', verifyAdmin, async (req, res) => {
             "All-Access": "ALLX"
         };
 
-        // Generate the Key with the correct Prefix
         const firstGame = Array.isArray(games) ? games[0] : games;
+
         const prefix = gamePrefixMap[firstGame] || "GENR";
 
-        // Generates a clean key like: CS2X-ABCD-1234
-        const randomPart = crypto.randomBytes(4).toString('hex').toUpperCase();
-        const randomPart2 = crypto.randomBytes(4).toString('hex').toUpperCase();
-        const newKey = `${prefix}-${randomPart}-${randomPart2}`;
+        const randomPart = crypto.randomBytes(6).toString('hex').toUpperCase().match(/.{4}/g).join('-');
+        const newKey = `${prefix}-${randomPart}`;
 
-        // Create the VOUCHER Document
         const userData = {
             license_key: newKey,
             duration_days: daysNum,
             games: Array.isArray(games) ? games : [games],
-            email: `pending_${newKey.toLowerCase()}@vouchers.internal`,
-            password: "VOUCHER_PROTECTED", // Placeholder
+            email: email ? email.toLowerCase() : `pending_${randomPart}@auth.com`,
+            password: password || null,
             hwid: null,
-            expiry_date: null,
-            is_banned: false
+            expiry_date: null
         };
 
         const newUser = new User(userData);
         await newUser.save();
 
-        console.log(`[ADMIN] Key Created: ${newKey} (${daysNum} days)`);
-
         res.json({
             success: true,
             key: newKey,
-            message: "Voucher saved. User must register normally and redeem this key."
+            expiry: null,
+            games: newUser.games
         });
-
     } catch (err) {
         console.error("Create Key Error:", err);
-        res.status(500).json({ success: false, error: "Database conflict or error." });
+        res.status(500).json({ success: false, error: err.message });
     }
 });
 
@@ -216,13 +209,7 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
 
             case 'reset-hwid':
                 try {
-                    const oldHwid = user.hwid || "NOT_SET";
-                    // Always clear the key's HWID lock so next login (e.g. after spoof) can bind the new HWID
-                    user.hwid = null;
-                    await user.save();
-                    console.log(`[✅] HWID lock cleared for key: ${license_key} (old HWID: ${oldHwid})`);
-
-                    // If there was a pending request, also approve it and restore time
+                    // 1. Find the pending request to get the IDs
                     const pendingReqList = await mongoose.connection.collection('requests')
                         .find({ license_key: license_key.toUpperCase(), status: "PENDING" })
                         .sort({ date: -1 }).limit(1).toArray();
@@ -237,18 +224,23 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                         if (days >= 999) {
                             newExpiry.setFullYear(newExpiry.getFullYear() + 50); // Lifetime
                         } else {
+
                             const msToAdd = Math.floor(days * 24 * 60 * 60 * 1000);
                             newExpiry.setTime(now.getTime() + msToAdd);
                         }
 
+                        // Update User
+                        user.hwid = null;
                         user.expiry_date = newExpiry;
                         await user.save();
 
+                        // Update Request Status
                         await mongoose.connection.collection('requests').updateOne(
                             { _id: reqData._id },
                             { $set: { status: "APPROVED" } }
                         );
 
+                        // DISCORD LOG: SHOW OLD VS NEW + RESTORED TIME
                         const DISCORD_WEBHOOK = "https://discord.com/api/webhooks/1375161068317573253/mK3ucW0iJcN9nj96LJ1L_0bSeCtx-dQMedS9kxvdz49Qhpsd1GCfWb3fRydp_b1Z1OT_";
                         const maskedKey = license_key.substring(0, 5) + "****-****";
 
@@ -273,10 +265,8 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                             })
                         });
                         console.log(`[✅] Approved & Time Restored for: ${license_key}`);
-                        return res.json({ success: true, message: "HWID lock cleared & time restored." });
                     }
-
-                    return res.json({ success: true, message: "HWID lock cleared. Next login will bind the new HWID." });
+                    return res.json({ success: true, message: "Approved & Time Restored" });
                 } catch (err) {
                     console.error("Reset Error:", err);
                     return res.json({ success: false, error: "Database sync failed" });
@@ -356,90 +346,36 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
     }
 });
 
-// -- USER REGISTRATION --
-app.post('/register', async (req, res) => {
-    try {
-        const { email, password, hwid } = req.body;
-
-        if (!email || !password) {
-            return res.json({ status: "Error", error: "Missing Email or Password" });
-        }
-
-        const cleanEmail = email.toLowerCase().trim();
-
-        // --- 1. STRICT EMAIL DOMAIN FILTER ---
-        const allowedDomains = /@(gmail|yahoo|outlook|icloud|hotmail|live|me)\.(com|net|org)$/;
-        if (!allowedDomains.test(cleanEmail)) {
-            return res.json({
-                status: "Error",
-                error: "Please use a valid provider (Gmail, Yahoo, Outlook, or iCloud)."
-            });
-        }
-
-        // 2. Check existence
-        const existingUser = await User.findOne({ email: cleanEmail });
-        if (existingUser) {
-            return res.json({ status: "Error", error: "Email already in use." });
-        }
-
-        // 3. SECURE HASHING
-        const salt = await bcrypt.genSalt(10);
-        const hashedPassword = await bcrypt.hash(password.trim(), salt);
-
-        // 4. CREATE USER (Completely Clean State)
-        const newUser = new User({
-            email: cleanEmail,
-            password: hashedPassword,
-            hwid: hwid || null,
-            expiry_date: null, // No subscription time yet
-            license_key: null  // FIXED: No "PENDING_ACTIVATION" filler
-        });
-
-        await newUser.save();
-
-        // --- 5. SUCCESS RESPONSE WITH PROMPT ---
-        res.json({
-            status: "Success",
-            message: "Account Created! Log in and click your PROFILE ICON to redeem your subscription key."
-        });
-
-    } catch (err) {
-        console.error("Register Error:", err);
-        res.status(500).json({ error: "Internal Server Error" });
-    }
-});
-
 // --- USER LOGIN ---
 app.post('/login', async (req, res) => {
     try {
         const { email, password, hwid } = req.body;
 
+        // 1. Only require Email and Password now
         if (!email || !password) {
-            return res.json({ error: "Missing Email or Password" });
+            return res.json({ error: "Missing required fields (Email/Password)" });
         }
 
         const cleanEmail = email.toLowerCase().trim();
         const cleanPass = password.trim();
 
-        // 1. Find user by email
+        // 2. Find the user by EMAIL instead of license_key
         const user = await User.findOne({ email: cleanEmail });
 
         if (!user) {
-            return res.json({ error: "Account not found. Please register first." });
+            return res.json({ error: "User not found. Please register first." });
         }
 
-        // 2. Verify Hashed Password
-        // This replaces the old (user.password !== cleanPass) check
-        const isMatch = await bcrypt.compare(cleanPass, user.password);
-        if (!isMatch) {
+        // 3. Verify the Password
+        if (user.password !== cleanPass) {
             return res.json({ error: "Invalid Email or Password." });
         }
 
-        // 3. Status Checks
+        // --- Keep your existing checks (Banned/Paused/Expired/HWID) ---
         if (user.is_banned) return res.json({ error: "Account Banned" });
         if (user.is_paused) return res.json({ error: "Subscription Paused" });
 
-        // 4. Activation Logic (Initialize expiry if missing)
+        // Activation logic (if they have a key but it's not activated yet)
         if (!user.expiry_date) {
             const days = (typeof user.duration_days === 'number') ? user.duration_days : 0.0416;
             const expiry = new Date();
@@ -452,22 +388,16 @@ app.post('/login', async (req, res) => {
             await user.save();
         }
 
-        // 5. Expiry Check
-        if (new Date() > new Date(user.expiry_date)) {
-            return res.json({ error: "Subscription Expired" });
-        }
+        if (new Date() > user.expiry_date) return res.json({ error: "Subscription Expired" });
 
-        // 6. HWID Logic
+        // HWID Logic
         if (!user.hwid) {
-            // First time login - link the HWID
             user.hwid = hwid;
             await user.save();
         } else if (user.hwid !== hwid) {
-            // HWID doesn't match the one on file
             return res.json({ error: "HWID Mismatch. Please request a reset." });
         }
 
-        // 7. Success Response
         res.json({
             token: "VALID",
             expiry: user.expiry_date,
@@ -617,72 +547,58 @@ app.post('/admin/add-time', async (req, res) => {
 // --- USER: REDEEM VOUCHER KEY ---
 app.post('/redeem', async (req, res) => {
     try {
-        const { email, license_key } = req.body;
+        const { email, license_key, hwid } = req.body;
 
         if (!email || !license_key) {
-            return res.json({ status: "Error", error: "Missing email or key." });
+            return res.status(400).json({ status: "Error", error: "Missing email or key." });
         }
 
-        const cleanKey = license_key.toUpperCase().trim();
-        const cleanEmail = email.toLowerCase().trim();
-
-        // 1. Find the Voucher (The unassigned key in your DB)
-        // This looks for a record that HAS the key but IS NOT yet tied to a real user email
+        // 1. Find the Voucher Key (A key that exists in DB but has no real email yet)
         const voucher = await User.findOne({
-            license_key: cleanKey,
-            $or: [
-                { email: { $regex: /pending_/i } }, // Your current prefix logic
-                { email: null }                     // Extra safety for blank keys
-            ]
+            license_key: license_key.toUpperCase().trim(),
+            email: { $regex: /pending_/i } // Checks for your "pending_..." prefix logic
         });
 
         if (!voucher) {
-            return res.json({
+            return res.status(404).json({
                 status: "Error",
-                error: "Invalid, expired, or already used license key."
+                error: "Invalid or already used license key."
             });
         }
 
-        // 2. Find the logged-in User account
-        const user = await User.findOne({ email: cleanEmail });
+        // 2. Find the Active User account
+        const user = await User.findOne({ email: email.toLowerCase().trim() });
         if (!user) {
-            return res.json({ status: "Error", error: "Account not found." });
+            return res.status(404).json({ status: "Error", error: "Account not found." });
         }
 
-        // 3. Calculate Time to Add
         const daysToAdd = parseFloat(voucher.duration_days) || 30;
 
-        // Use existing expiry if it's in the future; otherwise, start from right now
-        let baseDate = (user.expiry_date && new Date(user.expiry_date) > new Date())
-            ? new Date(user.expiry_date)
-            : new Date();
+        // 4. Update Expiry: If expired, start from now. If active, add to existing.
+        let currentExpiry = user.expiry_date ? new Date(user.expiry_date) : new Date();
+        let baseDate = (currentExpiry > new Date()) ? currentExpiry : new Date();
 
         baseDate.setDate(baseDate.getDate() + daysToAdd);
         user.expiry_date = baseDate;
 
-        // 4. Update Games (Merge the voucher's games into the user's list)
+        // 5. Update Games: Merge games from the voucher into the user account
         if (voucher.games && Array.isArray(voucher.games)) {
-            const updatedGames = new Set([...(user.games || []), ...voucher.games]);
+            const updatedGames = new Set([...user.games, ...voucher.games]);
             user.games = Array.from(updatedGames);
         }
 
-        // 5. Update the User's License Key field
-        // This replaces 'null' with the actual key they just used
-        user.license_key = cleanKey;
-
-        // 6. Delete the Voucher record so it can't be reused
+        // 6. Nuke the Voucher (So it can't be used again)
         await User.deleteOne({ _id: voucher._id });
 
         // 7. Save the active user
         await user.save();
 
-        console.log(`[REDEEM] ${cleanEmail} activated ${daysToAdd} days via ${cleanKey}`);
+        console.log(`[REDEEM] ${email} redeemed ${daysToAdd} days via ${license_key}`);
 
         res.json({
             status: "Success",
-            message: `Success! Added ${daysToAdd} days to your account.`,
-            new_expiry: user.expiry_date,
-            license_key: user.license_key
+            message: `Successfully added ${daysToAdd} days!`,
+            new_expiry: user.expiry_date
         });
 
     } catch (err) {
