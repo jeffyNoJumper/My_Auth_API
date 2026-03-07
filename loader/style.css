@@ -29,11 +29,37 @@ button,
 .stat-tile,
 .action-btn,
 input,
-.profile-trigger {
+.profile-trigger,
+.sidebar-logo img,
+.toast-notification {
     -webkit-app-region: no-drag !important;
     cursor: pointer !important;
 }
+.close-x {
+    -webkit-app-region: no-drag;
+    cursor: pointer;
+    font-size: 22px;
+}
 
+.toast-notification {
+    position: fixed;
+    top: 16px;
+    right: 75px; /* moves it 100px left from the right edge */
+    background: rgba(10,10,20,0.85);
+    color: #fff;
+    padding: 12px 20px;
+    border-radius: 10px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.4);
+    z-index: 9999;
+    font-size: 14px;
+    cursor: pointer;
+    transition: transform 0.2s ease, opacity 0.3s ease;
+}
+
+    .toast-notification:hover {
+        transform: scale(1.05);
+        opacity: 0.95;
+    }
 
 .hidden {
     display: none !important;
@@ -112,6 +138,7 @@ input,
     transition: opacity 0.5s ease, visibility 0.5s;
     -webkit-app-region: no-drag;
     pointer-events: none; /* clicks pass through except on card */
+    border-radius: 16px;
 }
 
 #login-screen .login-card {
@@ -213,13 +240,16 @@ input,
 .sidebar,
 .main-content {
     display: none !important;
+    border-radius: 16px;
 }
 body.logged-in .sidebar {
     display: flex !important;
     flex-direction: column;
+    border-radius: 16px;
 }
 body.logged-in .main-content {
     display: flex !important;
+    border-radius: 16px;
     flex-direction: column;
 }
 
@@ -334,6 +364,20 @@ body.logged-in .main-content {
     border-right: 1px solid #333;
 }
 
+.sidebar-logo img {
+    max-width: 206px; /* Adjust size to fit sidebar */
+    height: auto;
+    display: block;
+    margin: 0 auto;
+    border-radius: 8px; /* optional rounded corners */
+    box-shadow: 0 0 15px rgb(251, 0, 238); /* optional glow */
+    transition: transform 0.3s ease;
+}
+
+    .sidebar-logo img:hover {
+        transform: scale(1.05); /* subtle hover effect */
+    }
+
 .brand {
     color: var(--accent-teal);
     font-weight: bold;
@@ -427,6 +471,30 @@ body.logged-in .main-content {
     box-sizing: border-box;
 }
 
+/* buttons */
+.btn-primary {
+    padding: 10px 20px;
+    border-radius: 8px;
+    border: none;
+    background: #00f2ff;
+    color: black;
+    font-weight: bold;
+    cursor: pointer;
+    box-shadow: 0 0 10px #00f2ff;
+}
+
+.btn-secondary {
+    padding: 10px 20px;
+    border-radius: 8px;
+    border: 1px solid #444;
+    background: transparent;
+    color: white;
+    cursor: pointer;
+}
+
+#update-version {
+    word-break: break-all;
+}
 
 /* HWID & SPOOFER GRID STYLING */
 .hwid-grid, .spoof-grid {
@@ -948,6 +1016,131 @@ body.logged-in .main-content {
 
     .execute-btn:hover {
         background: var(--accent-teal);
+    }
+
+.deepclean-warning {
+    margin-top: 10px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    line-height: 1.4;
+    border: 1px solid rgba(255, 60, 60, 0.35);
+    background: rgba(255, 60, 60, 0.06);
+    color: #ff6b6b;
+    backdrop-filter: blur(6px);
+    transition: all .25s ease;
+}
+
+    .deepclean-warning i {
+        font-size: 14px;
+        color: #ff4444;
+    }
+
+/* Hidden state */
+.hidden {
+    display: none !important;
+}
+
+.deepclean-modal {
+    width: 420px;
+}
+
+.game-clean-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 15px;
+}
+
+.game-clean-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+    .game-clean-item:hover {
+        background: rgba(255,255,255,0.05);
+    }
+
+.game-icon {
+    width: 28px;
+    height: 28px;
+    object-fit: contain;
+}
+
+    .game-icon img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+    }
+
+.game-clean-item span {
+    flex: 1;
+    font-size: 14px;
+}
+
+.modal-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+    justify-content: flex-end;
+}
+
+.motherboard-select-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.mb-icon {
+    width: 32px;
+    height: 32px;
+    object-fit: contain;
+    opacity: .9;
+}
+
+.bios-warning-box {
+    margin-top: 14px;
+    padding: 12px;
+    border-radius: 10px;
+    border: 1px solid rgba(255,80,80,0.35);
+    background: rgba(40,0,0,0.35);
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+    .bios-warning-box p {
+        margin: 4px 0;
+    }
+
+.btn-danger {
+    background: #ff3e3e;
+    border: none;
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.warning-box {
+    margin-top: 14px;
+    padding: 12px;
+    border-radius: 10px;
+    border: 1px solid rgba(255,80,80,0.35);
+    background: rgba(40,0,0,0.35);
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+    .warning-box p {
+        margin: 4px 0;
     }
 
 /* --- SETTINGS TAB CORE LAYOUT --- */
