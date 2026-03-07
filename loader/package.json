@@ -1,9 +1,9 @@
 {
-  "name": "sk-all-in-one-loader",
-  "version": "1.1.1",
+  "name": "vexion-all-in-one-loader",
+  "version": "1.1.3",
   "description": "Premium All-In-One Cheat Loader",
   "main": "main.js",
-  "author": "SK-Development",
+  "author": "VEXION-Development",
   "scripts": {
     "start": "electron .",
     "start-panel": "electron panel-main.js",
@@ -16,13 +16,15 @@
     "url": "https://github.com/jeffyNoJumper/My_Auth_API"
   },
   "dependencies": {
+    "bcrypt": "^6.0.0",
     "cors": "^2.8.6",
     "crypto": "^1.0.1",
+    "discord-rpc": "^4.0.1",
     "dotenv": "^17.2.4",
     "electron-updater": "^6.1.7",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
-    "mongoose": "^9.2.1",
+    "mongoose": "^9.2.4",
     "node-addon-api": "^7.1.0"
   },
   "devDependencies": {
@@ -30,25 +32,29 @@
     "electron-builder": "^24.13.3"
   },
   "build": {
-    "appId": "com.sk.allinone",
-    "productName": "SK ALL-IN-ONE",
+    "appId": "com.vex.allinone",
+    "productName": "VEXION ALL-IN-ONE",
     "asar": true,
     "asarUnpack": [
-      "**/*.node"
+      "**/*.node",
+      "bin/**"
     ],
-    "copyright": "Copyright © 2026 SK-Development",
+    "copyright": "Copyright © 2026 VEXION-Development",
     "directories": {
-      "output": "SK ALL IN-ONE LOADER"
+      "output": "VEX ALL IN-ONE LOADER"
     },
     "files": [
       "**/*",
       "!assets/*",
+      "!Volumeid64.exe",
+      "!Volumeid.exe",
+      "!Eula.txt",
       "!Backend/Kernel/*",
       "build/Release/spoofer.node"
     ],
     "win": {
       "target": "nsis",
-      "icon": "SK.ico",
+      "icon": "VEXION.ico",
       "requestedExecutionLevel": "requireAdministrator"
     },
     "nsis": {
