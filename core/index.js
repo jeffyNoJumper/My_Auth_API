@@ -372,8 +372,7 @@ app.post('/register', async (req, res) => {
             password: cleanPass,
             hwid: hwid || null,
             games: [],
-            expiry_date: null,
-            license_key: { type: String, required: false, default: null }
+            expiry_date: null
         });
 
         await newUser.save();
