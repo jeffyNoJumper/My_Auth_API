@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const crypto = require('crypto');
+const bcrypt = require("bcrypt");
 const cors = require('cors');
 
 // --- 1. HANDLE MODELS SAFELY ---
@@ -345,6 +346,51 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
         return res.status(500).json({ success: false, error: "Internal Server Error" });
     }
 });
+
+// --- USER REGISTER ---
+app.post('/register', async (req, res) => {
+    try {
+        const { email, password, hwid } = req.body;
+
+        if (!email || !password) {
+            return res.json({ error: "Missing required fields" });
+        }
+
+        const cleanEmail = email.toLowerCase().trim();
+        const cleanPass = password.trim();
+
+        // Check if account already exists
+        const existingUser = await User.findOne({ email: cleanEmail });
+
+        if (existingUser) {
+            return res.json({ error: "Email already registered." });
+        }
+
+        // Create new user
+        const newUser = new User({
+            email: cleanEmail,
+            password: cleanPass,
+            hwid: hwid || null,
+            games: [],
+            expiry_date: null,
+            license_key: null
+        });
+
+        await newUser.save();
+
+        console.log(`[REGISTER] New user created: ${cleanEmail}`);
+
+        res.json({
+            status: "Success",
+            message: "Account created successfully."
+        });
+
+    } catch (err) {
+        console.error("Register Error:", err);
+        res.status(500).json({ error: "Internal Server Error" });
+    }
+});
+
 
 // --- USER LOGIN ---
 app.post('/login', async (req, res) => {
