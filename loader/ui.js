@@ -14,59 +14,47 @@ const shell = window.api.shell;
 let currentUserPrefix = localStorage.getItem('user_prefix') || "";
 
 window.onload = async () => {
-    // ---------- PROFILE SYNC ----------
+    const el = (id) => document.getElementById(id);
+
     const savedPfp = localStorage.getItem('saved_profile_pic');
-    const navPfp = document.getElementById('user-pic');
-    const modalPfp = document.getElementById('modal-pfp');
     if (savedPfp) {
-        if (navPfp) navPfp.src = savedPfp;
-        if (modalPfp) modalPfp.src = savedPfp;
+        if (el('user-pic')) el('user-pic').src = savedPfp;
+        if (el('modal-pfp')) el('modal-pfp').src = savedPfp;
     }
 
-    // ---------- INITIAL SYSTEM TASKS ----------
-    await Promise.all([updateHWIDDisplay(), checkServer()]);
+    await Promise.all([updateHWIDDisplay(), checkServer()]).catch(console.error);
 
-    // ---------- VERSION CHECK ----------
     try {
-        if (typeof checkVersion === "function") {
+        if (typeof checkForUpdates === "function") {
             await checkForUpdates();
-        } else {
-            console.warn("[UPDATE] checkVersion function is missing. Skipping...");
         }
     } catch (err) {
         console.error("[UPDATE] Version check failed:", err);
     }
 
-    // ---------- LOADER OVERLAY ----------
-    const overlay = document.getElementById('update-overlay');
-    if (overlay) overlay.classList.add('hidden');
+    if (el('update-overlay')) el('update-overlay').classList.add('hidden');
 
-    // ---------- SESSION DATA ----------
     const savedEmail = localStorage.getItem('remembered_email');
     const savedPass = localStorage.getItem('remembered_password');
     const savedExpiry = localStorage.getItem('expiry_date');
-    const rememberMe = localStorage.getItem('remember-me') === 'true';
+    const rememberMe = localStorage.getItem('remember-me') === 'true' || !!savedEmail;
 
-    const autoLoginModal = document.getElementById('auto-login-modal');
-    const loginScreen = document.getElementById("login-screen");
-    const dashboard = document.getElementById("dashboard-wrapper");
-    const sidebar = document.getElementById("sidebar");
+    const autoLoginModal = el('auto-login-modal');
+    const loginScreen = el("login-screen");
+    const dashboard = el("dashboard-wrapper");
+    const sidebar = el("sidebar");
 
-    if (rememberMe && savedEmail && savedPass && savedExpiry) {
+    if (rememberMe && savedEmail && savedPass) {
         const now = Date.now();
-        const expTime = new Date(savedExpiry).getTime();
+        const expTime = savedExpiry ? new Date(savedExpiry).getTime() : now + 1000;
 
-        if (now < expTime) {
+        if (now < expTime || isNaN(expTime)) {
             console.log("[SECURITY] Valid session found. Auto logging in...");
 
-            const emailField = document.getElementById('login-email');
-            const passField = document.getElementById('login-password');
-            if (emailField) emailField.value = savedEmail;
-            if (passField) passField.value = savedPass;
-
+            if (el('login-email')) el('login-email').value = savedEmail;
+            if (el('login-password')) el('login-password').value = savedPass;
             if (autoLoginModal) autoLoginModal.style.display = 'flex';
-            const autoUser = document.getElementById('auto-login-user');
-            if (autoUser) autoUser.innerText = savedEmail;
+            if (el('auto-login-user')) el('auto-login-user').innerText = savedEmail;
 
             document.body.classList.remove('login-active');
             document.body.classList.add('logged-in');
@@ -87,25 +75,23 @@ window.onload = async () => {
 
             return;
         } else {
-            console.warn("[SECURITY] Session expired. Clearing stored session.");
-            localStorage.clear();
+            console.warn("[SECURITY] Session expired.");
+            localStorage.removeItem('remembered_password');
+            localStorage.removeItem('expiry_date');
+            localStorage.removeItem('remember-me');
         }
     }
 
-    // ---------- MANUAL LOGIN ----------
     console.log("[SYSTEM] No valid session. Showing login screen.");
 
-    // Hide auto-login modal if visible
     if (autoLoginModal) autoLoginModal.style.display = 'none';
-
     if (loginScreen) loginScreen.style.display = "flex";
     if (dashboard) dashboard.style.display = "none";
-    if (sidebar) sidebar?.classList.add("hidden");
+    if (sidebar) sidebar.classList.add("hidden");
 
     document.body.classList.add('login-active');
 
-    // Optionally show a notice inside the login screen
-    const loginNotice = document.getElementById("login-notice");
+    const loginNotice = el("login-notice");
     if (loginNotice) {
         loginNotice.innerText = "No valid session found. Please log in manually.";
         loginNotice.classList.remove("hidden");
@@ -599,6 +585,7 @@ async function handleLogin(isAutoLogin = false, creds = {}) {
             localStorage.setItem("expiry_date", data.expiry);
 
             if (rememberMe || isAutoLogin) {
+                localStorage.setItem("remember-me", "true");
                 localStorage.setItem("remembered_email", email);
                 localStorage.setItem("remembered_password", password);
             }
