@@ -9,33 +9,25 @@ let isAuthProcessActive = false;
 let updateReminderInterval = null;
 const currentVersion = "1.1.3";
 
-let currentSpoofMode = "hwid";
-
 const shell = window.api.shell;
 
 let currentUserPrefix = localStorage.getItem('user_prefix') || "";
 
 window.onload = async () => {
-
     // ---------- PROFILE SYNC ----------
     const savedPfp = localStorage.getItem('saved_profile_pic');
     const navPfp = document.getElementById('user-pic');
     const modalPfp = document.getElementById('modal-pfp');
-
     if (savedPfp) {
         if (navPfp) navPfp.src = savedPfp;
         if (modalPfp) modalPfp.src = savedPfp;
     }
 
     // ---------- INITIAL SYSTEM TASKS ----------
-    await Promise.all([
-        updateHWIDDisplay(),
-        checkServer()
-    ]);
+    await Promise.all([updateHWIDDisplay(), checkServer()]);
 
     // ---------- VERSION CHECK ----------
     try {
-        // Check if the function exists before calling it
         if (typeof checkVersion === "function") {
             await checkForUpdates();
         } else {
@@ -55,70 +47,69 @@ window.onload = async () => {
     const savedExpiry = localStorage.getItem('expiry_date');
     const rememberMe = localStorage.getItem('remember-me') === 'true';
 
-    // ---------- ATTEMPT AUTO LOGIN ----------
-    if (rememberMe && savedEmail && savedPass && savedExpiry) {
+    const autoLoginModal = document.getElementById('auto-login-modal');
+    const loginScreen = document.getElementById("login-screen");
+    const dashboard = document.getElementById("dashboard-wrapper");
+    const sidebar = document.getElementById("sidebar");
 
+    if (rememberMe && savedEmail && savedPass && savedExpiry) {
         const now = Date.now();
         const expTime = new Date(savedExpiry).getTime();
 
         if (now < expTime) {
-
             console.log("[SECURITY] Valid session found. Auto logging in...");
 
             const emailField = document.getElementById('login-email');
             const passField = document.getElementById('login-password');
-
             if (emailField) emailField.value = savedEmail;
             if (passField) passField.value = savedPass;
 
-            const modal = document.getElementById('auto-login-modal');
-            if (modal) modal.style.display = 'flex';
-
+            if (autoLoginModal) autoLoginModal.style.display = 'flex';
             const autoUser = document.getElementById('auto-login-user');
             if (autoUser) autoUser.innerText = savedEmail;
 
             document.body.classList.remove('login-active');
             document.body.classList.add('logged-in');
 
-            const loginScreen = document.getElementById("login-screen");
             if (loginScreen) loginScreen.style.display = "none";
-
-            const dashboard = document.getElementById("dashboard-wrapper");
             if (dashboard) dashboard.style.display = "flex";
-
-            const sidebar = document.getElementById("sidebar");
             if (sidebar) {
                 sidebar.style.display = "flex";
                 sidebar.classList.remove("hidden");
             }
 
             if (typeof showTab === "function") showTab("home");
+            if (typeof updateHomeTabUI === "function") updateHomeTabUI();
 
-            if (typeof updateHomeTabUI === "function") {
-                updateHomeTabUI();
-            }
-
-            handleLogin(true, {
-                email: savedEmail,
-                password: savedPass
-            })
+            handleLogin(true, { email: savedEmail, password: savedPass })
                 .then(() => console.log("[SYSTEM] Auto-login complete"))
                 .catch(err => console.error("[AUTOLOGIN ERROR]", err));
 
             return;
-        }
-        else {
-
+        } else {
             console.warn("[SECURITY] Session expired. Clearing stored session.");
             localStorage.clear();
-
         }
     }
 
     // ---------- MANUAL LOGIN ----------
-    console.log("[SYSTEM] No valid session. Awaiting manual login.");
+    console.log("[SYSTEM] No valid session. Showing login screen.");
+
+    // Hide auto-login modal if visible
+    if (autoLoginModal) autoLoginModal.style.display = 'none';
+
+    if (loginScreen) loginScreen.style.display = "flex";
+    if (dashboard) dashboard.style.display = "none";
+    if (sidebar) sidebar?.classList.add("hidden");
+
     document.body.classList.add('login-active');
 
+    // Optionally show a notice inside the login screen
+    const loginNotice = document.getElementById("login-notice");
+    if (loginNotice) {
+        loginNotice.innerText = "No valid session found. Please log in manually.";
+        loginNotice.classList.remove("hidden");
+    }
 };
 
 function cancelAutoLogin() {
@@ -168,6 +159,12 @@ async function launchGame(gameName) {
     if (!hasAccess(gameName)) return;
 
     const key = localStorage.getItem('license_key');
+    if (!key) {
+        alert("Access Denied: Please redeem a License key in your Profile First!\n");
+        showtab('user-pic');
+        return;
+    }
+
     const autoCloseActive = document.getElementById('auto-close-launcher').checked;
 
     const injectionModal = document.getElementById('injection-modal');
@@ -176,12 +173,6 @@ async function launchGame(gameName) {
     const percentText = document.getElementById('status-percent');
 
     let injectionType = "external";
-
-    if (prefix === "NULL" || !prefix) {
-        alert("Access Denied: Please redeem a Licese key in your Profile First!!\\n");
-        showtab('user-pic');
-        return;
-    }
 
     // --- CS2 MODAL LOGIC ---
     if (gameName.toLowerCase() === 'cs2') {
@@ -547,14 +538,33 @@ async function updateHWIDDisplay() {
 async function handleLogin(isAutoLogin = false, creds = {}) {
     if (isAuthProcessActive && !isAutoLogin) return;
 
-    // ---------- DETERMINE CREDENTIALS ----------
     const email = isAutoLogin ? creds.email : document.getElementById('login-email')?.value;
     const password = isAutoLogin ? creds.password : document.getElementById('login-password')?.value;
     const rememberMe = document.getElementById('remember-me')?.checked;
     const btn = document.getElementById('login-btn');
 
+    const autoLoginModal = document.getElementById("auto-login-modal");
+    const loginNotice = document.getElementById("login-notice");
+
+    // ---------- NO CREDENTIALS FOUND ----------
     if (!email || !password) {
-        if (!isAutoLogin) alert("Enter Email and Password");
+        if (isAutoLogin) {
+            // Close auto-login modal and show notice
+            if (autoLoginModal) autoLoginModal.style.display = "none";
+
+            if (!loginNotice) {
+                const screen = document.getElementById("login-screen");
+                const notice = document.createElement("p");
+                notice.id = "login-notice";
+                notice.style.color = "var(--red)";
+                notice.style.fontSize = "12px";
+                notice.style.marginTop = "5px";
+                notice.innerText = "No valid session found. Please login manually.";
+                screen?.querySelector(".login-card")?.appendChild(notice);
+            }
+        } else {
+            alert("Enter Email and Password");
+        }
         return;
     }
 
@@ -580,8 +590,9 @@ async function handleLogin(isAutoLogin = false, creds = {}) {
         if (data.token === "VALID") {
             console.log("[AUTH] LOGIN SUCCESS");
 
-            // ---------- HIDE AUTO LOGIN MODAL ----------
-            document.getElementById("auto-login-modal")?.style.setProperty("display", "none");
+            // Hide auto-login modal
+            if (autoLoginModal) autoLoginModal.style.display = "none";
+            if (loginNotice) loginNotice.remove();
 
             // ---------- SAVE SESSION ----------
             localStorage.setItem("user_email", email);
@@ -599,41 +610,26 @@ async function handleLogin(isAutoLogin = false, creds = {}) {
             // ---------- PROFILE ----------
             const profilePic = data.profile_pic || "imgs/default-profile.png";
             localStorage.setItem("saved_profile_pic", profilePic);
-
             document.querySelectorAll("#user-pic, #modal-pfp")
                 .forEach(img => img.src = profilePic);
 
             // ---------- USER INFO ----------
             const username = email.split("@")[0];
-
-            const profileName = document.getElementById("user-display-name");
-            if (profileName) profileName.innerText = username;
+            const userDisplay = document.getElementById("user-display-name");
+            if (userDisplay) userDisplay.innerText = username;
 
             const navName = document.getElementById("nav-username");
             if (navName) navName.innerText = username;
 
             const expiryDisplay = document.getElementById("user-expiry");
-            if (expiryDisplay)
-                expiryDisplay.innerText = "EXP: " + new Date(data.expiry).toLocaleDateString();
+            if (expiryDisplay) expiryDisplay.innerText = "EXP: " + new Date(data.expiry).toLocaleDateString();
 
             const homeExpiry = document.getElementById("home-exp");
-            if (homeExpiry)
-                homeExpiry.innerText = new Date(data.expiry).toLocaleDateString();
-
-            // ---------- UPDATE HOME TAB GREETING ----------
-            if (typeof updateHomeTabUI === "function") {
-                updateHomeTabUI();
-            }
-
-            // ---------- START EXPIRY HEARTBEAT ----------
-            if (typeof startExpiryHeartbeat === "function") {
-                startExpiryHeartbeat(data.expiry);
-            }
+            if (homeExpiry) homeExpiry.innerText = new Date(data.expiry).toLocaleDateString();
 
             // ---------- SWITCH UI ----------
             document.body.classList.remove("login-active");
             document.body.classList.add("logged-in");
-
             document.getElementById("login-screen")?.style.setProperty("display", "none");
             document.getElementById("dashboard-wrapper")?.style.setProperty("display", "flex");
 
@@ -643,23 +639,32 @@ async function handleLogin(isAutoLogin = false, creds = {}) {
                 sidebar.classList.remove("hidden");
             }
 
-            // Show default tab
             if (typeof showTab === "function") showTab("home");
-
             console.log("[SYSTEM] Dashboard loaded successfully.");
-        }
-        else {
-            document.getElementById("auto-login-modal")?.style.setProperty("display", "none");
+        } else {
+            // Failed login
+            if (autoLoginModal) autoLoginModal.style.display = "none";
 
-            if (!isAutoLogin)
+            if (isAutoLogin) {
+                // Show notice
+                if (!loginNotice) {
+                    const screen = document.getElementById("login-screen");
+                    const notice = document.createElement("p");
+                    notice.id = "login-notice";
+                    notice.style.color = "var(--red)";
+                    notice.style.fontSize = "12px";
+                    notice.style.marginTop = "5px";
+                    notice.innerText = "No valid session found. Please login manually.";
+                    screen?.querySelector(".login-card")?.appendChild(notice);
+                }
+            } else {
                 alert("Login Failed: " + (data.error || "Invalid credentials"));
+            }
         }
-
     } catch (err) {
         console.error("[AUTH ERROR]", err);
         if (!isAutoLogin) alert("API Connection Error");
-    }
-    finally {
+    } finally {
         isAuthProcessActive = false;
 
         if (btn && !isAutoLogin) {
@@ -1194,13 +1199,15 @@ function previewImage(input) {
 async function saveProfileChanges() {
     const emailInput = document.getElementById('edit-email');
     const passwordInput = document.getElementById('edit-password');
+    const licenseInput = document.getElementById('edit-license'); // Add this ID to your HTML input
     const btn = document.getElementById('save-profile-btn');
 
-    if (!btn) return console.warn("Save button not found!");
+    if (!btn) return;
 
-    const savedKey = localStorage.getItem('license_key');
-    if (!savedKey) {
-        alert("Session Error: No active login found. Please restart the app.");
+    // Get the email stored during login - THIS is our new required ID
+    const userEmail = localStorage.getItem('user_email');
+    if (!userEmail) {
+        alert("Session Error: No user email found. Please log in again.");
         return;
     }
 
@@ -1208,45 +1215,42 @@ async function saveProfileChanges() {
     btn.disabled = true;
 
     try {
-        const cleanAPI = API.replace(/\/$/, "");
+        const cleanAPI = API.endsWith('/') ? API.slice(0, -1) : API;
+        const url = `${cleanAPI}/update-profile`;
 
-        const response = await fetch(`${cleanAPI}/update-profile`, {
+        const payload = {
+            user_id_email: userEmail.toLowerCase(), // Main ID to find user
+            new_license_key: licenseInput?.value?.trim().toUpperCase() || null,
+            email: emailInput?.value || null,
+            password: passwordInput?.value || null,
+            profile_pic: window.tempPfp || null
+        };
+
+        const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                license_key: savedKey.trim().toUpperCase(),
-                email: emailInput?.value || null,
-                password: passwordInput?.value || null,
-                profile_pic: window.tempPfp || null
-            })
+            body: JSON.stringify(payload)
         });
-
-        const contentType = response.headers.get("content-type");
-        if (!response.ok || !contentType || !contentType.includes("application/json")) {
-            throw new Error(`Server Error: ${response.status}`);
-        }
 
         const data = await response.json();
 
         if (data.success) {
+            // Update local storage if they changed email or redeemed a key
             if (emailInput?.value) localStorage.setItem('user_email', emailInput.value);
+            if (payload.new_license_key) localStorage.setItem('license_key', payload.new_license_key);
 
             if (window.tempPfp) {
                 localStorage.setItem('saved_profile_pic', window.tempPfp);
-                const pfpElements = document.querySelectorAll('#user-pic, #modal-pfp');
-                pfpElements.forEach(img => {
-                    if (img) img.src = window.tempPfp;
-                });
+                document.querySelectorAll('#user-pic, #modal-pfp').forEach(img => img.src = window.tempPfp);
             }
 
-            alert("Success! Profile updated.");
+            alert("Profile updated successfully!");
             closeModal?.('settings-modal');
         } else {
             alert("Error: " + (data.error || "Unknown Error"));
         }
     } catch (e) {
-        console.error("Save Profile Error:", e);
-        alert("Failed to connect to server. Check your connection.");
+        console.error("[SAVE PROFILE ERROR]", e);
     } finally {
         btn.innerText = "SAVE CHANGES";
         btn.disabled = false;
@@ -1262,173 +1266,135 @@ function loadSavedPfp() {
     }
 }
 
-async function startSpoofing() {
+// ---------------- GLOBAL STATE ----------------
 
-    const loader = document.getElementById("spoof-progress");
-    const isDeepClean = document.getElementById("deep-clean").checked;
+let selectedSpoofMode = "hwid";
+let spoofState = "idle";
 
-    if (spoofState === "running") return;
 
-    if (isDeepClean) {
-        const confirmClean = window.confirm(
-            "WARNING: Deep Clean will wipe game logs and traces.\n\n" +
-            "To escape a shadow ban, you MUST use a NEW game account after this.\n" +
-            "Logging into a flagged account will RE-BAN your hardware immediately.\n\n" +
-            "Do you wish to proceed?"
-        );
+// ---------------- MODE TOGGLE ----------------
 
-        if (!confirmClean) return;
+function setSpoofMode(mode) {
+
+    selectedSpoofMode = mode;
+
+    document.querySelectorAll(".mode-btn")
+        .forEach(btn => btn.classList.remove("active"));
+
+    document.getElementById(`mode-${mode}`)?.classList.add("active");
+
+    updateModeDescription();
+}
+
+window.setSpoofMode = setSpoofMode;
+
+
+// ---------------- STATUS UI ----------------
+
+function updateSpoofStatus(state) {
+
+    spoofState = state;
+
+    const status = document.getElementById("spoof-main-status");
+    const subtext = document.getElementById("spoof-subtext");
+
+    if (!status || !subtext) return;
+
+    status.classList.remove("status-inactive", "status-temp", "status-perm");
+
+    if (state === "inactive") {
+        status.textContent = "NOT SPOOFED";
+        subtext.textContent = "Your hardware identifiers are currently exposed.";
+        status.classList.add("status-inactive");
     }
 
-    spoofState = "running";
-    loader.classList.remove("hidden");
-
-    try {
-
-        // Load deep clean game selections
-        const deepCleanGames = JSON.parse(localStorage.getItem("deepclean_games") || "{}");
-
-        // Destructure with defaults
-        const {
-            cs2 = false,
-            gtav = false,
-            fivem = false,
-            cod = false
-        } = deepCleanGames;
-
-        // Helper to safely get elements
-        const el = (id) => document.getElementById(id);
-
-        // Build spoof options
-        const options = {
-            motherboard: el("motherboard-select")?.value || "",
-            biosFlash: el("bios-flash")?.checked || false,
-            cleanReg: el("clean-reg")?.checked || false,
-            cleanDisk: el("clean-disk")?.checked || false,
-            deepClean: isDeepClean,
-
-            user: currentSpoofMode === "hwid",
-            disk: currentSpoofMode === "traces",
-
-            // Game deep clean flags
-            cleanCS2: cs2,
-            cleanGTAV: gtav,
-            cleanFiveM: fivem,
-            cleanCOD: cod
-        };
-
-        const result = await window.api.startSpoof(options);
-
-        if (result && result.success) {
-
-            updateSpoofStatus(currentSpoofMode === "hwid" ? "perm" : "temp");
-
-            localStorage.setItem(
-                "spoofState",
-                currentSpoofMode === "hwid" ? "perm" : "temp"
-            );
-
-            alert("Spoof Complete! Please RESTART your PC before launching the game.");
-
-        } else {
-
-            updateSpoofStatus("inactive");
-
-        }
-
-    } catch (err) {
-
-        console.error("[UI SPOOF ERROR]", err);
-        updateSpoofStatus("inactive");
-
-    } finally {
-
-        loader.classList.add("hidden");
-        spoofState = "idle";
-
+    if (state === "temp") {
+        status.textContent = "TEMPORARY SPOOF ACTIVE";
+        subtext.textContent = "Session-based masking is enabled.";
+        status.classList.add("status-temp");
     }
 
+    if (state === "perm") {
+        status.textContent = "PERMANENT SPOOF ACTIVE";
+        subtext.textContent = "Firmware-level spoof successfully applied.";
+        status.classList.add("status-perm");
+    }
+}
 
-    // INITIALIZE ON TAB LOAD
-    document.addEventListener("DOMContentLoaded", function () {
-        updateModeDescription();
-        updateSpoofStatus("inactive");
-    });
 
-    window.setSpoofMode = function (mode) {
-        currentSpoofMode = mode;
-        localStorage.setItem('currentSpoofMode', mode);
+// ---------------- MODE DESCRIPTION ----------------
 
-        document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
-        const activeBtn = document.getElementById(`mode-${mode}`);
-        if (activeBtn) activeBtn.classList.add('active');
+function updateModeDescription() {
 
-        updateModeDescription();
+    const title = document.getElementById("spoof-action-title");
+    const desc = document.getElementById("spoof-action-desc");
+
+    if (!title || !desc) return;
+
+    if (selectedSpoofMode === "hwid") {
+        title.textContent = "Natural Spoof (Permanent)";
+        desc.textContent = "Firmware-level hardware masking.";
+    }
+
+    if (selectedSpoofMode === "traces") {
+        title.textContent = "Trace Cleaner (Temporary)";
+        desc.textContent = "Removes local tracking artifacts.";
+    }
+}
+
+
+// ---------------- DOM READY ----------------
+
+document.addEventListener("DOMContentLoaded", () => {
+
+    updateSpoofStatus("inactive");
+    updateModeDescription();
+
+    // ---------- CHECKBOX MODALS ----------
+
+    const modalMap = {
+        "bios-flash": "biosflash-modal",
+        "clean-reg": "registryclean-modal",
+        "clean-disk": "diskclean-modal",
+        "deep-clean": "deepclean-modal"
     };
 
-    function updateModeDescription() {
-        const title = document.getElementById('spoof-action-title');
-        const desc = document.getElementById('spoof-action-desc');
+    Object.entries(modalMap).forEach(([checkboxId, modalId]) => {
 
-        if (!title || !desc) return;
+        const checkbox = document.getElementById(checkboxId);
+        const modal = document.getElementById(modalId);
 
-        if (currentSpoofMode === 'hwid') {
-            title.innerText = "Natural Spoof";
-            desc.innerText = "Firmware-level hardware masking for maximum persistence. Recommended for permanent bans.";
-        } else {
-            title.innerText = "Trace Cleaner";
-            desc.innerText = "Temporary session-based cleaning. Use this to clear temporary developer markers.";
-        }
-    }
+        if (!checkbox || !modal) return;
 
-    function updateSpoofStatus(state) {
+        checkbox.addEventListener("click", (e) => {
 
-        spoofState = state;
+            if (!checkbox.checked) return;
 
-        const status = document.getElementById("spoof-main-status");
-        const subtext = document.getElementById("spoof-subtext");
+            e.preventDefault();
+            modal.classList.remove("hidden");
 
-        status.classList.remove("status-inactive", "status-temp", "status-perm");
+        });
 
-        if (state === "inactive") {
-            status.textContent = "NOT SPOOFED";
-            subtext.textContent = "Your hardware identifiers are currently exposed.";
-            status.classList.add("status-inactive");
-        }
+        const confirmBtn =
+            modal.querySelector("[id$='confirm']") ||
+            modal.querySelector("[id$='save']");
 
-        if (state === "temp") {
-            status.textContent = "TEMPORARY SPOOF ACTIVE";
-            subtext.textContent = "Session-based masking is enabled.";
-            status.classList.add("status-temp");
-        }
+        const cancelBtn = modal.querySelector("[id$='cancel']");
 
-        if (state === "perm") {
-            status.textContent = "PERMANENT SPOOF ACTIVE";
-            subtext.textContent = "Firmware-level spoof successfully applied.";
-            status.classList.add("status-perm");
-        }
-    }
+        confirmBtn?.addEventListener("click", () => {
+            checkbox.checked = true;
+            modal.classList.add("hidden");
+        });
+
+        cancelBtn?.addEventListener("click", () => {
+            checkbox.checked = false;
+            modal.classList.add("hidden");
+        });
+
+    });
 
 
-    // UPDATE MODE DESCRIPTION
-    function updateModeDescription() {
-
-        const title = document.getElementById("spoof-action-title");
-        const desc = document.getElementById("spoof-action-desc");
-        const warning = document.querySelector(".warning-box");
-
-        if (currentSpoofMode === "hwid") {
-            title.textContent = "Natural Spoof (Permanent)";
-            desc.textContent = "Reprogram motherboard and hardware serials at firmware level.";
-            warning.textContent = "WARNING: Permanent spoof modifies firmware identifiers.";
-        }
-
-        if (currentSpoofMode === "traces") {
-            title.textContent = "Trace Cleaner (Temporary)";
-            desc.textContent = "Removes local tracking artifacts without modifying firmware.";
-            warning.textContent = "Temporary spoof resets after reboot.";
-        }
-    }
+    // ---------- MOTHERBOARD ICON ----------
 
     const motherboardSelect = document.getElementById("motherboard-select");
     const mbIcon = document.getElementById("mb-icon");
@@ -1441,82 +1407,104 @@ async function startSpoofing() {
         other: "imgs/motherboard.png"
     };
 
-    motherboardSelect.addEventListener("change", () => {
+    motherboardSelect?.addEventListener("change", () => {
+
         const brand = motherboardSelect.value;
         mbIcon.src = motherboardIcons[brand] || motherboardIcons.other;
-    });
-
-    const biosToggle = document.getElementById("bios-flash");
-    const biosModal = document.getElementById("biosflash-modal");
-    const biosConfirm = document.getElementById("biosflash-confirm");
-    const biosCancel = document.getElementById("biosflash-cancel");
-
-    biosToggle.addEventListener("click", (e) => {
-
-        if (!biosToggle.checked) return;
-
-        e.preventDefault();
-        biosModal.classList.remove("hidden");
 
     });
 
-    biosConfirm.addEventListener("click", () => {
-        biosToggle.checked = true;
-        biosModal.classList.add("hidden");
-    });
-
-    biosCancel.addEventListener("click", () => {
-        biosToggle.checked = false;
-        biosModal.classList.add("hidden");
-    });
-
-    const regToggle = document.getElementById("clean-reg");
-    const regModal = document.getElementById("registryclean-modal");
-
-    const diskToggle = document.getElementById("clean-disk");
-    const diskModal = document.getElementById("diskclean-modal");
+});
 
 
-    // REGISTRY CLEAN
-    regToggle.addEventListener("click", (e) => {
+// ---------------- SPOOF EXECUTION ----------------
 
-        if (!regToggle.checked) return;
+async function startSpoofing() {
+    const loader = document.getElementById("spoof-progress");
+    const spinner = document.getElementById("spoof-spinner");
+    const success = document.getElementById("spoof-success");
+    const el = (id) => document.getElementById(id); // Move helper to top
 
-        e.preventDefault();
-        regModal.classList.remove("hidden");
+    if (spoofState === "running") return;
 
-    });
+    const isDeepClean = el("deep-clean")?.checked;
 
-    document.getElementById("registryclean-confirm").onclick = () => {
-        regToggle.checked = true;
-        regModal.classList.add("hidden");
-    };
+    if (isDeepClean) {
+        const confirmClean = window.confirm(
+            "WARNING: Deep Clean will wipe game logs and traces.\n\n" +
+            "To escape a shadow ban, you MUST use a NEW game account after this.\n" +
+            "Logging into a flagged account will RE-BAN your hardware immediately.\n\n" +
+            "Do you wish to proceed?"
+        );
+        if (!confirmClean) return;
+    }
 
-    document.getElementById("registryclean-cancel").onclick = () => {
-        regToggle.checked = false;
-        regModal.classList.add("hidden");
-    };
+    spoofState = "running";
+    loader?.classList.remove("hidden");
+    spinner?.classList.remove("hidden");
+    success?.classList.add("hidden");
 
+    try {
+        // 1. GATHER DATA (No nested function needed)
+        const cs2 = el("clean-cs2")?.checked || false;
+        const gtav = el("clean-gtav")?.checked || false;
+        const fivem = el("clean-fivem")?.checked || false;
+        const cod = el("clean-cod")?.checked || false;
 
-    // DISK TRACE CLEAN
-    diskToggle.addEventListener("click", (e) => {
+        const options = {
+            motherboard: el("motherboard-select")?.value || "asus",
+            biosFlash: el("bios-flash")?.checked || false,
+            cleanReg: el("clean-reg")?.checked || false,
+            cleanDisk: el("clean-disk")?.checked || false,
+            deepClean: isDeepClean || false,
+            user: typeof selectedSpoofMode !== 'undefined' && selectedSpoofMode === "hwid",
+            disk: typeof selectedSpoofMode !== 'undefined' && selectedSpoofMode === "traces",
+            cleanCS2: cs2,
+            cleanGTAV: gtav,
+            cleanFiveM: fivem,
+            cleanCOD: cod,
+            newMachineGuid: crypto.randomUUID()
+        };
 
-        if (!diskToggle.checked) return;
+        console.log("[SYSTEM] Starting Spoof with Options:", options);
 
-        e.preventDefault();
-        diskModal.classList.remove("hidden");
+        // 2. EXECUTE
+        const result = await window.api.startSpoof(options);
 
-    });
+        // 3. HANDLE RESULT
+        if (result) { // If C++ returns the object {User: true, Kernel: true...}
+            const state = (typeof selectedSpoofMode !== 'undefined' && selectedSpoofMode === "hwid") ? "perm" : "temp";
 
-    document.getElementById("diskclean-confirm").onclick = () => {
-        diskToggle.checked = true;
-        diskModal.classList.add("hidden");
-    };
+            updateSpoofStatus(state);
+            localStorage.setItem("spoofState", state);
 
-    document.getElementById("diskclean-cancel").onclick = () => {
-        diskToggle.checked = false;
-        diskModal.classList.add("hidden");
-    };
+            spinner?.classList.add("hidden");
+            success?.classList.remove("hidden");
+            document.querySelector(".shield-img").src = "imgs/green-check.svg";
+
+            const statusText = document.getElementById("spoof-main-status");
+            if (statusText) {
+                statusText.textContent = "SPOOFED";
+                statusText.classList.remove("status-inactive");
+                statusText.classList.add("status-active");
+            }
+
+            alert("Spoof Complete! Please RESTART your PC before launching the game.");
+        } else {
+            alert("Spoof Failed! Check the logs.");
+            updateSpoofStatus("inactive");
+            loader?.classList.add("hidden");
+        }
+
+    } catch (err) {
+        console.error("[UI SPOOF ERROR]", err);
+        updateSpoofStatus("inactive");
+        loader?.classList.add("hidden");
+    } finally {
+        spoofState = "idle";
+    }
+}
+
 
     // Request HWID Reset Function (UPDATED: CAPTURES NEW HWID FOR DB)
     async function requestHWIDReset() {
@@ -1763,7 +1751,7 @@ async function startSpoofing() {
 
     async function checkServer() {
         const statusDot = document.getElementById('status-dot');
-        const API = "https://my-auth-api-1ykc.onrender.com"; // Your Render URL
+        const API = "https://my-auth-api-1ykc.onrender.com";
 
         try {
             const response = await fetch(`${API}/health`);
@@ -1808,58 +1796,6 @@ async function startSpoofing() {
             }, 3000);
         });
     });
-
-    function typeNews(text) {
-        const newsContainer = document.getElementById('news-feed-text');
-        if (!newsContainer) {
-            console.error("Critical: 'news-feed-text' element not found in HTML.");
-            return;
-        }
-
-        newsContainer.innerHTML = "";
-        let i = 0;
-        const speed = 30;
-
-        function type() {
-            if (i < text.length) {
-                newsContainer.innerHTML += text.charAt(i);
-                i++;
-                setTimeout(type, speed);
-            }
-        }
-        type();
-    }
-
-    // Updated News Loader
-
-    async function loadNews() {
-
-        if (newsLoaded) return;
-
-        try {
-            const news = await window.api.getNews();
-            const terminal = document.getElementById('main-terminal');
-
-            if (news) {
-                const lines = news.split('\n');
-
-                const feedContainer = document.getElementById('news-feed-text');
-                if (feedContainer) feedContainer.innerHTML = "";
-
-                lines.forEach((line, index) => {
-                    setTimeout(() => {
-                        addTerminalLine(line);
-                    }, index * 150);
-                });
-                newsLoaded = true;
-            } else {
-                addTerminalLine("> [SYSTEM] Online: No new announcements.");
-            }
-        } catch (err) {
-            console.error("News Load Error:", err);
-            addTerminalLine("> [ERROR] Failed to synchronize news feed.");
-        }
-    }
 
     // Terminal Input Handler
     const terminalInput = document.getElementById('terminal-cmd');
@@ -2065,8 +2001,6 @@ async function startSpoofing() {
         const versionLabel = document.getElementById("loader-version");
         if (versionLabel) versionLabel.innerText = currentVersion;
 
-        checkVersion();
-
         // ===== AUTO-UPDATE TOGGLE =====
         const autoUpdateCheckbox = document.getElementById('auto-update-loader');
         if (autoUpdateCheckbox) {
@@ -2152,15 +2086,46 @@ async function startSpoofing() {
         );
     }
 
-    function createToast(title, message, onClick) {
-        const toast = document.createElement("div");
-        toast.classList.add("toast-notification");
-        toast.innerHTML = `<strong>${title}</strong><p>${message}</p>`;
-        toast.addEventListener("click", () => {
-            if (onClick) onClick();
-            toast.remove();
-        });
-        document.body.appendChild(toast);
-        setTimeout(() => toast.remove(), 7000);
+function createToast(title, message, onClick) {
+    const toast = document.createElement("div");
+    toast.classList.add("toast-notification");
+    toast.innerHTML = `<strong>${title}</strong><p>${message}</p>`;
+    toast.addEventListener("click", () => {
+        if (onClick) onClick();
+        toast.remove();
+    });
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 7000);
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+
+    const savedState = localStorage.getItem("spoofState");
+
+    if (savedState === "perm" || savedState === "temp") {
+
+        const status = document.getElementById("spoof-main-status");
+
+        status.textContent = "SPOOFED";
+        status.classList.remove("status-inactive");
+        status.classList.add("status-active");
+
+        // change shield → green check
+        document.querySelector(".shield-img").src = "imgs/green-check.svg";
+
     }
+
+});
+
+function resetSpoofUI() {
+
+    localStorage.removeItem("spoofState");
+
+    const status = document.getElementById("spoof-main-status");
+
+    status.textContent = "NOT SPOOFED";
+    status.classList.remove("status-active");
+    status.classList.add("status-inactive");
+
+    document.querySelector(".shield-img").src = "imgs/shield.svg";
 }
