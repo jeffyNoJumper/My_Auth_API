@@ -5,7 +5,6 @@ const crypto = require('crypto');
 const bcrypt = require("bcryptjs");
 const cors = require('cors');
 
-const userData = fixDates(receivedData);
 const user = new User(userData);
 
 const fixDates = (data) => {
