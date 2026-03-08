@@ -5,8 +5,6 @@ const crypto = require('crypto');
 const bcrypt = require("bcryptjs");
 const cors = require('cors');
 
-const user = new User(userData);
-
 const fixDates = (data) => {
     for (let key in data) {
         // Check if the value is the MongoDB {$date: ...} object
