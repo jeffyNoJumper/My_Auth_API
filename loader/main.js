@@ -2,9 +2,12 @@ const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
 const crypto = require('crypto');
 const { autoUpdater } = require('electron-updater');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execSync, execFile, exec, spawn } = require('child_process');
 const fs = require('fs');
 
+const exePath = path.join(__dirname, 'bin', 'Volumeid64.exe');
+
+const newID = "12AB-34CD";
 
 let mainWindow
 let spoofer
@@ -22,6 +25,39 @@ app.on('will-quit', async () => {
         } catch (e) { }
     }
 });
+
+async function changeVolumeID() {
+
+    const hwid = await spoofer.getMachineID(); // or window.api.getMachineID()
+
+    // remove dashes and uppercase
+    const clean = hwid.replace(/-/g, "").toUpperCase();
+
+    // take first 8 hex chars
+    const volumeID = clean.slice(0, 4) + "-" + clean.slice(4, 8);
+
+    const exePath = path.join(__dirname, 'bin', 'Volumeid64.exe');
+
+    execFile(exePath, ["C:", volumeID], { windowsHide: true }, (err, stdout, stderr) => {
+
+        if (err) {
+            console.error("VolumeID Failed:", err);
+            return;
+        }
+
+        console.log("VolumeID Changed To:", volumeID);
+    });
+}
+
+function hwidToVolumeID(hwid) {
+
+    const hash = crypto.createHash("md5")
+        .update(hwid)
+        .digest("hex")
+        .toUpperCase();
+
+    return hash.slice(0, 4) + "-" + hash.slice(4, 8);
+}
 
 function quickAdd(days) {
     console.log(`[DEBUG] Quick Add Triggered: +${days}D`);
@@ -76,7 +112,7 @@ function createWindow() {
         resizable: false,
         transparent: true,
         center: true,
-        icon: path.join(__dirname, 'imgs/SK_App_Icon.ico'),
+        icon: path.join(__dirname, 'imgs/VEXION.ico'),
         // backgroundColor: '#050505', 
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
@@ -155,7 +191,6 @@ ipcMain.handle('start-spoof', async (event, options) => {
     const crypto = require('crypto');
     const brandNewGUID = crypto.randomUUID();
 
-    // COMPLETE OPTION MAP
     const safeOptions = {
 
         motherboard: options?.motherboard || "Other",
@@ -169,32 +204,66 @@ ipcMain.handle('start-spoof', async (event, options) => {
         cleanDisk: Boolean(options?.cleanDisk ?? true),
         biosFlash: Boolean(options?.biosFlash ?? false),
 
-        // Shadow Ban Protection Flag
         deepClean: Boolean(options?.deepClean ?? false),
 
-        // ---- GENERATED HWID ----
         newMachineGuid: String(brandNewGUID)
     };
 
     console.log("[MAIN] Spoof Config (Deep Clean: " + safeOptions.deepClean + "):", safeOptions);
 
-    return new Promise((resolve) => {
-        try {
-            console.log(
-                `[MAIN] Writing Registry ID: ${safeOptions.newMachineGuid}`
-            );
+    try {
 
-            // This sends the safeOptions (including deepClean) to your binding.cpp
-            spoofer.runSpoofer(safeOptions, (err, results) => {
+        // ---------------- LOAD KERNEL DRIVER ----------------
+
+        if (safeOptions.kernel) {
+
+            const basePath = app.isPackaged
+                ? process.resourcesPath
+                : __dirname;
+
+            const kdmapperPath = path.join(basePath, "assets", "kdmapper_Release.exe");
+            const driverPath = path.join(basePath, "assets", "km.sys");
+
+            console.log("[MAIN] Launching kdmapper...");
+
+            await runKDMapper(kdmapperPath, driverPath);
+
+            console.log("[MAIN] Kernel driver mapped successfully");
+
+        }
+
+        // ---------------- RUN SPOOFER ----------------
+
+        return await new Promise((resolve) => {
+
+            console.log(`[MAIN] Writing Registry ID: ${safeOptions.newMachineGuid}`);
+
+            spoofer.runSpoofer(safeOptions, async (err, results) => {
 
                 if (err) {
+
                     console.error("[MAIN] C++ Error:", err);
+
                     resolve({ success: false });
+
                     return;
+
                 }
 
-                if (safeOptions.deepClean) {
-                    console.log("[MAIN] Deep Clean Traces & Volume ID sequence triggered.");
+                try {
+
+                    if (safeOptions.deepClean) {
+
+                        console.log("[MAIN] Deep Clean Enabled → Running VolumeID Mutation");
+
+                        await changeVolumeID();
+
+                    }
+
+                } catch (volumeError) {
+
+                    console.error("[MAIN] VolumeID Error:", volumeError);
+
                 }
 
                 resolve({
@@ -203,16 +272,61 @@ ipcMain.handle('start-spoof', async (event, options) => {
                     motherboard: safeOptions.motherboard,
                     ...results
                 });
+
             });
 
-        } catch (crash) {
-            console.error("[MAIN] Fatal Crash:", crash);
-            resolve({
-                success: false,
-                error: "MAIN_CRASH"
+        });
+
+    } catch (crash) {
+
+        console.error("[MAIN] Fatal Crash:", crash);
+
+        return {
+            success: false,
+            error: "MAIN_CRASH"
+        };
+
+    }
+    function runKDMapper(mapperPath, driverPath) {
+
+        return new Promise((resolve, reject) => {
+
+            const proc = spawn(mapperPath, [driverPath], {
+                windowsHide: true
             });
-        }
-    });
+
+            proc.stdout.on("data", data => {
+                console.log("[KDMAPPER]", data.toString());
+            });
+
+            proc.stderr.on("data", data => {
+                console.error("[KDMAPPER ERROR]", data.toString());
+            });
+
+            proc.on("error", err => {
+                console.error("[KDMAPPER SPAWN ERROR]", err);
+                reject(err);
+            });
+
+            proc.on("close", code => {
+
+                console.log("[KDMAPPER] Exit Code:", code);
+
+                if (code === 0)
+                    resolve();
+                else
+                    reject(new Error("kdmapper failed"));
+
+            });
+
+        });
+
+    }
+});
+
+ipcMain.handle('check-version', async () => {
+    
+    return { version: '1.1.3' };
 });
 
 function updateRPCStatus(gameName) {
@@ -414,6 +528,24 @@ ipcMain.handle('get-baseboard', async () => {
 // Listener for GPU ID
 ipcMain.handle('get-gpuid', async () => {
     return spoofer.getGPUID();
+});
+
+ipcMain.handle("getSerial", async () => {
+    try {
+        const output = execSync("wmic diskdrive get serialnumber").toString();
+        return output.split("\n")[1].trim();
+    } catch {
+        return "UNKNOWN";
+    }
+});
+
+ipcMain.handle("getGPU", async () => {
+    try {
+        const output = execSync("wmic path win32_VideoController get PNPDeviceID").toString();
+        return output.split("\n")[1].trim();
+    } catch {
+        return "UNKNOWN";
+    }
 });
 
 
