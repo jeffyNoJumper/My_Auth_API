@@ -1,22 +1,65 @@
 const mongoose = require('mongoose');
 
 const userSchema = new mongoose.Schema({
-    email: { type: String, unique: true, sparse: true, default: null },
-    password: {
+    // Email is optional so keys can be generated alone, 
+    // but unique/sparse ensures no two users share an email later.
+    email: {
         type: String,
-        required: function () {
-            // Only required if email exists
-            return this.email != null;
-        },
+        required: false,
+        unique: true,
+        sparse: true,
         default: null
     },
-    license_key: { type: String, unique: true, sparse: true, default: null },
-    hwid: { type: String, default: null },
-    expiry_date: { type: Date, default: null },
-    duration_days: { type: Number, default: 30 },
-    is_banned: { type: Boolean, default: false },
-    is_paused: { type: Boolean, default: false },
-    games: { type: [String], default: [] }
-}, { timestamps: true, strict: false });
+
+    // Password is now optional to allow Key-only records
+    password: {
+        type: String,
+        required: false,
+        default: null
+    },
+
+    license_key: {
+        type: String,
+        required: false,
+        unique: true,
+        sparse: true,
+        default: null
+    },
+
+    hwid: {
+        type: String,
+        default: null
+    },
+
+    expiry_date: {
+        type: Date,
+        required: false,
+        default: null
+    },
+
+    duration_days: {
+        type: Number,
+        default: 30
+    },
+
+    is_banned: {
+        type: Boolean,
+        default: false
+    },
+
+    is_paused: {
+        type: Boolean,
+        default: false
+    },
+
+    games: {
+        type: [String],
+        default: []
+    }
+}, {
+    timestamps: true,
+    
+    strict: false
+});
 
 module.exports = mongoose.model('User', userSchema);
