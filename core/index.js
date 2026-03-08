@@ -5,6 +5,9 @@ const crypto = require('crypto');
 const bcrypt = require("bcryptjs");
 const cors = require('cors');
 
+const userData = fixDates(receivedData);
+const user = new User(userData);
+
 // --- 1. HANDLE MODELS SAFELY ---
 if (mongoose.models.User) delete mongoose.models.User;
 
@@ -396,7 +399,6 @@ app.post('/login', async (req, res) => {
     try {
         const { email, password, hwid } = req.body;
 
-        // 1. Only require Email and Password now
         if (!email || !password) {
             return res.json({ error: "Missing required fields (Email/Password)" });
         }
@@ -404,23 +406,30 @@ app.post('/login', async (req, res) => {
         const cleanEmail = email.toLowerCase().trim();
         const cleanPass = password.trim();
 
-        // 2. Find the user by EMAIL instead of license_key
-        const user = await User.findOne({ email: cleanEmail });
+        
+        let user = await User.findOne({ email: cleanEmail }).lean();
 
         if (!user) {
             return res.json({ error: "User not found. Please register first." });
         }
 
-        // 3. Verify the Password
+        
+        const fixDate = (d) => (d && d.$date) ? new Date(d.$date) : d;
+
+        user.expiry_date = fixDate(user.expiry_date);
+        user.createdAt = fixDate(user.createdAt);
+        user.updatedAt = fixDate(user.updatedAt);
+
+        
+        user = new User(user);
+
         if (user.password !== cleanPass) {
             return res.json({ error: "Invalid Email or Password." });
         }
 
-        // --- Keep your existing checks (Banned/Paused/Expired/HWID) ---
         if (user.is_banned) return res.json({ error: "Account Banned" });
         if (user.is_paused) return res.json({ error: "Subscription Paused" });
 
-        // Activation logic (if they have a key but it's not activated yet)
         if (!user.expiry_date) {
             const days = (typeof user.duration_days === 'number') ? user.duration_days : 0.0416;
             const expiry = new Date();
@@ -433,9 +442,11 @@ app.post('/login', async (req, res) => {
             await user.save();
         }
 
-        if (new Date() > user.expiry_date) return res.json({ error: "Subscription Expired" });
+        // Use the fixed date for the check
+        if (new Date() > new Date(user.expiry_date)) {
+            return res.json({ error: "Subscription Expired" });
+        }
 
-        // HWID Logic
         if (!user.hwid) {
             user.hwid = hwid;
             await user.save();
