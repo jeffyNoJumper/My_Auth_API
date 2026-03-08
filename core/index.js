@@ -386,65 +386,71 @@ app.post('/login', async (req, res) => {
         const cleanEmail = email.toLowerCase().trim();
         const cleanPass = password.trim();
 
-        
-        let user = await User.findOne({ email: cleanEmail }).lean();
+        // 1. Get raw data (.lean()) - No casting crashes here
+        let userData = await User.findOne({ email: cleanEmail }).lean();
 
-        if (!user) {
+        if (!userData) {
             return res.json({ error: "User not found. Please register first." });
         }
 
-        
+        // 2. Fix the dates on the plain object
         const fixDate = (d) => (d && d.$date) ? new Date(d.$date) : d;
+        userData.expiry_date = fixDate(userData.expiry_date);
+        userData.createdAt = fixDate(userData.createdAt);
+        userData.updatedAt = fixDate(userData.updatedAt);
 
-        user.expiry_date = fixDate(user.expiry_date);
-        user.createdAt = fixDate(user.createdAt);
-        user.updatedAt = fixDate(user.updatedAt);
-
-        
-        user = new User(user);
-
-        if (user.password !== cleanPass) {
+        // 3. Verify Password on the plain object
+        if (userData.password !== cleanPass) {
             return res.json({ error: "Invalid Email or Password." });
         }
 
-        if (user.is_banned) return res.json({ error: "Account Banned" });
-        if (user.is_paused) return res.json({ error: "Subscription Paused" });
+        if (userData.is_banned) return res.json({ error: "Account Banned" });
+        if (userData.is_paused) return res.json({ error: "Subscription Paused" });
 
-        if (!user.expiry_date) {
-            const days = (typeof user.duration_days === 'number') ? user.duration_days : 0.0416;
+        // 4. Update data directly in DB using findOneAndUpdate (STOPS E11000 ERRORS)
+        let updates = {};
+
+        // Activation Logic
+        if (!userData.expiry_date) {
+            const days = (typeof userData.duration_days === 'number') ? userData.duration_days : 30;
             const expiry = new Date();
             if (days >= 999) {
                 expiry.setFullYear(expiry.getFullYear() + 50);
             } else {
                 expiry.setTime(expiry.getTime() + (days * 24 * 60 * 60 * 1000));
             }
-            user.expiry_date = expiry;
-            await user.save();
+            updates.expiry_date = expiry;
+            userData.expiry_date = expiry; // Update local copy for response
         }
 
-        // Use the fixed date for the check
-        if (new Date() > new Date(user.expiry_date)) {
-            return res.json({ error: "Subscription Expired" });
-        }
-
-        if (!user.hwid) {
-            user.hwid = hwid;
-            await user.save();
-        } else if (user.hwid !== hwid) {
+        // HWID Logic
+        if (!userData.hwid) {
+            updates.hwid = hwid;
+        } else if (userData.hwid !== hwid) {
             return res.json({ error: "HWID Mismatch. Please request a reset." });
+        }
+
+        // If there are changes, save them to the DB without a "new User" collision
+        if (Object.keys(updates).length > 0) {
+            await User.findOneAndUpdate({ _id: userData._id }, { $set: updates });
+        }
+
+        // 5. Expiry Check
+        if (new Date() > new Date(userData.expiry_date)) {
+            return res.json({ error: "Subscription Expired" });
         }
 
         res.json({
             token: "VALID",
-            expiry: user.expiry_date,
-            profile_pic: user.profile_pic || '',
-            games: user.games || [],
-            license_key: user.license_key
+            expiry: userData.expiry_date,
+            profile_pic: userData.profile_pic || '',
+            games: userData.games || [],
+            license_key: userData.license_key
         });
 
     } catch (err) {
         console.error("Login Crash:", err);
-        res.status(500).json({ error: "Internal Server Error" });
+        res.status(500).json({ error: "Internal Server Error", message: err.message });
     }
 });
 
