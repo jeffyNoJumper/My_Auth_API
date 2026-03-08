@@ -8,6 +8,16 @@ const cors = require('cors');
 const userData = fixDates(receivedData);
 const user = new User(userData);
 
+const fixDates = (data) => {
+    for (let key in data) {
+        // Check if the value is the MongoDB {$date: ...} object
+        if (data[key] && typeof data[key] === 'object' && data[key].$date) {
+            data[key] = new Date(data[key].$date);
+        }
+    }
+    return data;
+};
+
 // --- 1. HANDLE MODELS SAFELY ---
 if (mongoose.models.User) delete mongoose.models.User;
 
