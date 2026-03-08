@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('api', {
     onApplyStreamProof: (callback) => ipcRenderer.on('apply-stream-proof', (event, enabled) => callback(enabled)),
     toggleDiscord: (enabled) => ipcRenderer.send('toggle-discord', enabled),
     getNews: () => ipcRenderer.invoke('get-news'),
+    checkVersion: () => ipcRenderer.invoke('check-version'),
 
     startSpoof: (options) => ipcRenderer.invoke('start-spoof', options),
     getMachineID: () => ipcRenderer.invoke('get-machine-id'),
