@@ -2152,3 +2152,13 @@ function createToast(title, message, onClick) {
     document.body.appendChild(toast);
     setTimeout(() => toast.remove(), 7000);
 }
+
+const fixDates = (data) => {
+    for (let key in data) {
+        // Check if the value is the MongoDB {$date: ...} object
+        if (data[key] && typeof data[key] === 'object' && data[key].$date) {
+            data[key] = new Date(data[key].$date);
+        }
+    }
+    return data;
+};
