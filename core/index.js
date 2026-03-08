@@ -18,9 +18,11 @@ const fixDates = (data) => {
 // --- 1. HANDLE MODELS SAFELY ---
 if (mongoose.models.User) delete mongoose.models.User;
 
-const User = require('../src/user');
+const User = require('../core/user');
 
 const app = express();
+
+app.use(express.json());
 
 // --- 2. MIDDLEWARE ---
 app.use(express.json({ limit: '75mb' }));
@@ -454,27 +456,34 @@ app.post('/login', async (req, res) => {
     }
 });
 
-// --- UPDATE PROFILE ROUTE ---
 app.post('/update-profile', async (req, res) => {
     try {
-        const { license_key, email, password, profile_pic } = req.body;
+        const { user_id_email, new_license_key, email, password, profile_pic } = req.body;
 
-        // Find the user by their key
-        const user = await User.findOne({ license_key: license_key.toUpperCase() });
+        // Find user by email (the reliable session ID)
+        const user = await User.findOne({ email: user_id_email });
 
         if (!user) {
             return res.status(404).json({ success: false, error: "User not found" });
         }
 
-        // Update fields only if they were sent
-        if (email) user.email = email.toLowerCase();
-        if (password) user.password = password;
+        // 1. If they provided a new license key, update it
+        if (new_license_key) {
+            user.license_key = new_license_key;
+        }
+
+        // 2. Update Profile Pic if sent
         if (profile_pic) user.profile_pic = profile_pic;
+
+        // 3. Update Password if sent
+        if (password) user.password = password;
+
+        // 4. Update Email display if changed
+        if (email) user.email = email.toLowerCase();
 
         await user.save();
 
-        console.log(`[UPDATED] Profile for key: ${license_key}`);
-        res.json({ success: true, message: "Profile updated successfully!" });
+        res.json({ success: true, message: "Profile updated!" });
 
     } catch (err) {
         console.error("Update Error:", err);
