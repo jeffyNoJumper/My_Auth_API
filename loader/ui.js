@@ -33,7 +33,12 @@ window.onload = async () => {
 
     // ---------- VERSION CHECK ----------
     try {
-        await checkVersion();
+        // Check if the function exists before calling it
+        if (typeof checkVersion === "function") {
+            await checkVersion();
+        } else {
+            console.warn("[UPDATE] checkVersion function is missing. Skipping...");
+        }
     } catch (err) {
         console.error("[UPDATE] Version check failed:", err);
     }
@@ -2131,6 +2136,13 @@ function updateLater() {
         }, 5 * 60 * 1000); // 5 minutes
     }
 }
+
+async function checkVersion() {
+    // Placeholder for future update logic
+    console.log("[SYSTEM] Version check initialized (no logic yet).");
+    return true;
+}
+
 
 function showUpdateReminder() {
     if (document.querySelector(".toast-notification")) return;
