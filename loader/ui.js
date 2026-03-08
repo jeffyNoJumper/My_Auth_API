@@ -35,7 +35,7 @@ window.onload = async () => {
     try {
         // Check if the function exists before calling it
         if (typeof checkVersion === "function") {
-            await checkVersion();
+            await checkForUpdates();
         } else {
             console.warn("[UPDATE] checkVersion function is missing. Skipping...");
         }
@@ -2137,12 +2137,6 @@ function updateLater() {
     }
 }
 
-async function checkVersion() {
-    // Placeholder for future update logic
-    console.log("[SYSTEM] Version check initialized (no logic yet).");
-    return true;
-}
-
 
 function showUpdateReminder() {
     if (document.querySelector(".toast-notification")) return;
@@ -2164,13 +2158,3 @@ function createToast(title, message, onClick) {
     document.body.appendChild(toast);
     setTimeout(() => toast.remove(), 7000);
 }
-
-const fixDates = (data) => {
-    for (let key in data) {
-        // Check if the value is the MongoDB {$date: ...} object
-        if (data[key] && typeof data[key] === 'object' && data[key].$date) {
-            data[key] = new Date(data[key].$date);
-        }
-    }
-    return data;
-};
