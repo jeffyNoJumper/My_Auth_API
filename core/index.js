@@ -18,7 +18,7 @@ const fixDates = (data) => {
 // --- 1. HANDLE MODELS SAFELY ---
 if (mongoose.models.User) delete mongoose.models.User;
 
-const User = require('../src/user');
+const User = require('../core/user');
 
 const app = express();
 
@@ -27,37 +27,10 @@ app.use(express.json({ limit: '75mb' }));
 app.use(express.urlencoded({ limit: '75mb', extended: true }));
 app.use(cors());
 
-// --- 3. DATABASE CONNECTION & NUKE ---
-mongoose.connect(process.env.MONGO_URL)
-    .then(async () => {
-        console.log("✅ Connected to MongoDB");
-
-        try {
-            const db = mongoose.connection.db;
-
-            await db.command({
-                collMod: "users",
-                validator: {},
-                validationLevel: "off"
-            });
-
-            await mongoose.connection.collection('users').dropIndex("expiry_date_1").catch(() => { });
-
-            await User.syncIndexes();
-
-            console.log("🔥 DATABASE RESTRAINTS NUKE SUCCESS");
-        } catch (err) {
-            console.log("ℹ️ Database is clean.");
-        }
-    }).catch(err => console.error("❌ Connection Error:", err));
-
-const Request = mongoose.models.Request || mongoose.model('Request', new mongoose.Schema({
-    hwid: String,
-    license_key: String,
-    type: String,
-    status: { type: String, default: "PENDING" },
-    date: { type: Date, default: Date.now }
-}));
+// --- 3. DATABASE CONNECTION ---
+mongoose.connect(process.env.MONGO_URL) // <- remove old options
+    .then(() => console.log('✅ MongoDB Connected'))
+    .catch(err => console.error('❌ MongoDB Connection Error:', err));
 
 // --- 1. ADMIN MIDDLEWARE ---
 function verifyAdmin(req, res, next) {
