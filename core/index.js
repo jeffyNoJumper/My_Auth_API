@@ -18,7 +18,7 @@ const fixDates = (data) => {
 // --- 1. HANDLE MODELS SAFELY ---
 if (mongoose.models.User) delete mongoose.models.User;
 
-const User = require('../src/user');
+const User = require('../core/user');
 
 const app = express();
 
@@ -107,7 +107,7 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                 return safeJson({
                     success: true,
                     keys: keys.map(k => ({
-                        license_key: k.license_key || "N/A",
+                        license_key: k.license_key,
                         email: k.email || "No Email",
                         expiry: k.expiry_date,
                         is_banned: k.is_banned || false,
@@ -124,8 +124,19 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
         const cleanAction = rawAction.replace('-key', '').trim();
 
         let user = null;
-        if (license_key) {
-            user = await User.findOne({ license_key: license_key.toUpperCase().trim() });
+
+        const identifier = req.body.identifier || license_key;
+
+        if (identifier) {
+            const clean = identifier.trim();
+
+            if (clean.includes("@")) {
+                // Lookup by email
+                user = await User.findOne({ email: clean.toLowerCase() });
+            } else {
+                // Lookup by license key
+                user = await User.findOne({ license_key: clean.toUpperCase() });
+            }
         }
 
         if (!user && cleanAction !== 'delete') {
