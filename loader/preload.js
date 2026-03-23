@@ -51,8 +51,12 @@ contextBridge.exposeInMainWorld('api', {
 
         const buffer = Buffer.from(await res.arrayBuffer());
 
-        const downloads = path.join(os.homedir(), "Downloads");
-        const savePath = path.join(downloads, fileName);
+        const downloads = path.resolve(path.join(os.homedir(), "Downloads"));
+        const savePath = path.resolve(downloads, fileName);
+        const relativePath = path.relative(downloads, savePath);
+        if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+            throw new Error("Invalid file path");
+        }
 
         fs.writeFileSync(savePath, buffer);
 
