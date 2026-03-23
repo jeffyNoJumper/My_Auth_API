@@ -743,6 +743,37 @@ ipcMain.handle('get-game-module-availability', async (event, gameName) => {
     return getModuleAvailability(assetsPath, gameName);
 });
 
+ipcMain.handle('get-game-live-feed', async (event, gameName) => {
+    const cacheKey = normalizeLaunchGameName(gameName);
+    const cached = gameFeedCache.get(cacheKey);
+
+    if (cached && cached.expiresAt > Date.now()) {
+        return cached.value;
+    }
+
+    try {
+        const value = await fetchGameFeed(gameName);
+        gameFeedCache.set(cacheKey, {
+            value,
+            expiresAt: Date.now() + GAME_FEED_TTL_MS
+        });
+        return value;
+    } catch (error) {
+        console.error(`[GAME FEED ERROR] ${cacheKey}`, error);
+
+        if (cached?.value) {
+            return cached.value;
+        }
+
+        return {
+            title: `${getLaunchGameLabel(gameName)} feed unavailable`,
+            summary: 'The official feed could not be reached right now.',
+            meta: 'Offline fallback',
+            url: ''
+        };
+    }
+});
+
 ipcMain.handle('launch-game', async (event, gameName, autoClose, licenseKey, injectionType, userData) => {
 
     console.log("[LAUNCH] Received userData:", userData);
