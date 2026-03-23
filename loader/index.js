@@ -5,16 +5,6 @@ const crypto = require('crypto');
 const bcrypt = require("bcryptjs");
 const cors = require('cors');
 
-const newID = "12AB-34CD";
-
-let mainWindow
-let spoofer
-const RPC = require('discord-rpc');
-const CLIENT_ID = '1476724607485743277';
-let rpcClient = null;
-const execFileAsync = promisify(execFile);
-let hardwareSnapshotCache = null;
-let hardwareSnapshotPromise = null;
 
 app.on('will-quit', async () => {
     if (rpcClient) {
