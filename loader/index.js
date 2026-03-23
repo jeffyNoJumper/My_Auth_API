@@ -61,57 +61,116 @@ function applyDuration(baseDate, daysValue) {
     return targetDate;
 }
 
+function normalizeGamesInput(games) {
+    if (Array.isArray(games)) {
+        return games.filter(Boolean);
+    }
+
+    if (typeof games === 'string' && games.trim()) {
+        return [games.trim()];
+    }
+
+    return [];
+}
+
+function generateLicenseKey(games) {
+    const gamePrefixMap = {
+        "CS2": "CS2X",
+        "FiveM": "FIVM",
+        "GTAV": "GTAV",
+        "Warzone": "WARZ",
+        "All-Access": "ALLX"
+    };
+
+    const firstGame = normalizeGamesInput(games)[0];
+    const prefix = gamePrefixMap[firstGame] || "GENR";
+    const randomPart = crypto.randomBytes(6).toString('hex').toUpperCase().match(/.{4}/g).join('-');
+    return `${prefix}-${randomPart}`;
+}
+
+function buildPendingVoucherEmail(key) {
+    return `pending_${String(key || '').toLowerCase()}`;
+}
+
 // --- 2. CREATE KEY ---
 app.post('/admin/create-key', verifyAdmin, async (req, res) => {
     try {
-        const { days, games, email, password } = req.body;
+        const { days, games, email, password, pre_register } = req.body;
         const daysNum = parseFloat(days);
+        const normalizedDays = Number.isNaN(daysNum) ? 30 : daysNum;
+        const normalizedGames = normalizeGamesInput(games);
         const cleanEmail = typeof email === 'string' ? email.toLowerCase().trim() : "";
         const cleanPassword = typeof password === 'string' ? password.trim() : "";
+        const shouldPreRegister = Boolean(pre_register);
 
-        if (!cleanEmail || !cleanPassword) {
-            return res.status(400).json({ success: false, error: "Email and password are required to create an account." });
+        if (shouldPreRegister && !cleanEmail) {
+            return res.status(400).json({ success: false, error: "Email is required when pre-register is enabled." });
         }
 
-        const existingUser = await User.findOne({ email: cleanEmail });
-        if (existingUser) {
-            return res.status(409).json({ success: false, error: "A user with that email already exists." });
-        }
-
-        const gamePrefixMap = {
-            "CS2": "CS2X",
-            "FiveM": "FIVM",
-            "GTAV": "GTAV",
-            "Warzone": "WARZ",
-            "All-Access": "ALLX"
-        };
-
-        const firstGame = Array.isArray(games) ? games[0] : games;
-
-        const prefix = gamePrefixMap[firstGame] || "GENR";
-
-        const randomPart = crypto.randomBytes(6).toString('hex').toUpperCase().match(/.{4}/g).join('-');
-        const newKey = `${prefix}-${randomPart}`;
-
-        const userData = {
+        const newKey = generateLicenseKey(normalizedGames);
+        const voucherRecord = new User({
             license_key: newKey,
-            duration_days: daysNum,
-            games: Array.isArray(games) ? games : [games],
-            email: cleanEmail,
-            password: cleanPassword,
+            duration_days: normalizedDays,
+            games: normalizedGames,
+            email: buildPendingVoucherEmail(newKey),
+            password: null,
             hwid: null,
-            expiry_date: null
-        };
+            expiry_date: null,
+            reserved_email: cleanEmail || null
+        });
 
-        const newUser = new User(userData);
-        await newUser.save();
+        let existingUser = null;
+        let accountCreated = false;
+
+        if (cleanEmail) {
+            existingUser = await User.findOne({ email: cleanEmail });
+        }
+
+        if (shouldPreRegister) {
+            if (existingUser) {
+                if (!existingUser.password && cleanPassword) {
+                    existingUser.password = cleanPassword;
+                    await existingUser.save();
+                }
+            } else {
+                const preregisteredUser = new User({
+                    email: cleanEmail,
+                    password: cleanPassword || null,
+                    hwid: null,
+                    games: [],
+                    expiry_date: null,
+                    license_key: null,
+                    duration_days: normalizedDays
+                });
+
+                await preregisteredUser.save();
+                existingUser = preregisteredUser;
+                accountCreated = true;
+            }
+        }
+
+        await voucherRecord.save();
 
         res.json({
             success: true,
             key: newKey,
             expiry: null,
-            games: newUser.games,
-            email: newUser.email
+            games: voucherRecord.games,
+            email: cleanEmail || null,
+            reserved_email: cleanEmail || null,
+            pre_registered: shouldPreRegister,
+            account_created: accountCreated,
+            requires_password_setup: shouldPreRegister && !cleanPassword,
+            mode: shouldPreRegister
+                ? (accountCreated ? 'pre-registered-new-user' : 'pre-registered-existing-user')
+                : (cleanEmail ? 'reserved-key' : 'standalone-key'),
+            message: shouldPreRegister
+                ? (accountCreated
+                    ? "Pre-registered account created. User can finish login setup and redeem the key in the loader."
+                    : "Key generated for the selected email. Existing account can redeem it in the loader.")
+                : (cleanEmail
+                    ? "Standalone key generated and reserved to the entered email."
+                    : "Standalone redeemable key generated.")
         });
     } catch (err) {
         console.error("Create Key Error:", err);
@@ -133,7 +192,7 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
         if (rawAction === 'load-keys') {
             console.log("[ADMIN] Success: Running load-keys logic...");
             try {
-                const keys = await User.find({}, 'license_key email expiry_date is_banned is_paused games')
+                const keys = await User.find({}, 'license_key email reserved_email expiry_date is_banned is_paused games')
                     .sort({ updatedAt: -1, createdAt: -1 })
                     .lean();
                 return safeJson({
@@ -142,6 +201,7 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                         license_key: k.license_key,
                         identifier: k.license_key || k.email || "",
                         email: k.email || "No Email",
+                        reserved_email: k.reserved_email || "",
                         expiry: k.expiry_date,
                         is_banned: k.is_banned || false,
                         is_paused: k.is_paused || false,
@@ -237,6 +297,7 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                     identifier: resolvedLicenseKey || user.email || normalizedIdentifier,
                     license_key: user.license_key || null,
                     email: user.email || "No Email Linked",
+                    reserved_email: user.reserved_email || "",
                     is_banned: user.is_banned || false,
                     is_paused: user.is_paused || false,
                     hwid: user.hwid || "NOT CAPTURED",
@@ -432,7 +493,22 @@ app.post('/register', async (req, res) => {
         const existingUser = await User.findOne({ email: cleanEmail });
 
         if (existingUser) {
-            return res.json({ error: "Email already registered." });
+            if (existingUser.password) {
+                return res.json({ error: "Email already registered." });
+            }
+
+            existingUser.password = cleanPass;
+            if (!existingUser.hwid && hwid) {
+                existingUser.hwid = hwid;
+            }
+            await existingUser.save();
+
+            console.log(`[REGISTER] Completed pre-registered user: ${cleanEmail}`);
+
+            return res.json({
+                status: "Success",
+                message: "Account setup completed successfully."
+            });
         }
 
         // Create new user
@@ -486,6 +562,10 @@ app.post('/login', async (req, res) => {
         userData.updatedAt = fixDate(userData.updatedAt);
 
         // 3. Verify Password on the plain object
+        if (!userData.password) {
+            return res.json({ error: "Account setup incomplete. Please finish registration first." });
+        }
+
         if (userData.password !== cleanPass) {
             return res.json({ error: "Invalid Email or Password." });
         }
