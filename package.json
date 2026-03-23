@@ -9,10 +9,11 @@
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.6",
     "crypto": "^1.0.1",
+    "discord.js": "^14.25.1",
     "dotenv": "^16.6.1",
     "express": "^4.22.1",
-    "helmet": "8.1.0",
     "jsonwebtoken": "^9.0.3",
+    "mongodb": "^7.1.0",
     "mongoose": "^7.8.9",
     "node-addon-api": "^8.5.0"
   }
