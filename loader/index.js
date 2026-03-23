@@ -4,7 +4,7 @@ const mongoose = require('mongoose');
 const crypto = require('crypto');
 const bcrypt = require("bcryptjs");
 const cors = require('cors');
-const { initDiscordBot } = require('./discordBot');
+const { initDiscordBot, getDiscordBotStatus } = require('./discordBot');
 
 const fixDates = (data) => {
     for (let key in data) {
@@ -959,6 +959,15 @@ app.get('/loader-notification/latest', async (req, res) => {
             enabled: false,
             error: "discord_announcement_unavailable"
         });
+    }
+});
+
+app.get('/discord-health', (req, res) => {
+    try {
+        res.json(getDiscordBotStatus());
+    } catch (error) {
+        console.error('[DISCORD BOT] Health route failed:', error);
+        res.status(500).json({ error: 'discord_health_failed' });
     }
 });
 
