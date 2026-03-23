@@ -6,6 +6,7 @@ const bcrypt = require("bcryptjs");
 const cors = require('cors');
 
 
+/*
 app.on('will-quit', async () => {
     if (rpcClient) {
         try {
@@ -16,6 +17,7 @@ app.on('will-quit', async () => {
         } catch (e) { }
     }
 });
+*/
 
 async function changeVolumeID() {
 
