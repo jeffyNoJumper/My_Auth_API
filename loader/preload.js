@@ -3,8 +3,68 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-contextBridge.exposeInMainWorld('api', {
+const VERSION_MANIFEST_URL = "https://raw.githubusercontent.com/jeffyNoJumper/My_Auth_API/refs/heads/main/version.txt";
 
+function normalizeManifestText(rawText) {
+    return String(rawText || "")
+        .replace(/^\uFEFF/, '')
+        .trim()
+        .replace(/;(\s*[}\]])/g, '$1');
+}
+
+function buildManifestName(url, version) {
+    if (url) {
+        const lastPathSegment = url.split('/').pop() || '';
+        const cleanName = lastPathSegment.split('?')[0];
+        if (cleanName) {
+            return decodeURIComponent(cleanName);
+        }
+    }
+
+    return `VEXION.ALL-IN-ONE.Setup.${String(version || '').replace(/^v/i, '')}.exe`;
+}
+
+function parseVersionManifest(rawText) {
+    const normalizedText = normalizeManifestText(rawText);
+    if (!normalizedText) {
+        throw new Error("Version manifest was empty");
+    }
+
+    let parsed;
+    try {
+        parsed = JSON.parse(normalizedText);
+    } catch (error) {
+        throw new Error("Version manifest is not valid JSON");
+    }
+
+    const version = String(parsed.version || '').trim().replace(/^v/i, '');
+    const url = typeof parsed.url === 'string' ? parsed.url.trim() : "";
+    const name = typeof parsed.name === 'string' && parsed.name.trim()
+        ? parsed.name.trim()
+        : buildManifestName(url, version);
+
+    if (!version) {
+        throw new Error("Version manifest is missing a version field");
+    }
+
+    return {
+        version,
+        url,
+        name
+    };
+}
+
+async function fetchVersionManifest() {
+    const res = await fetch(VERSION_MANIFEST_URL, { cache: 'no-store' });
+    if (!res.ok) {
+        throw new Error(`Failed to fetch version manifest (${res.status})`);
+    }
+
+    const manifestText = await res.text();
+    return parseVersionManifest(manifestText);
+}
+
+contextBridge.exposeInMainWorld('api', {
     launchCheat: (name, close, key, type, userData) => {
         console.log("[PRELOAD] Forwarding Key:", key);
         console.log("[PRELOAD] Forwarding userData:", userData);
@@ -22,12 +82,7 @@ contextBridge.exposeInMainWorld('api', {
     onApplyStreamProof: (callback) => ipcRenderer.on('apply-stream-proof', (event, enabled) => callback(enabled)),
     toggleDiscord: (enabled) => ipcRenderer.send('toggle-discord', enabled),
     getNews: () => ipcRenderer.invoke('get-news'),
-    getLatestRelease: () => ipcRenderer.invoke('get-latest-release'),
-    downloadUpdate: (url, fileName) => ipcRenderer.invoke('download-update', url, fileName),
-    runUpdate: (filePath) => ipcRenderer.invoke('run-update', filePath),
-
     checkVersion: () => ipcRenderer.invoke('check-version'),
-
     startSpoof: (options) => ipcRenderer.invoke('start-spoof', options),
     getHardwareSnapshot: (forceRefresh = false) => ipcRenderer.invoke('get-hardware-snapshot', { forceRefresh }),
     getMachineID: () => ipcRenderer.invoke('get-machine-id'),
@@ -35,36 +90,19 @@ contextBridge.exposeInMainWorld('api', {
     getGPUID: () => ipcRenderer.invoke('get-gpuid'),
     getSerial: () => ipcRenderer.invoke("getSerial"),
     getGPU: () => ipcRenderer.invoke("getGPU"),
-
+    getAppVersion: () => ipcRenderer.invoke('get-app-version'),
     close: () => ipcRenderer.send('window-close'),
     minimize: () => ipcRenderer.send('window-minimize'),
     openExternal: (url) => shell.openExternal(url),
 
     // ---------- UPDATE SYSTEM ----------
-
-    getLatestRelease: async () => {
-        const res = await fetch("https://api.github.com/repos/jeffyNoJumper/My_Auth_API/releases/latest");
-        if (!res.ok) throw new Error("Failed to fetch latest release");
-
-        const data = await res.json();
-        const exe = data.assets.find(a => a.name.endsWith(".exe"));
-
-        if (!exe) throw new Error("No executable found in release");
-
-        return {
-            version: data.tag_name,
-            url: exe.browser_download_url,
-            name: exe.name
-        };
-    },
+    getLatestRelease: fetchVersionManifest,
 
     downloadUpdate: async (url, fileName) => {
-
         const res = await fetch(url);
         if (!res.ok) throw new Error(`Download failed (${res.status})`);
 
         const buffer = Buffer.from(await res.arrayBuffer());
-
         const downloads = path.join(os.homedir(), "Downloads");
         const savePath = path.join(downloads, fileName);
 
@@ -76,5 +114,4 @@ contextBridge.exposeInMainWorld('api', {
     runUpdate: (filePath) => {
         shell.openPath(filePath);
     }
-
 });
