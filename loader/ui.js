@@ -21,6 +21,9 @@ let autoLoginRequestToken = 0;
 let activeExternalLink = null;
 let activeAppDialogResolver = null;
 let activeGameLaunchResolver = null;
+let gameFeedRefreshInterval = null;
+let discordAnnouncementPollInterval = null;
+let latestDiscordAnnouncementId = localStorage.getItem('last_seen_discord_loader_notification_id') || "";
 
 const themePresets = {
     default: {
@@ -196,6 +199,55 @@ async function getGameModuleAvailability(gameName) {
         console.warn("[MODULE CHECK ERROR]", error);
         return { hasInternal: false, hasExternal: false };
     }
+}
+
+function updateGameFeedCard(card, feed) {
+    if (!card || !feed) {
+        return;
+    }
+
+    const title = card.querySelector('[data-game-feed-title]');
+    const copy = card.querySelector('[data-game-feed-copy]');
+    const meta = card.querySelector('[data-game-feed-meta]');
+
+    if (title && feed.title) {
+        title.textContent = feed.title;
+    }
+
+    if (copy && feed.summary) {
+        copy.textContent = feed.summary;
+    }
+
+    if (meta && feed.meta) {
+        meta.textContent = feed.meta;
+    }
+}
+
+async function refreshGameCardFeeds() {
+    if (!window.api?.getGameLiveFeed) {
+        return;
+    }
+
+    const cards = Array.from(document.querySelectorAll('.game-card[data-game]'));
+
+    await Promise.all(cards.map(async (card) => {
+        try {
+            const feed = await window.api.getGameLiveFeed(card.dataset.game || "");
+            updateGameFeedCard(card, feed);
+        } catch (error) {
+            console.warn("[GAME FEED UI ERROR]", card.dataset.game, error);
+        }
+    }));
+}
+
+function startGameFeedRefreshLoop() {
+    if (gameFeedRefreshInterval) {
+        clearInterval(gameFeedRefreshInterval);
+    }
+
+    gameFeedRefreshInterval = setInterval(() => {
+        void refreshGameCardFeeds();
+    }, 5 * 60 * 1000);
 }
 
 function applyModuleAvailabilityToChoice(button, isAvailable) {
@@ -695,6 +747,34 @@ function showSuccessDialog(title, message, detail = "") {
         kicker: "SUCCESS",
         actions: [{ label: "OK", value: true, variant: "primary" }]
     });
+}
+
+function getToastStack() {
+    let stack = document.getElementById('toast-stack');
+
+    if (!stack) {
+        stack = document.createElement('div');
+        stack.id = 'toast-stack';
+        stack.className = 'toast-stack';
+        document.body.appendChild(stack);
+    }
+
+    return stack;
+}
+
+function formatAnnouncementTimestamp(value) {
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+        return "LIVE NOW";
+    }
+
+    return date.toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit'
+    }).toUpperCase();
 }
 
 function showErrorDialog(title, message, detail = "") {
@@ -1352,6 +1432,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     void refreshGameCardsForAvailability(getCurrentPrefix());
+    void refreshGameCardFeeds();
+    startGameFeedRefreshLoop();
+    startDiscordAnnouncementPolling();
 });
 
 function toggleShadowWarning() {
@@ -3536,8 +3619,7 @@ async function checkForUpdates(options = {}) {
     }
 
 
-    function showUpdateReminder() {
-        if (document.querySelector(".toast-notification")) return;
+function showUpdateReminder() {
         createToast(
             "Update Available!",
             "Click here to open the update modal.",
@@ -3545,16 +3627,102 @@ async function checkForUpdates(options = {}) {
         );
     }
 
-function createToast(title, message, onClick) {
+function createToast(title, message, onClick, options = {}) {
+    const stack = getToastStack();
     const toast = document.createElement("div");
     toast.classList.add("toast-notification");
-    toast.innerHTML = `<strong>${title}</strong><p>${message}</p>`;
+
+    if (options.variant) {
+        toast.classList.add(`is-${options.variant}`);
+    }
+
+    toast.innerHTML = `
+        <strong class="toast-title">${title}</strong>
+        <p class="toast-message">${message}</p>
+        ${options.meta ? `<span class="toast-meta">${options.meta}</span>` : ''}
+    `;
+
     toast.addEventListener("click", () => {
         if (onClick) onClick();
         toast.remove();
     });
-    document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 7000);
+
+    stack.appendChild(toast);
+    setTimeout(() => toast.remove(), options.duration || 7000);
+}
+
+function showDiscordAnnouncementToast(announcement) {
+    if (!announcement?.id) {
+        return;
+    }
+
+    createToast(
+        announcement.title || "New Admin Notice",
+        announcement.detail || "A new admin notice was posted in Discord.",
+        () => {
+            void showAppDialog({
+                title: announcement.title || "New Admin Notice",
+                message: announcement.detail || "A new admin notice was posted in Discord.",
+                detail: `${announcement.author || "Admin"} · ${formatAnnouncementTimestamp(announcement.timestamp)}`,
+                tone: "info",
+                kicker: "ADMIN ANNOUNCEMENT",
+                actions: [{ label: "OK", value: true, variant: "primary" }]
+            });
+        },
+        {
+            variant: "admin",
+            duration: 10000,
+            meta: `${announcement.author || "ADMIN"} · ${formatAnnouncementTimestamp(announcement.timestamp)}`
+        }
+    );
+}
+
+async function pollDiscordAnnouncements({ silentBaseline = false } = {}) {
+    try {
+        const response = await fetch(`${API}/loader-notification/latest`, {
+            cache: 'no-store'
+        });
+
+        if (!response.ok) {
+            return;
+        }
+
+        const data = await response.json();
+        const announcement = data?.announcement;
+
+        if (!data?.enabled || !announcement?.id) {
+            return;
+        }
+
+        if (!latestDiscordAnnouncementId) {
+            latestDiscordAnnouncementId = announcement.id;
+            localStorage.setItem('last_seen_discord_loader_notification_id', announcement.id);
+
+            if (!silentBaseline) {
+                showDiscordAnnouncementToast(announcement);
+            }
+            return;
+        }
+
+        if (latestDiscordAnnouncementId !== announcement.id) {
+            latestDiscordAnnouncementId = announcement.id;
+            localStorage.setItem('last_seen_discord_loader_notification_id', announcement.id);
+            showDiscordAnnouncementToast(announcement);
+        }
+    } catch (error) {
+        console.warn("[DISCORD ANNOUNCEMENT POLL ERROR]", error);
+    }
+}
+
+function startDiscordAnnouncementPolling() {
+    if (discordAnnouncementPollInterval) {
+        clearInterval(discordAnnouncementPollInterval);
+    }
+
+    void pollDiscordAnnouncements({ silentBaseline: true });
+    discordAnnouncementPollInterval = setInterval(() => {
+        void pollDiscordAnnouncements();
+    }, 30000);
 }
 
 document.addEventListener("DOMContentLoaded", () => {
