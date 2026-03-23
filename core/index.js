@@ -1,6 +1,5 @@
 require('dotenv').config();
 const express = require('express');
-const helmet = require('helmet');
 const mongoose = require('mongoose');
 const crypto = require('crypto');
 const bcrypt = require("bcryptjs");
@@ -19,10 +18,9 @@ const fixDates = (data) => {
 // --- 1. HANDLE MODELS SAFELY ---
 if (mongoose.models.User) delete mongoose.models.User;
 
-const User = require('../src/user');
+const User = require('../core/user');
 
 const app = express();
-app.use(helmet());
 
 app.use(express.json());
 
@@ -45,11 +43,40 @@ function verifyAdmin(req, res, next) {
     next();
 }
 
+function applyDuration(baseDate, daysValue) {
+    const targetDate = new Date(baseDate);
+    const parsedDays = parseFloat(daysValue);
+
+    if (Number.isNaN(parsedDays)) {
+        return targetDate;
+    }
+
+    if (parsedDays >= 999) {
+        targetDate.setFullYear(targetDate.getFullYear() + 50);
+        return targetDate;
+    }
+
+    const durationMs = Math.round(parsedDays * 24 * 60 * 60 * 1000);
+    targetDate.setTime(targetDate.getTime() + durationMs);
+    return targetDate;
+}
+
 // --- 2. CREATE KEY ---
 app.post('/admin/create-key', verifyAdmin, async (req, res) => {
     try {
         const { days, games, email, password } = req.body;
         const daysNum = parseFloat(days);
+        const cleanEmail = typeof email === 'string' ? email.toLowerCase().trim() : "";
+        const cleanPassword = typeof password === 'string' ? password.trim() : "";
+
+        if (!cleanEmail || !cleanPassword) {
+            return res.status(400).json({ success: false, error: "Email and password are required to create an account." });
+        }
+
+        const existingUser = await User.findOne({ email: cleanEmail });
+        if (existingUser) {
+            return res.status(409).json({ success: false, error: "A user with that email already exists." });
+        }
 
         const gamePrefixMap = {
             "CS2": "CS2X",
@@ -70,8 +97,8 @@ app.post('/admin/create-key', verifyAdmin, async (req, res) => {
             license_key: newKey,
             duration_days: daysNum,
             games: Array.isArray(games) ? games : [games],
-            email: email ? email.toLowerCase() : `pending_${randomPart}@auth.com`,
-            password: password || null,
+            email: cleanEmail,
+            password: cleanPassword,
             hwid: null,
             expiry_date: null
         };
@@ -83,7 +110,8 @@ app.post('/admin/create-key', verifyAdmin, async (req, res) => {
             success: true,
             key: newKey,
             expiry: null,
-            games: newUser.games
+            games: newUser.games,
+            email: newUser.email
         });
     } catch (err) {
         console.error("Create Key Error:", err);
@@ -105,11 +133,14 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
         if (rawAction === 'load-keys') {
             console.log("[ADMIN] Success: Running load-keys logic...");
             try {
-                const keys = await User.find({}, 'license_key email expiry_date is_banned is_paused games').lean();
+                const keys = await User.find({}, 'license_key email expiry_date is_banned is_paused games')
+                    .sort({ updatedAt: -1, createdAt: -1 })
+                    .lean();
                 return safeJson({
                     success: true,
                     keys: keys.map(k => ({
                         license_key: k.license_key,
+                        identifier: k.license_key || k.email || "",
                         email: k.email || "No Email",
                         expiry: k.expiry_date,
                         is_banned: k.is_banned || false,
@@ -128,9 +159,10 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
         let user = null;
 
         const identifier = req.body.identifier || license_key;
+        const normalizedIdentifier = typeof identifier === 'string' ? identifier.trim() : "";
 
-        if (identifier) {
-            const clean = identifier.trim();
+        if (normalizedIdentifier) {
+            const clean = normalizedIdentifier;
 
             if (clean.includes("@")) {
                 // Lookup by email
@@ -142,9 +174,14 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
         }
 
         if (!user && cleanAction !== 'delete') {
-            console.log(`[ADMIN] Error: Key not found for action "${cleanAction}"`);
-            return safeJson({ success: false, error: "Key not found" });
+            return safeJson({ success: false, error: "User not found" });
         }
+
+        const resolvedLicenseKey = user?.license_key
+            ? user.license_key.toUpperCase()
+            : normalizedIdentifier && !normalizedIdentifier.includes("@")
+                ? normalizedIdentifier.toUpperCase()
+                : null;
 
         if (cleanAction === 'add-time') {
             // Pull 'days' from req.body
@@ -156,18 +193,18 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
 
             // Math: If expired, start from NOW. If active, add to existing
             let currentExpiry = user.expiry_date ? new Date(user.expiry_date) : new Date();
-            let baseDate = (currentExpiry > new Date()) ? currentExpiry : new Date();
+            const baseDate = (currentExpiry > new Date()) ? currentExpiry : new Date();
+            const newExpiry = applyDuration(baseDate, daysToAdd);
 
-            // Add the days
-            baseDate.setDate(baseDate.getDate() + daysToAdd);
-
-            user.expiry_date = baseDate;
+            user.expiry_date = newExpiry;
             await user.save();
 
-            console.log(`[ADMIN] Successfully added ${daysToAdd} days to: ${license_key}`);
+            console.log(`[ADMIN] Successfully added ${daysToAdd} days to: ${resolvedLicenseKey || normalizedIdentifier}`);
             return res.json({
                 success: true,
-                message: `Added ${daysToAdd} days. New Expiry: ${baseDate.toLocaleDateString()}`
+                message: daysToAdd >= 999
+                    ? `Set lifetime expiry: ${newExpiry.toLocaleDateString()}`
+                    : `Added ${daysToAdd} days. New Expiry: ${newExpiry.toLocaleDateString()}`
             });
         }
 
@@ -187,15 +224,18 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
             case 'get-key':
                 let pendingRequest = null;
                 try {
-                    // Using raw connection to match the 'reset-hwid' collection exactly
-                    pendingRequest = await mongoose.connection.collection('requests').findOne({
-                        license_key: String(license_key).toUpperCase(),
-                        status: "PENDING"
-                    });
+                    if (resolvedLicenseKey) {
+                        pendingRequest = await mongoose.connection.collection('requests').findOne({
+                            license_key: resolvedLicenseKey,
+                            status: "PENDING"
+                        });
+                    }
                 } catch (e) { console.log("Request fetch failed"); }
 
                 return safeJson({
                     success: true,
+                    identifier: resolvedLicenseKey || user.email || normalizedIdentifier,
+                    license_key: user.license_key || null,
                     email: user.email || "No Email Linked",
                     is_banned: user.is_banned || false,
                     is_paused: user.is_paused || false,
@@ -208,10 +248,17 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
 
             case 'reset-hwid':
                 try {
-                    // 1. Find the pending request to get the IDs
-                    const pendingReqList = await mongoose.connection.collection('requests')
-                        .find({ license_key: license_key.toUpperCase(), status: "PENDING" })
+                    if (!resolvedLicenseKey) {
+                        return res.json({ success: false, error: "Selected user has no license key on file" });
+                    }
+
+                    const requestsCollection = mongoose.connection.collection('requests');
+                    const pendingReqList = await requestsCollection
+                        .find({ license_key: resolvedLicenseKey, status: "PENDING" })
                         .sort({ date: -1 }).limit(1).toArray();
+
+                    let responseMessage = "HWID reset.";
+                    const userUpdate = { hwid: null };
 
                     if (pendingReqList.length > 0) {
                         const reqData = pendingReqList[0];
@@ -228,20 +275,18 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                             newExpiry.setTime(now.getTime() + msToAdd);
                         }
 
-                        // Update User
-                        user.hwid = null;
-                        user.expiry_date = newExpiry;
-                        await user.save();
+                        userUpdate.expiry_date = newExpiry;
+                        responseMessage = "Approved & Time Restored";
 
                         // Update Request Status
-                        await mongoose.connection.collection('requests').updateOne(
+                        await requestsCollection.updateOne(
                             { _id: reqData._id },
                             { $set: { status: "APPROVED" } }
                         );
 
                         // DISCORD LOG: SHOW OLD VS NEW + RESTORED TIME
                         const DISCORD_WEBHOOK = "https://discord.com/api/webhooks/1375161068317573253/mK3ucW0iJcN9nj96LJ1L_0bSeCtx-dQMedS9kxvdz49Qhpsd1GCfWb3fRydp_b1Z1OT_";
-                        const maskedKey = license_key.substring(0, 5) + "****-****";
+                        const maskedKey = resolvedLicenseKey.substring(0, 5) + "****-****";
 
                         await fetch(DISCORD_WEBHOOK, {
                             method: 'POST',
@@ -263,9 +308,24 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                                 }]
                             })
                         });
-                        console.log(`[✅] Approved & Time Restored for: ${license_key}`);
+                        console.log(`[✅] Approved & Time Restored for: ${resolvedLicenseKey}`);
                     }
-                    return res.json({ success: true, message: "Approved & Time Restored" });
+
+                    const updateResult = await User.updateOne(
+                        { _id: user._id },
+                        { $set: userUpdate }
+                    );
+
+                    if (!updateResult.matchedCount) {
+                        return res.json({ success: false, error: "User not found" });
+                    }
+
+                    return res.json({
+                        success: true,
+                        message: responseMessage,
+                        hwid: null,
+                        expiry: userUpdate.expiry_date || user.expiry_date || null
+                    });
                 } catch (err) {
                     console.error("Reset Error:", err);
                     return res.json({ success: false, error: "Database sync failed" });
@@ -273,8 +333,12 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
 
             case 'deny-hwid':
                 try {
+                    if (!resolvedLicenseKey) {
+                        return res.json({ success: false, error: "Selected user has no license key on file" });
+                    }
+
                     const latestDeny = await mongoose.connection.collection('requests')
-                        .find({ license_key: license_key.toUpperCase(), status: "PENDING" })
+                        .find({ license_key: resolvedLicenseKey, status: "PENDING" })
                         .sort({ date: -1 })
                         .limit(1)
                         .toArray();
@@ -286,7 +350,7 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                         );
 
                         // --- DISCORD LOG: DENIED ---
-                        const maskedKeyDeny = license_key.substring(0, 5) + "****-****";
+                        const maskedKeyDeny = resolvedLicenseKey.substring(0, 5) + "****-****";
                         await fetch("https://discord.com_", {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
@@ -301,7 +365,7 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                             })
                         });
 
-                        console.log(`[❌] ADMIN PANEL: Denied Request for ${license_key}`);
+                        console.log(`[❌] ADMIN PANEL: Denied Request for ${resolvedLicenseKey}`);
                     }
                     return res.json({ success: true, message: "Denied" });
                 } catch (err) {
@@ -329,8 +393,15 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                 return safeJson({ success: true, message: "User unbanned." });
 
             case 'delete':
-                if (license_key) {
-                    await User.deleteOne({ license_key: license_key.toUpperCase().trim() });
+                if (user?._id) {
+                    await User.deleteOne({ _id: user._id });
+                    return safeJson({ success: true, message: "Key deleted." });
+                }
+                if (normalizedIdentifier) {
+                    const deleteFilter = normalizedIdentifier.includes("@")
+                        ? { email: normalizedIdentifier.toLowerCase() }
+                        : { license_key: normalizedIdentifier.toUpperCase() };
+                    await User.deleteOne(deleteFilter);
                     return safeJson({ success: true, message: "Key deleted." });
                 }
                 return safeJson({ success: false, error: "No key provided to delete" });
@@ -523,7 +594,11 @@ app.get('/check-reset-status', async (req, res) => {
         }
 
         // Return only the status (PENDING, APPROVED, or DENIED)
-        res.json({ status: request[0].status });
+        res.json({
+            status: request[0].status,
+            requestId: String(request[0]._id),
+            date: request[0].date || null
+        });
     } catch (err) {
         console.error("Polling Error:", err);
         res.status(500).json({ status: "ERROR" });
@@ -540,6 +615,25 @@ app.post('/request-hwid-reset', async (req, res) => {
         }
 
         const upperKey = license_key.toUpperCase();
+        const requestsCollection = mongoose.connection.collection('requests');
+
+        const existingPending = await requestsCollection.find({
+            license_key: upperKey,
+            status: "PENDING"
+        })
+            .sort({ date: -1 })
+            .limit(1)
+            .toArray();
+
+        if (existingPending.length > 0) {
+            return res.json({
+                success: true,
+                message: "Request already pending.",
+                status: "PENDING",
+                requestId: String(existingPending[0]._id),
+                date: existingPending[0].date || null
+            });
+        }
 
         const user = await User.findOne({ license_key: upperKey });
         const oldHwid = user ? user.hwid : "NOT_SET";
@@ -549,13 +643,14 @@ app.post('/request-hwid-reset', async (req, res) => {
         const maskedHWID = hwid.substring(0, 4) + "********" + hwid.slice(-4);
 
         // --- 1. SAVE TO DATABASE ---
-        await mongoose.connection.collection('requests').insertOne({
+        const requestDate = new Date();
+        const insertResult = await requestsCollection.insertOne({
             old_hwid: oldHwid,
             new_hwid: hwid,
             license_key: upperKey,
             type: type,
             status: "PENDING",
-            date: new Date()
+            date: requestDate
         });
 
         // --- 2. SEND TO DISCORD ---
@@ -578,7 +673,13 @@ app.post('/request-hwid-reset', async (req, res) => {
             })
         });
 
-        return res.json({ success: true, message: "Admin notified." });
+        return res.json({
+            success: true,
+            message: "Admin notified.",
+            status: "PENDING",
+            requestId: String(insertResult.insertedId),
+            date: requestDate
+        });
     } catch (err) {
         res.status(500).json({ success: false, error: "Internal Error" });
     }
@@ -586,20 +687,20 @@ app.post('/request-hwid-reset', async (req, res) => {
 
 app.post('/admin/add-time', async (req, res) => {
     const { license_key, admin_password, days } = req.body;
-    if (admin_password !== process.env.ADMIN_PASS) return res.status(403).json({ error: "Invalid Admin Pass" });
+    if (admin_password !== process.env.ADMIN_SECRET) return res.status(403).json({ error: "Invalid Admin Pass" });
 
     try {
         const user = await User.findOne({ license_key: license_key.toUpperCase() });
         if (!user) return res.status(404).json({ error: "User not found" });
 
         const daysToAdd = parseFloat(days);
-        const currentExpiry = new Date(user.expiry_date);
+        const currentExpiry = user.expiry_date ? new Date(user.expiry_date) : new Date();
 
         // If expired, start from NOW. If active, add to existing time.
         const baseDate = (currentExpiry > new Date()) ? currentExpiry : new Date();
-        baseDate.setDate(baseDate.getDate() + daysToAdd);
+        const newExpiry = applyDuration(baseDate, daysToAdd);
 
-        user.expiry_date = baseDate;
+        user.expiry_date = newExpiry;
         await user.save();
 
         res.json({ success: true, new_expiry: user.expiry_date });
@@ -637,13 +738,13 @@ app.post('/redeem', async (req, res) => {
         }
 
         const daysToAdd = parseFloat(voucher.duration_days) || 30;
+        const redeemedLicenseKey = voucher.license_key ? voucher.license_key.toUpperCase().trim() : null;
 
         // 4. Update Expiry: If expired, start from now. If active, add to existing.
         let currentExpiry = user.expiry_date ? new Date(user.expiry_date) : new Date();
-        let baseDate = (currentExpiry > new Date()) ? currentExpiry : new Date();
+        const baseDate = (currentExpiry > new Date()) ? currentExpiry : new Date();
 
-        baseDate.setDate(baseDate.getDate() + daysToAdd);
-        user.expiry_date = baseDate;
+        user.expiry_date = applyDuration(baseDate, daysToAdd);
 
         // 5. Update Games: Merge games from the voucher into the user account
         if (voucher.games && Array.isArray(voucher.games)) {
@@ -655,6 +756,9 @@ app.post('/redeem', async (req, res) => {
         await User.deleteOne({ _id: voucher._id });
 
         // 7. Save the active user
+        if (redeemedLicenseKey) {
+            user.license_key = redeemedLicenseKey;
+        }
         await user.save();
 
         console.log(`[REDEEM] ${email} redeemed ${daysToAdd} days via ${license_key}`);
@@ -662,7 +766,8 @@ app.post('/redeem', async (req, res) => {
         res.json({
             status: "Success",
             message: `Successfully added ${daysToAdd} days!`,
-            new_expiry: user.expiry_date
+            new_expiry: user.expiry_date,
+            license_key: user.license_key
         });
 
     } catch (err) {
