@@ -8,12 +8,377 @@ let expiryCheckInterval = null;
 let isAuthProcessActive = false;
 let updateReminderInterval = null;
 const currentVersion = "1.1.3";
+let hardwareSnapshot = null;
+let hardwareSnapshotPromise = null;
+let updateCheckPromise = null;
+let serverHealthState = "CHECKING";
+let hwidResetPollInterval = null;
+let hwidResetApprovalStatus = "idle";
+let latestHwidResetRequestId = null;
+let injectionProgressTimer = null;
+let autoLoginRequestToken = 0;
 
 const shell = window.api.shell;
 
 let currentUserPrefix = localStorage.getItem('user_prefix') || "";
 
-window.onload = async () => {
+function showAutoLoginModal() {
+    const modal = document.getElementById('auto-login-modal');
+    if (!modal) return;
+    modal.style.removeProperty('display');
+    modal.classList.remove('hidden');
+}
+
+function hideAutoLoginModal() {
+    const modal = document.getElementById('auto-login-modal');
+    if (!modal) return;
+    modal.style.removeProperty('display');
+    modal.classList.add('hidden');
+}
+
+function showManualLoginState(noticeText = null, keepAutoLoginModal = false) {
+    const loginScreen = document.getElementById("login-screen");
+    const dashboard = document.getElementById("dashboard-wrapper");
+    const sidebar = document.getElementById("sidebar");
+    const loginNotice = document.getElementById("login-notice");
+
+    if (!keepAutoLoginModal) {
+        hideAutoLoginModal();
+    }
+    document.body.classList.remove("logged-in");
+    document.body.classList.add("login-active");
+
+    if (loginScreen) loginScreen.style.display = "flex";
+    if (dashboard) dashboard.style.display = "none";
+    if (sidebar) {
+        sidebar.classList.add("hidden");
+        sidebar.style.removeProperty("display");
+    }
+
+    if (loginNotice) {
+        if (noticeText) {
+            loginNotice.innerText = noticeText;
+            loginNotice.classList.remove("hidden");
+        } else {
+            loginNotice.innerText = "";
+            loginNotice.classList.add("hidden");
+        }
+    }
+}
+
+function hoistModalToBody(id) {
+    const modal = document.getElementById(id);
+    if (!modal || modal.parentElement === document.body) {
+        return;
+    }
+
+    document.body.appendChild(modal);
+}
+
+async function loadHardwareSnapshot(forceRefresh = false) {
+    if (forceRefresh) {
+        hardwareSnapshot = null;
+        hardwareSnapshotPromise = null;
+    }
+
+    if (hardwareSnapshot) {
+        return hardwareSnapshot;
+    }
+
+    if (!hardwareSnapshotPromise) {
+        hardwareSnapshotPromise = window.api.getHardwareSnapshot(forceRefresh)
+            .then((snapshot) => {
+                hardwareSnapshot = snapshot;
+                return snapshot;
+            })
+            .catch((err) => {
+                hardwareSnapshotPromise = null;
+                throw err;
+            });
+    }
+
+    return hardwareSnapshotPromise;
+}
+
+function setSettingsStatus(message) {
+    const statusChip = document.getElementById('settings-status-note');
+    if (statusChip) {
+        statusChip.textContent = message;
+    }
+}
+
+function getCurrentLicenseKey() {
+    return (localStorage.getItem('license_key') || '').trim().toUpperCase();
+}
+
+function getCurrentPrefix() {
+    const key = getCurrentLicenseKey();
+    return currentUserPrefix || (key.includes('-') ? key.split('-')[0].toUpperCase() : "NONE");
+}
+
+function getAccessPlanLabel(prefix) {
+    const planMap = {
+        ALLX: "ALL ACCESS",
+        LIFE: "LIFETIME",
+        CS2X: "CS2 ACCESS",
+        FIVM: "FIVEM ACCESS",
+        GTAV: "GTAV ACCESS",
+        WARZ: "WARZONE ACCESS"
+    };
+
+    return planMap[prefix] || "PENDING";
+}
+
+function maskLicenseKey(key) {
+    if (!key) {
+        return "Awaiting redeem";
+    }
+
+    if (key.length <= 10) {
+        return key;
+    }
+
+    return `${key.slice(0, 5)}••••-${key.slice(-4)}`;
+}
+
+function getHomeExpirySnapshot(expiry, prefix) {
+    if (prefix === "ALLX" || prefix === "LIFE") {
+        return {
+            label: "LIFETIME",
+            detail: "Permanent access enabled on this account.",
+            color: "var(--gold)"
+        };
+    }
+
+    if (!expiry || expiry === "null") {
+        return {
+            label: "PENDING",
+            detail: "No active subscription timer detected yet.",
+            color: "var(--text-secondary)"
+        };
+    }
+
+    const expiryDate = new Date(expiry);
+    const expiryTime = expiryDate.getTime();
+
+    if (Number.isNaN(expiryTime)) {
+        return {
+            label: "PENDING",
+            detail: "Subscription timing data is unavailable.",
+            color: "var(--text-secondary)"
+        };
+    }
+
+    const diff = expiryTime - Date.now();
+
+    if (diff <= 0) {
+        return {
+            label: "EXPIRED",
+            detail: `Expired on ${expiryDate.toLocaleString()}`,
+            color: "var(--red)"
+        };
+    }
+
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+    if (days >= 1) {
+        return {
+            label: `${days} DAY${days === 1 ? "" : "S"}`,
+            detail: `Expires on ${expiryDate.toLocaleString()}`,
+            color: "#d7fff6"
+        };
+    }
+
+    return {
+        label: `${hours}h ${minutes}m ${seconds}s`,
+        detail: `Less than 24 hours remain. Ends ${expiryDate.toLocaleTimeString()}.`,
+        color: "var(--accent)"
+    };
+}
+
+function updateHomeServerStatusUI() {
+    const statusEl = document.getElementById('home-server-status');
+    const copyEl = document.getElementById('home-server-copy');
+
+    if (!statusEl || !copyEl) {
+        return;
+    }
+
+    statusEl.className = 'home-status-pill';
+
+    if (serverHealthState === "ONLINE") {
+        statusEl.classList.add('online');
+        statusEl.textContent = "ONLINE";
+        copyEl.textContent = "Auth API is reachable and responding normally.";
+        return;
+    }
+
+    if (serverHealthState === "OFFLINE") {
+        statusEl.classList.add('offline');
+        statusEl.textContent = "OFFLINE";
+        copyEl.textContent = "The API health check failed. Launch actions may be unavailable.";
+        return;
+    }
+
+    statusEl.classList.add('checking');
+    statusEl.textContent = "CHECKING";
+    copyEl.textContent = "Syncing loader health...";
+}
+
+function stopInjectionProgressAnimation() {
+    if (injectionProgressTimer) {
+        clearInterval(injectionProgressTimer);
+        injectionProgressTimer = null;
+    }
+}
+
+function setInjectionProgress(percent, message, tone = "active") {
+    const bar = document.getElementById('main-progress-bar');
+    const text = document.getElementById('status-text');
+    const percentText = document.getElementById('status-percent');
+
+    if (bar) {
+        bar.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+        bar.classList.remove('is-success', 'is-error');
+        if (tone === "success") {
+            bar.classList.add('is-success');
+        } else if (tone === "error") {
+            bar.classList.add('is-error');
+        }
+    }
+
+    if (text && message) {
+        text.textContent = message;
+        text.style.color = tone === "error"
+            ? "var(--red)"
+            : tone === "success"
+                ? "#8cffde"
+                : "var(--accent)";
+    }
+
+    if (percentText) {
+        percentText.textContent = `${Math.max(0, Math.min(100, percent))}%`;
+    }
+}
+
+function resetInjectionProgressUI() {
+    stopInjectionProgressAnimation();
+    setInjectionProgress(0, "INITIALIZING...");
+}
+
+function startInjectionProgressAnimation(gameName) {
+    const steps = [
+        { percent: 12, message: `AUTHENTICATING ${gameName.toUpperCase()}...` },
+        { percent: 28, message: "SECURING SESSION..." },
+        { percent: 45, message: `COMMUNICATING WITH ${gameName.toUpperCase()}...` }
+    ];
+
+    let stepIndex = 0;
+    setInjectionProgress(steps[0].percent, steps[0].message);
+    stopInjectionProgressAnimation();
+
+    injectionProgressTimer = setInterval(() => {
+        stepIndex += 1;
+        if (stepIndex >= steps.length) {
+            stopInjectionProgressAnimation();
+            return;
+        }
+
+        const step = steps[stepIndex];
+        setInjectionProgress(step.percent, step.message);
+    }, 420);
+}
+
+async function loadNews(forceRefresh = false) {
+    const terminal = document.getElementById('main-terminal');
+    if (!terminal) return;
+
+    if (newsLoaded && !forceRefresh) {
+        return;
+    }
+
+    setSettingsStatus("SYNCING FEED");
+
+    try {
+        const news = await window.api.getNews();
+        const rememberState = localStorage.getItem('remember-me') === 'true' ? "ENABLED" : "DISABLED";
+        const lines = [
+            `> [STATUS] Loader ready on v${currentVersion}.`,
+            `> [CLIENT] Remember Me: ${rememberState}.`,
+            "> [LOCAL] Settings apply instantly and save to this device."
+        ];
+
+        if (news) {
+            lines.push(...news.split('\n').filter(Boolean));
+        }
+
+        terminal.innerHTML = "";
+
+        lines.forEach((line, index) => {
+            const entry = document.createElement('div');
+            entry.className = index === 0 ? 'typewriter terminal-line' : 'terminal-line';
+            entry.innerText = line;
+            terminal.appendChild(entry);
+        });
+
+        newsLoaded = true;
+        setSettingsStatus("FEED READY");
+    } catch (err) {
+        console.error("[NEWS] Failed to load terminal feed:", err);
+        terminal.innerHTML = "";
+        addTerminalLine("> [ERROR] Failed to load terminal feed.");
+        setSettingsStatus("FEED ERROR");
+    }
+}
+
+async function runManualUpdateCheck() {
+    const button = document.getElementById('check-updates-btn');
+    const originalText = button ? button.textContent : "";
+
+    if (button) {
+        button.disabled = true;
+        button.textContent = "CHECKING...";
+    }
+
+    setSettingsStatus("CHECKING UPDATES");
+
+    try {
+        const release = await checkForUpdates({ manual: true });
+
+        if (release && release.version !== currentVersion) {
+            addTerminalLine(`> [UPDATE] New build detected: ${release.version}`);
+            setSettingsStatus("UPDATE AVAILABLE");
+        } else {
+            addTerminalLine(`> [UPDATE] Already on the latest build (${currentVersion}).`);
+            setSettingsStatus("UP TO DATE");
+        }
+    } catch (err) {
+        addTerminalLine("> [ERROR] Update check failed.");
+        setSettingsStatus("UPDATE ERROR");
+    } finally {
+        if (button) {
+            button.disabled = false;
+            button.textContent = originalText || "CHECK FOR UPDATES";
+        }
+    }
+}
+
+function openExitModal() {
+    hideUserDropdown();
+    openModal('exit-modal');
+}
+
+function exitApplication() {
+    closeModal('exit-modal');
+    if (window.api?.close) {
+        window.api.close();
+    }
+}
+
+async function initializeLoader() {
     const el = (id) => document.getElementById(id);
 
     const savedPfp = localStorage.getItem('saved_profile_pic');
@@ -22,14 +387,13 @@ window.onload = async () => {
         if (el('modal-pfp')) el('modal-pfp').src = savedPfp;
     }
 
-    await Promise.all([updateHWIDDisplay(), checkServer()]).catch(console.error);
+    void updateHWIDDisplay().catch(console.error);
+    void checkServer().catch(console.error);
 
-    try {
-        if (typeof checkForUpdates === "function") {
-            await checkForUpdates();
-        }
-    } catch (err) {
-        console.error("[UPDATE] Version check failed:", err);
+    if (typeof checkForUpdates === "function") {
+        void checkForUpdates().catch((err) => {
+            console.error("[UPDATE] Version check failed:", err);
+        });
     }
 
     if (el('update-overlay')) el('update-overlay').classList.add('hidden');
@@ -37,12 +401,9 @@ window.onload = async () => {
     const savedEmail = localStorage.getItem('remembered_email');
     const savedPass = localStorage.getItem('remembered_password');
     const savedExpiry = localStorage.getItem('expiry_date');
-    const rememberMe = localStorage.getItem('remember-me') === 'true' || !!savedEmail;
+    const rememberMe = localStorage.getItem('remember-me') === 'true';
 
     const autoLoginModal = el('auto-login-modal');
-    const loginScreen = el("login-screen");
-    const dashboard = el("dashboard-wrapper");
-    const sidebar = el("sidebar");
 
     if (rememberMe && savedEmail && savedPass) {
         const now = Date.now();
@@ -53,23 +414,12 @@ window.onload = async () => {
 
             if (el('login-email')) el('login-email').value = savedEmail;
             if (el('login-password')) el('login-password').value = savedPass;
-            if (autoLoginModal) autoLoginModal.style.display = 'flex';
+            if (autoLoginModal) showAutoLoginModal();
             if (el('auto-login-user')) el('auto-login-user').innerText = savedEmail;
+            showManualLoginState(null, true);
 
-            document.body.classList.remove('login-active');
-            document.body.classList.add('logged-in');
-
-            if (loginScreen) loginScreen.style.display = "none";
-            if (dashboard) dashboard.style.display = "flex";
-            if (sidebar) {
-                sidebar.style.display = "flex";
-                sidebar.classList.remove("hidden");
-            }
-
-            if (typeof showTab === "function") showTab("home");
-            if (typeof updateHomeTabUI === "function") updateHomeTabUI();
-
-            handleLogin(true, { email: savedEmail, password: savedPass })
+            const requestToken = ++autoLoginRequestToken;
+            handleLogin(true, { email: savedEmail, password: savedPass, requestToken })
                 .then(() => console.log("[SYSTEM] Auto-login complete"))
                 .catch(err => console.error("[AUTOLOGIN ERROR]", err));
 
@@ -84,25 +434,19 @@ window.onload = async () => {
 
     console.log("[SYSTEM] No valid session. Showing login screen.");
 
-    if (autoLoginModal) autoLoginModal.style.display = 'none';
-    if (loginScreen) loginScreen.style.display = "flex";
-    if (dashboard) dashboard.style.display = "none";
-    if (sidebar) sidebar.classList.add("hidden");
+    showManualLoginState("No valid session found. Please log in manually.");
+}
 
-    document.body.classList.add('login-active');
-
-    const loginNotice = el("login-notice");
-    if (loginNotice) {
-        loginNotice.innerText = "No valid session found. Please log in manually.";
-        loginNotice.classList.remove("hidden");
-    }
-};
+document.addEventListener('DOMContentLoaded', () => {
+    hoistModalToBody('register-modal');
+    hoistModalToBody('auto-login-modal');
+    void initializeLoader();
+});
 
 function cancelAutoLogin() {
-    closeModal('auto-login-modal');
+    autoLoginRequestToken += 1;
+    showManualLoginState("Auto-login cancelled. You can log in manually or create an account.");
     isAuthProcessActive = false;
-    document.getElementById('login-email').value = '';
-    document.getElementById('login-password').value = '';
 }
 function toggleDropdown() {
     document.getElementById('user-dropdown').classList.toggle('hidden');
@@ -154,9 +498,6 @@ async function launchGame(gameName) {
     const autoCloseActive = document.getElementById('auto-close-launcher').checked;
 
     const injectionModal = document.getElementById('injection-modal');
-    const bar = document.getElementById('main-progress-bar');
-    const text = document.getElementById('status-text');
-    const percentText = document.getElementById('status-percent');
 
     let injectionType = "external";
 
@@ -179,40 +520,56 @@ async function launchGame(gameName) {
     }
 
     // --- START INJECTION OVERLAY ---
-    if (injectionModal && bar) {
-        injectionModal.classList.remove('hidden'); // Blackout screen
-
-        setTimeout(() => {
-            bar.style.width = "45%";
-            if (percentText) percentText.innerText = "45%";
-            if (text) text.innerText = `COMMUNICATING WITH ${gameName.toUpperCase()}...`;
-        }, 100);
+    if (injectionModal) {
+        resetInjectionProgressUI();
+        injectionModal.classList.remove('hidden');
+        startInjectionProgressAnimation(gameName);
     }
 
     addTerminalLine(`> [SYSTEM] Initializing ${gameName.toUpperCase()}...`);
 
-    const result = await window.api.launchCheat(gameName, autoCloseActive, key, injectionType);
+    const rawEmail = localStorage.getItem("user_email");
+    const rawExpiry = localStorage.getItem("expiry_date");
+
+    function getDaysRemaining(expiry) {
+        if (!expiry) return "Unknown";
+
+        const now = new Date();
+        const exp = new Date(expiry);
+
+        const diff = exp - now;
+        const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
+
+        if (days <= 0) return "Expired";
+        if (days > 3650) return "Lifetime";
+
+        return `${days} days`;
+    }
+
+    const userData = {
+        username: rawEmail ? rawEmail.split("@")[0] : "Guest",
+        subscription: rawExpiry && new Date(rawExpiry) > new Date() ? "Premium" : "Expired",
+        expiry: rawExpiry
+    };
+
+    // Pass userData as the 5th argument to your launch function
+    const result = await window.api.launchCheat(gameName, autoCloseActive, key, injectionType, userData);
 
     if (result.status === "Success") {
-        if (bar) bar.style.width = "100%";
-        if (percentText) percentText.innerText = "100%";
-        if (text) {
-            text.innerText = "INJECTION SUCCESSFUL!";
-            text.style.color = "#00ff88"; // Green for success
-        }
+        stopInjectionProgressAnimation();
+        setInjectionProgress(100, "INJECTION SUCCESSFUL!", "success");
 
         setTimeout(() => {
-            injectionModal.classList.add('hidden');
-            bar.style.width = "0%";
-            percentText.innerText = "0%";
-            text.style.color = "var(--accent)";
+            injectionModal?.classList.add('hidden');
+            resetInjectionProgressUI();
         }, 3000);
     } else {
-        if (text) {
-            text.innerText = "INJECTION FAILED";
-            text.style.color = "#ff4444"; // Red for error
-        }
-        setTimeout(() => injectionModal.classList.add('hidden'), 3000);
+        stopInjectionProgressAnimation();
+        setInjectionProgress(100, "INJECTION FAILED", "error");
+        setTimeout(() => {
+            injectionModal?.classList.add('hidden');
+            resetInjectionProgressUI();
+        }, 3000);
     }
 
     addTerminalLine(`> ${result.status === "Success" ? "[SUCCESS]" : "[ERROR]"} ${result.message}`);
@@ -228,6 +585,7 @@ function submitCS2Choice(choice) {
 document.addEventListener('DOMContentLoaded', () => {
     const settings = [
         'auto-launch',
+        'auto-update-loader',
         'auto-close-launcher',
         'discord-rpc',
         'stream-proof'
@@ -266,54 +624,40 @@ function handleSettingChange(id, value) {
     addTerminalLine(`> [CONFIG] Executing ${id.toUpperCase()}...`);
 
     switch (id) {
+        case 'auto-update-loader':
+            setSettingsStatus(value ? "AUTO UPDATE ON" : "AUTO UPDATE OFF");
+            if (value) {
+                void checkForUpdates();
+            }
+            break;
 
         case 'discord-rpc':
             const rpcCheckbox = document.getElementById('discord-rpc');
-            rpcCheckbox.disabled = true;
+            if (rpcCheckbox) rpcCheckbox.disabled = true;
 
             window.api.toggleDiscord(value);
             addTerminalLine(`> [SYSTEM] Synchronizing Discord RPC...`);
+            setSettingsStatus(value ? "RPC ENABLED" : "RPC DISABLED");
 
-            setTimeout(() => { rpcCheckbox.disabled = false; }, 2000);
+            setTimeout(() => {
+                if (rpcCheckbox) rpcCheckbox.disabled = false;
+            }, 2000);
             break;
 
         case 'stream-proof':
             window.api.toggleStreamProof(value);
+            setSettingsStatus(value ? "STREAM PROOF ON" : "STREAM PROOF OFF");
             break;
 
         case 'auto-launch':
             if (window.api.toggleAutoLaunch) window.api.toggleAutoLaunch(value);
+            setSettingsStatus(value ? "AUTO LAUNCH ON" : "AUTO LAUNCH OFF");
             break;
 
         case 'auto-close-launcher':
             addTerminalLine(`> [SYSTEM] Preference saved: ${value ? 'EXIT_ON_INJECT' : 'STAY_OPEN'}`);
+            setSettingsStatus(value ? "AUTO CLOSE ON" : "AUTO CLOSE OFF");
             break;
-    }
-}
-
-async function loginUser() {
-    const key = document.getElementById('key-input').value;
-    const hwid = getHWID();
-
-    if (!key) return alert("Enter your license key!");
-
-    try {
-        const res = await fetch('https://my-auth-api-1ykc.onrender.com/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ license_key: key, hwid })
-        });
-        const data = await res.json();
-
-        if (data.token === "VALID") {
-
-            alert("Login Successful!");
-        } else {
-            alert("Login Failed: " + data.error);
-        }
-    } catch (err) {
-        console.error(err);
-        alert("Connection to server failed!");
     }
 }
 
@@ -416,22 +760,6 @@ function switchScreen(oldId, newId) {
     }
 }
 
-
-document.getElementById('reset-btn').addEventListener('click', async () => {
-    const statusText = document.getElementById('status-text');
-    statusText.innerText = "REQUESTING HWID RESET...";
-
-    try {
-        const results = await window.api.startSpoof();
-        if (results) {
-            statusText.innerText = "HWID RESET COMPLETED";
-            await updateHWIDDisplay();
-        }
-    } catch (err) {
-        statusText.innerText = "RESET FAILED: CONTACT SUPPORT";
-    }
-});
-
 function showTab(tabName) {
 
     // ---------- HIDE ALL TABS ----------
@@ -476,6 +804,9 @@ function showTab(tabName) {
         if (typeof updateHWIDDisplay === "function") {
             updateHWIDDisplay();
         }
+        if (typeof syncHwidResetApprovalState === "function") {
+            void syncHwidResetApprovalState(true).catch(console.error);
+        }
     }
 
     // SETTINGS TAB
@@ -492,7 +823,7 @@ function showTab(tabName) {
     console.log(`[UI] Switched to ${tabName.toUpperCase()} module.`);
 }
 
-async function updateHWIDDisplay() {
+async function updateHWIDDisplay(forceRefresh = false) {
     try {
         console.log("Refreshing Hardware Terminal...");
 
@@ -504,17 +835,13 @@ async function updateHWIDDisplay() {
         if (serialElem) serialElem.innerText = "FETCHING...";
         if (gpuElem) gpuElem.innerText = "FETCHING...";
 
-        await new Promise(r => setTimeout(r, 800));
+        const { machineId, serial, gpu } = await loadHardwareSnapshot(forceRefresh);
 
-        const hwid = await window.api.getMachineID();
-        const serial = await window.api.getSerial();   // changed
-        const gpu = await window.api.getGPU();         // changed
-
-        if (hwidElem) hwidElem.innerText = hwid || "N/A";
+        if (hwidElem) hwidElem.innerText = machineId || "N/A";
         if (serialElem) serialElem.innerText = serial || "N/A";
         if (gpuElem) gpuElem.innerText = gpu || "N/A";
 
-        console.log("Terminal Refreshed. New HWID:", hwid);
+        console.log("Terminal Refreshed. New HWID:", machineId);
 
     } catch (err) {
         console.error("Failed to update terminal:", err);
@@ -526,6 +853,7 @@ async function handleLogin(isAutoLogin = false, creds = {}) {
 
     const email = isAutoLogin ? creds.email : document.getElementById('login-email')?.value;
     const password = isAutoLogin ? creds.password : document.getElementById('login-password')?.value;
+    const requestToken = isAutoLogin ? creds.requestToken : null;
     const rememberMe = document.getElementById('remember-me')?.checked;
     const btn = document.getElementById('login-btn');
 
@@ -536,7 +864,7 @@ async function handleLogin(isAutoLogin = false, creds = {}) {
     if (!email || !password) {
         if (isAutoLogin) {
             // Close auto-login modal and show notice
-            if (autoLoginModal) autoLoginModal.style.display = "none";
+            if (autoLoginModal) hideAutoLoginModal();
 
             if (!loginNotice) {
                 const screen = document.getElementById("login-screen");
@@ -563,7 +891,7 @@ async function handleLogin(isAutoLogin = false, creds = {}) {
     }
 
     try {
-        const hwid = await window.api.getMachineID();
+        const { machineId: hwid } = await loadHardwareSnapshot();
 
         const res = await fetch("https://my-auth-api-1ykc.onrender.com/login", {
             method: "POST",
@@ -573,11 +901,23 @@ async function handleLogin(isAutoLogin = false, creds = {}) {
 
         const data = await res.json();
 
+        if (isAutoLogin && requestToken !== autoLoginRequestToken) {
+            return;
+        }
+
         if (data.token === "VALID") {
             console.log("[AUTH] LOGIN SUCCESS");
 
+            const username = email.split("@")[0];
+
+            window.currentUser = {
+                username: username,
+                subscription: data.subscription || "Premium",
+                expiry: data.expiry
+            };
+
             // Hide auto-login modal
-            if (autoLoginModal) autoLoginModal.style.display = "none";
+            if (autoLoginModal) hideAutoLoginModal();
             if (loginNotice) loginNotice.remove();
 
             // ---------- SAVE SESSION ----------
@@ -601,7 +941,7 @@ async function handleLogin(isAutoLogin = false, creds = {}) {
                 .forEach(img => img.src = profilePic);
 
             // ---------- USER INFO ----------
-            const username = email.split("@")[0];
+            //const username = email.split("@")[0];
             const userDisplay = document.getElementById("user-display-name");
             if (userDisplay) userDisplay.innerText = username;
 
@@ -630,7 +970,7 @@ async function handleLogin(isAutoLogin = false, creds = {}) {
             console.log("[SYSTEM] Dashboard loaded successfully.");
         } else {
             // Failed login
-            if (autoLoginModal) autoLoginModal.style.display = "none";
+            if (autoLoginModal) hideAutoLoginModal();
 
             if (isAutoLogin) {
                 // Show notice
@@ -663,7 +1003,7 @@ async function handleLogin(isAutoLogin = false, creds = {}) {
 
 async function updateUserInfoDisplay(email, status = "Online") {
     // 1. Get the actual hardware ID from the computer
-    const realHWID = await window.api.getMachineID();
+    const { machineId: realHWID } = await loadHardwareSnapshot();
     
     // 2. Select the elements from your HTML
     const emailEl = document.getElementById('info-email');
@@ -686,59 +1026,105 @@ async function updateUserInfoDisplay(email, status = "Online") {
 }
 
 function updateHomeTabUI() {
-
-    const email = localStorage.getItem("user_email");
+    const email = localStorage.getItem("user_email") || "";
     const expiry = localStorage.getItem("expiry_date");
+    const key = getCurrentLicenseKey();
+    const prefix = getCurrentPrefix();
+    const username = email ? email.split("@")[0].toUpperCase() : "USER";
+    const expirySnapshot = getHomeExpirySnapshot(expiry, prefix);
 
     const welcomeText = document.getElementById("home-welcome");
+    const homeUsername = document.getElementById("home-username");
     const homeExp = document.getElementById("home-exp");
-
+    const homePlan = document.getElementById("home-plan");
+    const homeLicense = document.getElementById("home-license");
+    const homeExpiryNote = document.getElementById("home-expiry-note");
+    const homeEmail = document.getElementById("home-email");
+    const homeSessionKey = document.getElementById("home-session-key");
+    const homeFocusNote = document.getElementById("home-focus-note");
     const sidebarName = document.getElementById("user-display-name");
-
-    if (sidebarName && email) {
-        const username = email.split("@")[0];
-        sidebarName.innerText = username;
-    }
-
-    // ---------- USERNAME ----------
-    if (welcomeText) {
-
-        if (email) {
-            const username = email.split("@")[0].toUpperCase();
-            welcomeText.innerText = `Welcome back, ${username}`;
-        } else {
-            welcomeText.innerText = "Welcome back";
-        }
-
-    }
-
-    // ---------- SUBSCRIPTION EXPIRY ----------
-    if (homeExp) {
-
-        if (expiry) {
-            const date = new Date(expiry).toLocaleDateString();
-            homeExp.innerText = date;
-            homeExp.style.color = "#1abc9c";
-        } else {
-            homeExp.innerText = "No Active Subscription";
-            homeExp.style.color = "#ff5c5c";
-        }
-    }
-
-    // ---------- SIDEBAR EXPIRY ----------
     const sidebarExpiry = document.getElementById("user-expiry");
 
+    if (sidebarName && email) {
+        sidebarName.innerText = email.split("@")[0];
+    }
+
+    if (homeUsername) {
+        homeUsername.textContent = username;
+    }
+
+    if (welcomeText) {
+        welcomeText.textContent = email
+            ? `${getAccessPlanLabel(prefix)} synced and standing by for your next launch.`
+            : "Sign in to sync your loader session and module access.";
+    }
+
+    if (homeExp) {
+        homeExp.textContent = expirySnapshot.label;
+        homeExp.style.color = expirySnapshot.color;
+    }
+
+    if (homeExpiryNote) {
+        homeExpiryNote.textContent = expirySnapshot.detail;
+    }
+
+    if (window.homeTileInterval) {
+        clearInterval(window.homeTileInterval);
+    }
+
+    window.homeTileInterval = setInterval(() => {
+        const liveSnapshot = getHomeExpirySnapshot(localStorage.getItem('expiry_date'), getCurrentPrefix());
+        const liveExp = document.getElementById("home-exp");
+        const liveNote = document.getElementById("home-expiry-note");
+
+        if (liveExp) {
+            liveExp.textContent = liveSnapshot.label;
+            liveExp.style.color = liveSnapshot.color;
+        }
+
+        if (liveNote) {
+            liveNote.textContent = liveSnapshot.detail;
+        }
+    }, 1000);
+
+    if (homePlan) {
+        homePlan.textContent = getAccessPlanLabel(prefix);
+    }
+
+    if (homeLicense) {
+        homeLicense.textContent = key ? `Key: ${maskLicenseKey(key)}` : "No license linked yet";
+    }
+
+    if (homeEmail) {
+        homeEmail.textContent = email || "Not signed in";
+    }
+
+    if (homeSessionKey) {
+        homeSessionKey.textContent = maskLicenseKey(key);
+    }
+
+    if (homeFocusNote) {
+        homeFocusNote.textContent = key
+            ? "Games and HWID panels are ready for review before launch."
+            : "Link or redeem a license before trying to inject a module.";
+    }
+
     if (sidebarExpiry) {
-        if (expiry) {
+        if (prefix === "ALLX" || prefix === "LIFE") {
+            sidebarExpiry.innerText = "EXP: LIFETIME";
+        } else if (expiry) {
             sidebarExpiry.innerText = "EXP: " + new Date(expiry).toLocaleDateString();
         } else {
-            sidebarExpiry.innerText = "EXP: NONE";
+            sidebarExpiry.innerText = "EXP: PENDING";
         }
     }
 
+    updateHomeServerStatusUI();
+
     console.log("[HOME] UI Synced:", {
-        email: email,
-        expiry: expiry
+        email,
+        expiry,
+        prefix
     });
 }
 
@@ -777,7 +1163,7 @@ async function handleRegister() {
     btn.disabled = true;
 
     try {
-        const hwid = await window.api.getMachineID();
+        const { machineId: hwid } = await loadHardwareSnapshot();
 
         // ---------- SEND TO BACKEND ----------
         const response = await fetch('https://my-auth-api-1ykc.onrender.com/register', {
@@ -842,37 +1228,6 @@ function updateSubscriptionStatus(expiryDate) {
         expiryText.style.color = "#00ff88";
     }
 }
-function updateProfileDisplay(base64Data) {
-    const userPic = document.getElementById('user-pic');
-    if (!userPic) return;
-
-    if (base64Data && base64Data.startsWith('data:image')) {
-        userPic.src = base64Data;
-        localStorage.setItem('saved_profile_pic', base64Data);
-    } else {
-        // Fallback to default if string is broken or empty
-        userPic.src = 'imgs/default-profile.png';
-    }
-}
-
-window.addEventListener('DOMContentLoaded', () => {
-    const emailInput = document.getElementById('login-email');
-    const passInput = document.getElementById('login-password');
-    const keyInput = document.getElementById('license-key');
-    const rememberCheckbox = document.getElementById('remember-me');
-
-    const savedEmail = localStorage.getItem('remembered_email');
-    const savedPass = localStorage.getItem('remembered_password');
-    const savedKey = localStorage.getItem('license_key');
-
-    if (savedEmail && emailInput) emailInput.value = savedEmail;
-    if (savedPass && passInput) passInput.value = savedPass;
-    if (savedKey && keyInput) keyInput.value = savedKey;
-
-    // If they have saved data, check the box for them
-    if (savedEmail && rememberCheckbox) rememberCheckbox.checked = true;
-});
-
 function hasAccess(gameName) {
     const accessMap = {
         'CS2': 'CS2X',
@@ -933,17 +1288,11 @@ function hasAccessQuietly(gameName) {
 function updateUIForAccess() {
 
     const savedKey = localStorage.getItem('license_key') || "";
-    const currentPrefix = currentUserPrefix || (savedKey.includes('-') ? savedKey.split('-')[0].toUpperCase() : "NONE");
+    const currentPrefix = getCurrentPrefix();
     const expiry = localStorage.getItem('expiry_date');
     const email = localStorage.getItem('user_email') || "User";
 
     const navExp = document.getElementById('user-expiry');
-    const homeUsername = document.getElementById('home-username');
-
-    if (homeUsername) {
-        const cleanName = email.includes('@') ? email.split('@')[0].toUpperCase() : email.toUpperCase();
-        homeUsername.innerHTML = `<span style="color:#00ff88;">ACTIVE</span> (${cleanName})`;
-    }
 
     if (navExp) {
         if (currentPrefix === "ALLX" || currentPrefix === "LIFE") {
@@ -955,49 +1304,6 @@ function updateUIForAccess() {
             navExp.innerText = "EXP: PENDING";
         }
     }
-
-    function refreshHomeTile() {
-        const homeExp = document.getElementById('home-exp');
-        if (!homeExp) return;
-
-        if (currentPrefix === "ALLX" || currentPrefix === "LIFE") {
-            homeExp.innerText = "LIFETIME";
-            return;
-        }
-
-        if (!expiry || expiry === "null") {
-            homeExp.innerText = "PENDING";
-            return;
-        }
-
-        const expDate = new Date(expiry).getTime();
-        const now = new Date().getTime();
-        const diff = expDate - now;
-
-        if (diff <= 0) {
-            homeExp.innerText = "EXPIRED";
-            homeExp.style.color = "var(--red)";
-            return;
-        }
-
-        const d = Math.floor(diff / (1000 * 60 * 60 * 24));
-        const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-        const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-        const s = Math.floor((diff % (1000 * 60)) / 1000);
-
-        if (d >= 1) {
-
-            homeExp.innerText = `${d} Days`;
-        } else {
-
-            homeExp.innerText = `${h}h ${m}m ${s}s`;
-            homeExp.style.color = "var(--accent)";
-        }
-    }
-
-    refreshHomeTile();
-    if (window.homeTileInterval) clearInterval(window.homeTileInterval);
-    window.homeTileInterval = setInterval(refreshHomeTile, 1000);
 
     const games = ['CS2', 'VALORANT', 'WARZONE', 'GTAV', 'FORTNITE'];
     games.forEach(game => {
@@ -1016,17 +1322,26 @@ function updateUIForAccess() {
         }
     });
 
+    if (typeof updateHomeTabUI === "function") {
+        updateHomeTabUI();
+    }
+
     console.log(`[UI] Sync Complete for: ${email}`);
 }
 
 
-document.getElementById('toggle-password').addEventListener('click', function () {
-    const passwordInput = document.getElementById('login-password');
-    const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
+function togglePasswordVisibility(inputId = 'login-password') {
+    const passwordInput = document.getElementById(inputId);
+    const toggle = document.getElementById('toggle-password');
 
+    if (!passwordInput || !toggle) {
+        return;
+    }
+
+    const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
     passwordInput.setAttribute('type', type);
-    this.textContent = type === 'password' ? 'SHOW' : 'HIDE';
-});
+    toggle.textContent = type === 'password' ? 'SHOW' : 'HIDE';
+}
 
 window.addEventListener('DOMContentLoaded', async () => {
 
@@ -1042,13 +1357,14 @@ window.addEventListener('DOMContentLoaded', async () => {
     const savedKey = localStorage.getItem('license_key');
     const savedPic = localStorage.getItem('saved_profile_pic');
     const savedPrefix = localStorage.getItem('user_prefix');
+    const rememberEnabled = localStorage.getItem('remember-me') === 'true';
 
     if (savedEmail && emailInput) emailInput.value = savedEmail;
     if (savedPass && passInput) passInput.value = savedPass;
     if (savedKey && licenseInput) licenseInput.value = savedKey;
 
     // Check the box if they have saved credentials
-    if (savedEmail && rememberCheckbox) rememberCheckbox.checked = true;
+    if (rememberCheckbox) rememberCheckbox.checked = rememberEnabled;
 
     if (savedKey) {
         setSessionAccess(savedKey); // Sets currentUserPrefix in memory
@@ -1084,7 +1400,7 @@ async function openModal(id) {
             const hwidDisplay = document.getElementById('settings-hwid-display');
             if (hwidDisplay) {
                 try {
-                    const realHWID = await window.api.getMachineID();
+                    const { machineId: realHWID } = await loadHardwareSnapshot();
                     hwidDisplay.innerText = realHWID;
                 } catch (err) {
                     hwidDisplay.innerText = "ERROR FETCHING HWID";
@@ -1112,7 +1428,7 @@ async function redeemNewKey() {
     }
 
     try {
-        const hwid = await window.api.getMachineID();
+        const { machineId: hwid } = await loadHardwareSnapshot();
         if (hwidDisplay) hwidDisplay.innerText = hwid;
 
         const response = await fetch('https://my-auth-api-1ykc.onrender.com/redeem', {
@@ -1186,12 +1502,11 @@ function previewImage(input) {
 async function saveProfileChanges() {
     const emailInput = document.getElementById('edit-email');
     const passwordInput = document.getElementById('edit-password');
-    const licenseInput = document.getElementById('edit-license'); // Add this ID to your HTML input
+    const licenseInput = document.getElementById('edit-license');
     const btn = document.getElementById('save-profile-btn');
 
     if (!btn) return;
 
-    // Get the email stored during login - THIS is our new required ID
     const userEmail = localStorage.getItem('user_email');
     if (!userEmail) {
         alert("Session Error: No user email found. Please log in again.");
@@ -1205,12 +1520,19 @@ async function saveProfileChanges() {
         const cleanAPI = API.endsWith('/') ? API.slice(0, -1) : API;
         const url = `${cleanAPI}/update-profile`;
 
+        // COMPRESSION STEP: Only compress if a new image was picked
+        let profilePicData = window.tempPfp;
+        if (profilePicData && profilePicData.startsWith('data:image')) {
+            console.log("[SYSTEM] Compressing image to bypass server limits...");
+            profilePicData = await compressImage(window.tempPfp);
+        }
+
         const payload = {
-            user_id_email: userEmail.toLowerCase(), // Main ID to find user
+            user_id_email: userEmail.toLowerCase(),
             new_license_key: licenseInput?.value?.trim().toUpperCase() || null,
             email: emailInput?.value || null,
             password: passwordInput?.value || null,
-            profile_pic: window.tempPfp || null
+            profile_pic: profilePicData // Use the (potentially) compressed version
         };
 
         const response = await fetch(url, {
@@ -1219,37 +1541,35 @@ async function saveProfileChanges() {
             body: JSON.stringify(payload)
         });
 
+        // Check if the response is actually JSON to avoid the "<!DOCTYPE" error
+        const contentType = response.headers.get("content-type");
+        if (!response.ok || !contentType.includes("application/json")) {
+            const errorText = await response.text();
+            throw new Error(`Server returned error ${response.status}: ${errorText.substring(0, 50)}`);
+        }
+
         const data = await response.json();
 
         if (data.success) {
-            // Update local storage if they changed email or redeemed a key
             if (emailInput?.value) localStorage.setItem('user_email', emailInput.value);
             if (payload.new_license_key) localStorage.setItem('license_key', payload.new_license_key);
 
-            if (window.tempPfp) {
-                localStorage.setItem('saved_profile_pic', window.tempPfp);
-                document.querySelectorAll('#user-pic, #modal-pfp').forEach(img => img.src = window.tempPfp);
+            if (profilePicData) {
+                localStorage.setItem('saved_profile_pic', profilePicData);
+                document.querySelectorAll('#user-pic, #modal-pfp').forEach(img => img.src = profilePicData);
             }
 
             alert("Profile updated successfully!");
-            closeModal?.('settings-modal');
+            if (typeof closeModal === "function") closeModal('settings-modal');
         } else {
             alert("Error: " + (data.error || "Unknown Error"));
         }
     } catch (e) {
         console.error("[SAVE PROFILE ERROR]", e);
+        alert("Failed to save: Image might still be too large or server is down.");
     } finally {
         btn.innerText = "SAVE CHANGES";
         btn.disabled = false;
-    }
-}
-
-// --- LOAD SAVED PFP ON STARTUP ---
-function loadSavedPfp() {
-    const saved = localStorage.getItem('saved_profile_pic');
-    if (saved) {
-        document.getElementById('user-pic').src = saved;
-        if (document.getElementById('modal-pfp')) document.getElementById('modal-pfp').src = saved;
     }
 }
 
@@ -1336,6 +1656,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     updateSpoofStatus("inactive");
     updateModeDescription();
+    setHwidResetControls("idle");
 
     // ---------- CHECKBOX MODALS ----------
 
@@ -1464,6 +1785,7 @@ async function startSpoofing() {
 
             updateSpoofStatus(state);
             localStorage.setItem("spoofState", state);
+            await updateHWIDDisplay(true);
 
             spinner?.classList.add("hidden");
             success?.classList.remove("hidden");
@@ -1492,78 +1814,323 @@ async function startSpoofing() {
     }
 }
 
+function getHwidResetConsumedStorageKey() {
+    const key = getCurrentLicenseKey() || "GLOBAL";
+    return `hwid-reset-consumed:${key}`;
+}
 
-    // Request HWID Reset Function (UPDATED: CAPTURES NEW HWID FOR DB)
-    async function requestHWIDReset() {
-        const hwidStatus = document.getElementById('hwid-main-status');
-        const API_URL = "https://my-auth-api-1ykc.onrender.com";
-        const btn = document.getElementById('reset-btn');
+function getConsumedHwidResetRequestId() {
+    return localStorage.getItem(getHwidResetConsumedStorageKey()) || "";
+}
 
-        if (hwidStatus) {
-            hwidStatus.innerText = "BYPASSING BIOS RESTRICTIONS...";
-            hwidStatus.className = "processing";
-        }
-
-        if (btn) btn.disabled = true;
-
-        try {
-            // 1. RUN THE DRIVER (This changes the local HWID)
-            const results = await window.api.startSpoof({
-                disk: true,
-                guid: true,
-                kernel: true,
-                user: true,
-                cleanReg: true,
-                cleanDisk: true,
-                deepClean: true
-            });
-
-            if (results) {
-
-                if (hwidStatus) hwidStatus.innerText = "CAPTURING NEW IDENTITY...";
-
-                // Give the Windows kernel 3 seconds to chnage registry/disk changes
-                await new Promise(resolve => setTimeout(resolve, 3000));
-
-                // Re-read system IDs so the screen shows the NEW one
-                await updateHWIDDisplay();
-
-                // Grab the UPDATED ID from the UI to send to the server
-                const newHWID = document.getElementById('hwid-id').innerText;
-                const savedKey = localStorage.getItem('license_key');
-
-                if (hwidStatus) hwidStatus.innerText = "SYNCING WITH DATABASE...";
-
-                const response = await fetch(`${API_URL}/request-hwid-reset`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        hwid: newHWID, // Send the spoofed ID, not the old one
-                        license_key: savedKey,
-                        type: "ADMIN-PANEL_RESET"
-                    })
-                });
-
-                const data = await response.json();
-                if (!data.success) throw new Error(data.error || "Server Rejected Sync");
-
-                if (hwidStatus) {
-                    hwidStatus.innerText = "HWID RESET COMPLETED";
-                    hwidStatus.className = "active-status";
-                }
-
-                console.log("✅ DB Cleared & Discord Notified with New HWID:", newHWID);
-            }
-        } catch (err) {
-            console.error("❌ Reset Error:", err);
-            if (hwidStatus) {
-                hwidStatus.innerText = "DB SYNC FAILED";
-                hwidStatus.className = "inactive";
-            }
-        } finally {
-            if (btn) btn.disabled = false;
-        }
+function markHwidResetConsumed(requestId) {
+    if (!requestId) {
+        return;
     }
+
+    localStorage.setItem(getHwidResetConsumedStorageKey(), requestId);
+}
+
+function clearConsumedHwidResetRequest() {
+    localStorage.removeItem(getHwidResetConsumedStorageKey());
+}
+
+function stopHwidResetPolling() {
+    if (hwidResetPollInterval) {
+        clearInterval(hwidResetPollInterval);
+        hwidResetPollInterval = null;
+    }
+}
+
+function appendAdminRequestLog(message) {
+    const terminal = document.getElementById('admin-terminal');
+    if (!terminal) {
+        return;
+    }
+
+    const entry = document.createElement('div');
+    entry.className = 'log-entry';
+
+    if (message.includes("PENDING")) entry.style.color = "var(--gold)";
+    if (message.includes("APPROVED")) entry.style.color = "var(--accent)";
+    if (message.includes("DENIED") || message.includes("FAILED")) entry.style.color = "var(--red)";
+
+    entry.innerHTML = `<span class="prompt">></span> ${message}`;
+    terminal.appendChild(entry);
+    terminal.scrollTop = terminal.scrollHeight;
+}
+
+function resetAdminRequestLog(message = "SYSTEM_IDLE: WAITING FOR REQUEST...") {
+    const terminal = document.getElementById('admin-terminal');
+    if (!terminal) {
+        return;
+    }
+
+    terminal.innerHTML = "";
+    appendAdminRequestLog(message);
+}
+
+function setHwidResetControls(state, detail = "") {
+    const resetBtn = document.getElementById('reset-btn');
+    const requestBtn = document.getElementById('admin-request-btn');
+    const statusEl = document.getElementById('hwid-main-status');
+    const requestStateEl = document.getElementById('hwid-request-state');
+    const statusLine = document.getElementById('hwid-status');
+
+    hwidResetApprovalStatus = state;
+
+    const applyState = (statusText, statusClass, requestState, resetText, resetDisabled, requestText, requestDisabled, note) => {
+        if (statusEl) {
+            statusEl.textContent = statusText;
+            statusEl.className = statusClass;
+        }
+
+        if (requestStateEl) {
+            requestStateEl.textContent = requestState;
+        }
+
+        if (resetBtn) {
+            resetBtn.textContent = resetText;
+            resetBtn.disabled = resetDisabled;
+        }
+
+        if (requestBtn) {
+            requestBtn.textContent = requestText;
+            requestBtn.disabled = requestDisabled;
+        }
+
+        if (statusLine) {
+            statusLine.textContent = detail || note;
+        }
+    };
+
+    switch (state) {
+        case "pending":
+            applyState(
+                "REQUEST PENDING",
+                "processing",
+                "PENDING REVIEW",
+                "WAITING FOR APPROVAL",
+                true,
+                "REQUEST PENDING",
+                true,
+                "Admin request submitted. The reset button unlocks only after approval."
+            );
+            break;
+        case "approved":
+            applyState(
+                "ADMIN APPROVED",
+                "active-status",
+                "APPROVED",
+                "HWID RESET",
+                false,
+                "APPROVED",
+                true,
+                "Approval received. You can now run the HWID reset once."
+            );
+            break;
+        case "running":
+            applyState(
+                "APPLYING RESET",
+                "processing",
+                "CONSUMING APPROVAL",
+                "RESETTING...",
+                true,
+                "APPROVED",
+                true,
+                "Applying the approved reset locally on this machine."
+            );
+            break;
+        case "completed":
+            applyState(
+                "RESET APPLIED",
+                "active-status",
+                "APPROVAL USED",
+                "REQUEST NEW APPROVAL",
+                true,
+                "REQUEST AGAIN",
+                false,
+                "Latest approval has been used. Request a new approval before resetting again."
+            );
+            break;
+        case "denied":
+            applyState(
+                "REQUEST DENIED",
+                "inactive",
+                "DENIED",
+                "WAITING FOR APPROVAL",
+                true,
+                "REQUEST AGAIN",
+                false,
+                "Admin denied the last request. Submit a new request if you still need a reset."
+            );
+            break;
+        case "error":
+            applyState(
+                "STATUS UNAVAILABLE",
+                "inactive",
+                "SYNC ERROR",
+                "WAITING FOR APPROVAL",
+                true,
+                "TRY AGAIN",
+                false,
+                "Unable to sync approval state right now. Try again in a moment."
+            );
+            break;
+        default:
+            applyState(
+                "APPROVAL REQUIRED",
+                "processing",
+                "AWAITING APPROVAL",
+                "WAITING FOR APPROVAL",
+                true,
+                "REQUEST HWID RESET",
+                false,
+                "Request approval from admin before the HWID reset can run."
+            );
+            break;
+    }
+}
+
+async function fetchHwidResetStatus(savedKey) {
+    const statusCheck = await fetch(`${API}/check-reset-status?key=${savedKey}`);
+    return statusCheck.json();
+}
+
+function applyHwidResetStatus(statusData, logTransition = true) {
+    const normalizedStatus = (statusData?.status || "NONE").toUpperCase();
+    const requestId = statusData?.requestId || null;
+    const consumedRequestId = getConsumedHwidResetRequestId();
+    const previousStatus = hwidResetApprovalStatus;
+
+    if (requestId) {
+        latestHwidResetRequestId = requestId;
+    }
+
+    if (normalizedStatus === "PENDING") {
+        setHwidResetControls("pending");
+        if (logTransition && previousStatus !== "pending") {
+            appendAdminRequestLog("STATUS: PENDING APPROVAL.");
+        }
+        return;
+    }
+
+    if (normalizedStatus === "APPROVED") {
+        stopHwidResetPolling();
+
+        if (requestId && requestId === consumedRequestId) {
+            setHwidResetControls("completed");
+            return;
+        }
+
+        setHwidResetControls("approved");
+        if (logTransition && previousStatus !== "approved") {
+            appendAdminRequestLog("STATUS: APPROVED. RESET UNLOCKED.");
+        }
+        return;
+    }
+
+    if (normalizedStatus === "DENIED") {
+        stopHwidResetPolling();
+        setHwidResetControls("denied");
+        if (logTransition && previousStatus !== "denied") {
+            appendAdminRequestLog("STATUS: DENIED BY ADMIN.");
+        }
+        return;
+    }
+
+    if (normalizedStatus === "ERROR") {
+        setHwidResetControls("error");
+        return;
+    }
+
+    stopHwidResetPolling();
+
+    if (requestId && requestId === consumedRequestId) {
+        setHwidResetControls("completed");
+        return;
+    }
+
+    setHwidResetControls("idle");
+}
+
+function beginHwidResetPolling(savedKey) {
+    stopHwidResetPolling();
+
+    hwidResetPollInterval = setInterval(async () => {
+        try {
+            const statusData = await fetchHwidResetStatus(savedKey);
+            applyHwidResetStatus(statusData);
+        } catch (error) {
+            console.error("[HWID] Polling error:", error);
+        }
+    }, 5000);
+}
+
+async function syncHwidResetApprovalState(logTransition = false) {
+    const savedKey = getCurrentLicenseKey();
+
+    if (!savedKey) {
+        stopHwidResetPolling();
+        setHwidResetControls("idle", "Sign in with an active license before requesting a reset.");
+        return;
+    }
+
+    try {
+        const statusData = await fetchHwidResetStatus(savedKey);
+        applyHwidResetStatus(statusData, logTransition);
+
+        if ((statusData?.status || "").toUpperCase() === "PENDING") {
+            beginHwidResetPolling(savedKey);
+        }
+    } catch (error) {
+        console.error("[HWID] Failed to sync approval state:", error);
+        setHwidResetControls("error");
+    }
+}
+
+async function requestHWIDReset() {
+    if (hwidResetApprovalStatus !== "approved") {
+        appendAdminRequestLog("RESET LOCKED: WAIT FOR ADMIN APPROVAL.");
+        setHwidResetControls("idle", "Reset is locked until the admin request panel shows approval.");
+        return;
+    }
+
+    const requestId = latestHwidResetRequestId;
+    setHwidResetControls("running");
+    appendAdminRequestLog("APPROVAL VERIFIED. APPLYING LOCAL RESET...");
+
+    try {
+        const results = await window.api.startSpoof({
+            disk: true,
+            guid: true,
+            kernel: true,
+            user: true,
+            cleanReg: true,
+            cleanDisk: true,
+            deepClean: true
+        });
+
+        if (!results) {
+            throw new Error("Reset process returned no result");
+        }
+
+        appendAdminRequestLog("LOCAL RESET COMPLETE. REFRESHING HARDWARE READOUT...");
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        await updateHWIDDisplay(true);
+
+        if (requestId) {
+            markHwidResetConsumed(requestId);
+        }
+
+        setHwidResetControls("completed", "Reset applied locally. Restart or re-login before the next session if needed.");
+        appendAdminRequestLog("APPROVAL CONSUMED. REQUEST A NEW APPROVAL FOR ANOTHER RESET.");
+    } catch (err) {
+        console.error("❌ Reset Error:", err);
+        setHwidResetControls("approved", "Reset failed locally. Approval is still available, so you can retry.");
+        appendAdminRequestLog("LOCAL RESET FAILED. APPROVAL REMAINS AVAILABLE.");
+    }
+}
 
     const deepCleanToggle = document.getElementById("deep-clean");
     const deepCleanModal = document.getElementById("deepclean-modal");
@@ -1608,27 +2175,18 @@ async function startSpoofing() {
     });
 
     async function sendAdminRequest() {
-        const terminal = document.getElementById('admin-terminal');
         const hwidEl = document.getElementById('hwid-id');
         const hwid = hwidEl ? hwidEl.innerText : "UNKNOWN";
-        const savedKey = localStorage.getItem('license_key');
+        const savedKey = getCurrentLicenseKey();
 
-        const addLog = (msg) => {
-            const entry = document.createElement('div');
-            entry.className = 'log-entry';
-            // Sexy color coding
-            if (msg.includes("PENDING")) entry.style.color = "var(--gold)";
-            if (msg.includes("APPROVED")) entry.style.color = "var(--accent)";
-            if (msg.includes("DENIED")) entry.style.color = "var(--red)";
+        if (!savedKey) {
+            resetAdminRequestLog("ERROR: LICENSE DATA NOT FOUND. PLEASE RE-LOGIN.");
+            setHwidResetControls("idle", "A valid license is required before a reset request can be sent.");
+            return;
+        }
 
-            entry.innerHTML = `<span class="prompt">></span> ${msg}`;
-            terminal.appendChild(entry);
-            terminal.scrollTop = terminal.scrollHeight;
-        };
-
-        if (!savedKey) return addLog("ERROR: DATA NOT FOUND. PLEASE RE-LOGIN.");
-
-        addLog("CONNECTING TO AUTH SERVER...");
+        resetAdminRequestLog("CONNECTING TO AUTH SERVER...");
+        setHwidResetControls("pending", "Submitting your reset request to the admin panel.");
 
         try {
             const response = await fetch(`${API}/request-hwid-reset`, {
@@ -1639,100 +2197,19 @@ async function startSpoofing() {
 
             const data = await response.json();
 
-            if (data.success) {
-                addLog("REQUEST SENT TO ADMIN.");
-                addLog("STATUS: PENDING APPROVAL.");
-
-                // --- START LIVE POLLING ---
-                const pollInterval = setInterval(async () => {
-                    try {
-
-                        const statusCheck = await fetch(`${API}/check-reset-status?key=${savedKey}`);
-                        const statusData = await statusCheck.json();
-
-                        if (statusData.status === "APPROVED") {
-                            addLog("STATUS: APPROVED!");
-                            addLog("HWID RESET SUCCESSFUL. RE-LOGGING...");
-                            clearInterval(pollInterval);
-
-                            setTimeout(() => { location.reload(); }, 3000);
-                        }
-                        else if (statusData.status === "DENIED") {
-                            addLog("STATUS: DENIED BY ADMIN.");
-                            clearInterval(pollInterval);
-                        }
-                    } catch (e) {
-                        console.error("Polling error...");
-                    }
-                }, 5000); // Check every 5 seconds
-
-            } else {
-                addLog(`FAILED: ${data.error || "REJECTED"}`);
+            if (!data.success) {
+                throw new Error(data.error || "Request rejected");
             }
+
+            latestHwidResetRequestId = data.requestId || latestHwidResetRequestId;
+            clearConsumedHwidResetRequest();
+            appendAdminRequestLog(data.message === "Request already pending." ? "REQUEST ALREADY PENDING." : "REQUEST SENT TO ADMIN.");
+            appendAdminRequestLog("STATUS: PENDING APPROVAL.");
+            beginHwidResetPolling(savedKey);
         } catch (err) {
-            addLog("CRITICAL: API CONNECTION FAILED.");
-        }
-    }
-
-    function setStatus(expiryDate) {
-        const status = document.getElementById("user-status");
-        const dot = document.getElementById("status-dot");
-        if (!status || !dot) return;
-
-        // Calculate time difference
-        const now = new Date();
-        const expire = new Date(expiryDate);
-        const diffMs = expire - now;
-        const diffDays = diffMs / (1000 * 60 * 60 * 24); // Convert ms to days
-
-        status.classList.remove("status-active", "status-warning", "status-expired");
-        dot.classList.remove("dot-online", "dot-warning", "dot-offline");
-
-        // 3. Determine State based on Time Left
-        if (diffMs <= 0) {
-            // EXPIRED (RED)
-            status.innerText = "SUBSCRIPTION EXPIRED";
-            status.classList.add("status-expired");
-            dot.classList.add("dot-offline");
-            showNotification("Your license has expired. Please renew.", "red");
-        }
-        else if (diffDays <= 3) {
-            // EXPIRING SOON - Less than 3 days (YELLOW)
-            status.innerText = "EXPIRING SOON";
-            status.classList.add("status-warning");
-            dot.classList.add("dot-warning");
-            showNotification("Warning: License expires in less than 3 days!", "gold");
-        }
-        else {
-            // ACTIVE (GREEN)
-            status.innerText = "SUBSCRIPTION ACTIVE";
-            status.classList.add("status-active");
-            dot.classList.add("dot-online");
-        }
-    }
-
-    // Helper to show a pop-up or overlay if needed
-    function showNotification(msg, color) {
-        const alertBox = document.getElementById("subscription-alert");
-        if (alertBox) {
-            alertBox.innerText = msg;
-            alertBox.style.color = color;
-            alertBox.style.display = "block";
-        }
-    }
-
-    function setStatus(status) {
-        const dot = document.getElementById('status-dot');
-        if (!dot) return;
-
-        if (status === "online") {
-            dot.classList.remove('dot-offline');
-            dot.classList.add('dot-online');
-            console.log("System Online");
-        } else {
-            dot.classList.remove('dot-online');
-            dot.classList.add('dot-offline');
-            console.log("System Offline");
+            console.error("[HWID] Request failed:", err);
+            setHwidResetControls("error", "Request failed to send. Check your connection and try again.");
+            appendAdminRequestLog("CRITICAL: API CONNECTION FAILED.");
         }
     }
 
@@ -1740,23 +2217,27 @@ async function startSpoofing() {
         const statusDot = document.getElementById('status-dot');
         const API = "https://my-auth-api-1ykc.onrender.com";
 
-        try {
-            const response = await fetch(`${API}/health`);
-            if (response.ok) {
-                if (statusDot) {
-                    statusDot.className = "status-dot dot-online";
-                    console.log("✅ Render API: Online");
-                }
-            } else {
-                throw new Error();
-            }
-        } catch (err) {
+    try {
+        const response = await fetch(`${API}/health`);
+        if (response.ok) {
+            serverHealthState = "ONLINE";
             if (statusDot) {
-                statusDot.className = "status-dot dot-offline";
-                console.log("❌ Render API: Offline");
+                statusDot.className = "status-dot dot-online";
+                console.log("✅ Render API: Online");
             }
+        } else {
+            throw new Error();
+        }
+    } catch (err) {
+        serverHealthState = "OFFLINE";
+        if (statusDot) {
+            statusDot.className = "status-dot dot-offline";
+            console.log("❌ Render API: Offline");
         }
     }
+
+    updateHomeServerStatusUI();
+}
 
     document.addEventListener("DOMContentLoaded", () => {
         const cards = document.querySelectorAll(".game-card");
@@ -1824,8 +2305,9 @@ async function startSpoofing() {
     function clearLogs() {
         const terminal = document.getElementById('main-terminal');
         if (terminal) {
-            terminal.innerHTML = '<div id="news-feed-text" class="typewriter">> [SYSTEM] Logs cleared. Bufferring for reset...</div>';
+            terminal.innerHTML = '<div id="news-feed-text" class="typewriter">> [SYSTEM] Logs cleared. Awaiting fresh terminal feed...</div>';
             newsLoaded = false;
+            setSettingsStatus("TERMINAL CLEARED");
             console.log("[UI] Terminal logs cleared by user.");
         }
     }
@@ -1846,6 +2328,7 @@ async function startSpoofing() {
             });
 
             addTerminalLine("> [SYSTEM] Configuration reset. Reloading UI...");
+            setSettingsStatus("RESETTING");
             setTimeout(() => {
                 window.location.reload();
             }, 1500);
@@ -1906,11 +2389,20 @@ async function startSpoofing() {
 
     // --- SESSION CONTROL ---
     function logout() {
+        closeModal('exit-modal');
+        hideUserDropdown();
+        stopHwidResetPolling();
         localStorage.removeItem('user_prefix');
-        if (!document.getElementById('remember-me').checked) {
-            localStorage.removeItem('license_key');
-            hideUserDropdown();
+        localStorage.removeItem('user_email');
+        localStorage.removeItem('license_key');
+        localStorage.removeItem('expiry_date');
+        localStorage.removeItem('remembered_password');
+        localStorage.setItem('remember-me', 'false');
+
+        if (window.api && window.api.toggleDiscord) {
+            window.api.toggleDiscord(false);
         }
+
         location.reload();
     }
 
@@ -1943,6 +2435,7 @@ async function startSpoofing() {
 
     function forceLogout() {
         // Clear the session data so auto-login can't trigger
+        stopHwidResetPolling();
         localStorage.removeItem('user_email');
         localStorage.removeItem('license_key');
         localStorage.removeItem('remembered-password')
@@ -1987,35 +2480,48 @@ async function startSpoofing() {
     document.addEventListener("DOMContentLoaded", () => {
         const versionLabel = document.getElementById("loader-version");
         if (versionLabel) versionLabel.innerText = currentVersion;
+        const settingsVersion = document.getElementById("settings-build-version");
+        if (settingsVersion) settingsVersion.innerText = currentVersion;
 
-        // ===== AUTO-UPDATE TOGGLE =====
-        const autoUpdateCheckbox = document.getElementById('auto-update-loader');
-        if (autoUpdateCheckbox) {
-            const autoUpdateEnabled = localStorage.getItem('autoUpdateLoader') === 'true';
-            autoUpdateCheckbox.checked = autoUpdateEnabled;
-
-            autoUpdateCheckbox.addEventListener('change', () => {
-                localStorage.setItem('autoUpdateLoader', autoUpdateCheckbox.checked);
-            });
-
-            if (autoUpdateEnabled) {
-                checkForUpdates();
-            }
+        if (localStorage.getItem('auto-update-loader') === 'true') {
+            void checkForUpdates();
         }
     });
 
     // ==== AUTO-UPDATE FUNCTION ====
-    async function checkForUpdates() {
-        try {
-            const latest = await window.api.checkVersion(currentVersion);
-            if (latest) {
-                const filePath = await window.api.downloadUpdate(latest.url);
-                await window.api.runUpdate(filePath);
-            }
-        } catch (err) {
-            console.error('Auto-update failed:', err);
-        }
+async function checkForUpdates(options = {}) {
+    const { manual = false } = options;
+
+    if (updateCheckPromise) {
+        return updateCheckPromise;
     }
+
+    updateCheckPromise = (async () => {
+        try {
+            const release = await window.api.getLatestRelease();
+            if (release && release.version !== currentVersion) {
+                document.getElementById("update-version").innerText = release.version;
+                document.getElementById("update-modal").classList.remove("hidden");
+                if (manual) {
+                    setSettingsStatus("UPDATE AVAILABLE");
+                }
+            } else if (manual) {
+                setSettingsStatus("UP TO DATE");
+            }
+            return release;
+        } catch (err) {
+            console.error("Check failed:", err);
+            if (manual) {
+                setSettingsStatus("UPDATE ERROR");
+            }
+            throw err;
+        } finally {
+            updateCheckPromise = null;
+        }
+    })();
+
+    return updateCheckPromise;
+}
 
     // ==== UPDATE MODAL FUNCTIONS ====
     async function updateNow() {
@@ -2048,10 +2554,11 @@ async function startSpoofing() {
     }
 
     function updateLater() {
-        const autoUpdateEnabled = localStorage.getItem('autoUpdateLoader') === 'true';
+        const autoUpdateEnabled = localStorage.getItem('auto-update-loader') === 'true';
 
         // Hide the modal immediately
         document.getElementById("update-modal").classList.add("hidden");
+        setSettingsStatus(autoUpdateEnabled ? "AUTO UPDATE ON" : "REMINDER SNOOZED");
 
         if (autoUpdateEnabled) return;
 
@@ -2115,4 +2622,35 @@ function resetSpoofUI() {
     status.classList.add("status-inactive");
 
     document.querySelector(".shield-img").src = "imgs/shield.svg";
+}
+
+async function compressImage(base64Str, maxWidth = 400, maxHeight = 400) {
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.src = base64Str;
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            let width = img.width;
+            let height = img.height;
+
+            if (width > height) {
+                if (width > maxWidth) {
+                    height *= maxWidth / width;
+                    width = maxWidth;
+                }
+            } else {
+                if (height > maxHeight) {
+                    width *= maxHeight / height;
+                    height = maxHeight;
+                }
+            }
+
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+            // 0.7 = 70% quality, significantly reducing byte size
+            resolve(canvas.toDataURL('image/jpeg', 0.7));
+        };
+    });
 }
