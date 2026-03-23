@@ -847,6 +847,9 @@ function initDiscordBot({ User, mongoose }) {
     });
 
     client.on('debug', message => {
+        if (message.includes('Provided token')) {
+            return;
+        }
         if (message.includes('Heartbeat acknowledged') || message.includes('Keeping up')) {
             return;
         }
