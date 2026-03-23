@@ -2,8 +2,10 @@ const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
 const crypto = require('crypto');
 const { autoUpdater } = require('electron-updater');
 const path = require('path');
-const { execSync, execFile, exec, spawn } = require('child_process');
+const { execFile, exec, spawn } = require('child_process');
 const fs = require('fs');
+const axios = require('axios');
+const { promisify } = require('util');
 
 const exePath = path.join(__dirname, 'bin', 'Volumeid64.exe');
 
@@ -14,6 +16,9 @@ let spoofer
 const RPC = require('discord-rpc');
 const CLIENT_ID = '1476724607485743277';
 let rpcClient = null;
+const execFileAsync = promisify(execFile);
+let hardwareSnapshotCache = null;
+let hardwareSnapshotPromise = null;
 
 app.on('will-quit', async () => {
     if (rpcClient) {
@@ -63,6 +68,109 @@ function quickAdd(days) {
     console.log(`[DEBUG] Quick Add Triggered: +${days}D`);
     modifyKey('add-time', days);
 }
+
+function resetHardwareSnapshot() {
+    hardwareSnapshotCache = null;
+    hardwareSnapshotPromise = null;
+}
+
+function parseCommandValue(output, headerName) {
+    const lines = output
+        .split(/\r?\n/)
+        .map(line => line.trim())
+        .filter(Boolean);
+
+    if (!lines.length) {
+        return "UNKNOWN";
+    }
+
+    if (!headerName) {
+        return lines[1] || lines[0] || "UNKNOWN";
+    }
+
+    const match = lines.find(line => line.includes(headerName));
+    if (!match) {
+        return "UNKNOWN";
+    }
+
+    const parts = match.split(/\s+/);
+    return parts[parts.length - 1] || "UNKNOWN";
+}
+
+async function readMachineGuid() {
+    try {
+        const { stdout } = await execFileAsync(
+            'reg',
+            ['query', 'HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Cryptography', '/v', 'MachineGuid'],
+            { encoding: 'utf8', windowsHide: true }
+        );
+
+        return parseCommandValue(stdout, 'MachineGuid') || "GUID_NOT_FOUND";
+    } catch (err) {
+        console.error("[HWID READ ERROR]", err);
+        return "REG_ACCESS_FAILED";
+    }
+}
+
+async function readDiskSerial() {
+    try {
+        const { stdout } = await execFileAsync(
+            'wmic',
+            ['diskdrive', 'get', 'serialnumber'],
+            { encoding: 'utf8', windowsHide: true }
+        );
+
+        return parseCommandValue(stdout);
+    } catch (err) {
+        console.error("[SERIAL READ ERROR]", err);
+        return "UNKNOWN";
+    }
+}
+
+async function readGpuId() {
+    try {
+        const { stdout } = await execFileAsync(
+            'wmic',
+            ['path', 'win32_VideoController', 'get', 'PNPDeviceID'],
+            { encoding: 'utf8', windowsHide: true }
+        );
+
+        return parseCommandValue(stdout);
+    } catch (err) {
+        console.error("[GPU READ ERROR]", err);
+        return "UNKNOWN";
+    }
+}
+
+async function getHardwareSnapshot(options = {}) {
+    const { forceRefresh = false } = options;
+
+    if (forceRefresh) {
+        resetHardwareSnapshot();
+    }
+
+    if (hardwareSnapshotCache) {
+        return hardwareSnapshotCache;
+    }
+
+    if (!hardwareSnapshotPromise) {
+        hardwareSnapshotPromise = Promise.all([
+            readMachineGuid(),
+            readDiskSerial(),
+            readGpuId()
+        ])
+            .then(([machineId, serial, gpu]) => {
+                hardwareSnapshotCache = { machineId, serial, gpu };
+                return hardwareSnapshotCache;
+            })
+            .finally(() => {
+                hardwareSnapshotPromise = null;
+            });
+    }
+
+    return hardwareSnapshotPromise;
+}
+
 function startSecurityMonitor() {
     const blacklist = [
         "x64dbg", "wireshark", "processhacker", "httpdebugger",
@@ -106,8 +214,8 @@ app.setAppUserModelId("com.sk.allinone");
 // --- 1. WINDOW SETUP ---
 function createWindow() {
     mainWindow = new BrowserWindow({
-        width: 820,
-        height: 760,
+        width: 980,
+        height: 780,
         frame: false,
         resizable: false,
         transparent: true,
@@ -141,50 +249,6 @@ ipcMain.on('window-close', () => {
 ipcMain.on('window-minimize', () => {
     if (mainWindow) mainWindow.minimize();
 });
-
-/*
-// --- 3. AUTO-UPDATER LOGIC ---
-autoUpdater.autoDownload = false;
-
-ipcMain.on('check-for-updates', () => {
-    autoUpdater.checkForUpdates();
-});
-
-autoUpdater.on('update-available', (info) => {
-    mainWindow.webContents.send('update-available', {
-        version: info.version,
-        news: typeof info.releaseNotes === 'string' ? info.releaseNotes : "Stability and performance improvements."
-    });
-});
-
-ipcMain.on('start-update-download', () => {
-    autoUpdater.downloadUpdate();
-});
-
-autoUpdater.on('download-progress', (progressObj) => {
-    mainWindow.webContents.send('download-progress', progressObj.percent);
-});
-
-// Download finished: Notify user & prepare for installation
-autoUpdater.on('update-downloaded', () => {
-    mainWindow.webContents.send('update-ready');
-    setTimeout(() => {
-        autoUpdater.quitAndInstall();
-    }, 6000);
-});
-
-autoUpdater.on('update-not-available', () => {
-    mainWindow.webContents.send('update-not-available');
-});
-
-autoUpdater.on('error', (err) => {
-    mainWindow.webContents.send('update-error', err.message || 'Check connection.');
-});
-
-ipcMain.on('log-to-terminal', (event, message) => {
-    console.log('[UPDATE LOG]', message);
-});
-*/
 
 ipcMain.handle('start-spoof', async (event, options) => {
 
@@ -266,6 +330,8 @@ ipcMain.handle('start-spoof', async (event, options) => {
 
                 }
 
+                resetHardwareSnapshot();
+
                 resolve({
                     success: true,
                     newHwid: brandNewGUID,
@@ -325,8 +391,34 @@ ipcMain.handle('start-spoof', async (event, options) => {
 });
 
 ipcMain.handle('check-version', async () => {
-    
-    return { version: '1.1.3' };
+    return {
+        version: '1.1.3',
+        url: 'https://raw.githubusercontent.com/jeffyNoJumper/My_Auth_API/refs/heads/main/version.txt'
+    };
+});
+
+ipcMain.handle('get-latest-release', async () => {
+    const res = await axios.get("https://github.com/jeffyNoJumper/My_Auth_API/releases/download/v1.1.2/VEXION.ALL-IN-ONE.Setup.1.1.2.exe");
+    const exe = res.data.assets.find(a => a.name.endsWith(".exe"));
+    return {
+        version: res.data.tag_name,
+        url: exe ? exe.browser_download_url : null,
+        name: exe ? exe.name : null
+    };
+});
+
+ipcMain.handle('download-update', async (event, url, fileName) => {
+    const response = await axios({ url, method: 'GET', responseType: 'arraybuffer' });
+    const downloads = path.join(os.homedir(), "Downloads");
+    const savePath = path.join(downloads, fileName);
+
+    fs.writeFileSync(savePath, Buffer.from(response.data));
+    return savePath; // Returns the string path to ui.js
+});
+
+ipcMain.handle('run-update', async (event, filePath) => {
+    shell.openPath(filePath);
+    app.quit();
 });
 
 function updateRPCStatus(gameName) {
@@ -342,73 +434,122 @@ function updateRPCStatus(gameName) {
     }
 }
 
-ipcMain.handle('launch-game', async (event, gameName, autoClose, licenseKey, injectionType) => {
-    const finalType = injectionType || "external";
-    const gameUpper = gameName.toUpperCase();
+function isCS2Running() {
+    return new Promise((resolve) => {
+        exec('tasklist /FI "IMAGENAME eq cs2.exe"', (err, stdout) => {
+            if (err) return resolve(false);
+            resolve(stdout.toLowerCase().includes("cs2.exe"));
+        });
+    });
+}
 
-    // 1. Determine the correct filename
-    let fileName = (gameUpper === 'CS2' && finalType === "dll") ? "Ai cheat.dll" : (gameUpper === 'CS2' ? "Noxen.exe" : `${gameUpper}.exe`);
+function waitForCS2() {
+    return new Promise((resolve) => {
 
-    // 2. THE PATH FIX: Step UP from 'loader' to the root 'assets' folder
-    // __dirname is .../loader/, so '..' takes us to the project root
-    const injectorPath = path.join(__dirname, '..', 'assets', 'Extreme Injector v3.exe');
-    const cheatPath = path.join(__dirname, '..', 'assets', fileName);
+        const interval = setInterval(() => {
 
-    console.log(`[MAIN] Initializing ${finalType} for ${gameUpper}`);
+            exec('tasklist /FI "IMAGENAME eq cs2.exe"', (err, stdout) => {
 
-    try {
-        // --- DLL INJECTOR LOGIC ---
-        if (gameUpper === 'CS2' && finalType === "dll") {
-
-            const cmd = `powershell -Command "Start-Process '${injectorPath}' -WindowStyle Hidden"`;
-
-            if (!fs.existsSync(injectorPath)) {
-                console.error(`❌ INJECTOR NOT FOUND AT: ${injectorPath}`);
-                return { status: "Error", message: "Injector file missing!" };
-            }
-
-            const quotedInjector = `"${injectorPath}"`;
-            const quotedCheat = `"${cheatPath}"`;
-
-            const { exec } = require('child_process');
-            const assetsPath = path.join(__dirname, '..', 'assets');
-
-
-            console.log(`[DEBUG] Executing Command: ${cmd}`);
-
-            exec(cmd, { shell: true }, (err) => {
-                if (err) {
-                    console.error("[LAUNCH ERROR] Failed to start injector:", err.message);
+                if (stdout.toLowerCase().includes("cs2.exe")) {
+                    clearInterval(interval);
+                    resolve(true);
                 }
+
             });
 
-            return { status: "Success", message: "DLL Injector Dispatched." };
+        }, 300); // check every 3 seconds
+    });
+}
+
+ipcMain.handle('launch-game', async (event, gameName, autoClose, licenseKey, injectionType, userData) => {
+
+    console.log("[LAUNCH] Received userData:", userData);
+
+    const finalType = injectionType || "external";
+    const gameUpper = gameName.toUpperCase();
+    const assetsPath = path.join(__dirname, '..', 'assets');
+
+    function getDaysRemaining(expiry) {
+        if (!expiry) return "Unknown";
+
+        const now = new Date();
+        const exp = new Date(expiry);
+        const diff = exp - now;
+
+        const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
+
+        if (days <= 0) return "Expired";
+        if (days > 3650) return "Lifetime";
+
+        return `${days} days`;
+    }
+
+    try {
+        if (!fs.existsSync(assetsPath)) {
+            return { status: "Error", message: "Assets folder missing!" };
         }
 
-        if (rpcClient) {
-            rpcClient.setActivity({
-                details: `In-Game: ${gameUpper}`,
-                state: '⚡ [MODULAR_DLL_ACTIVE]',
-                startTimestamp: new Date(),
-                largeImageKey: 'logo',
-            }).catch(() => { });
+        const files = fs.readdirSync(assetsPath);
+        const targetExt = (gameUpper === 'CS2' && finalType === "dll") ? ".dll" : ".exe";
+
+        const fileName = files.find(file => {
+            const name = file.toLowerCase();
+            const ext = path.extname(name);
+            return ext === targetExt && !name.includes('extreme injector') && !name.includes('.sys');
+        });
+
+        if (!fileName) {
+            return { status: "Error", message: `No valid ${targetExt} found in assets!` };
         }
 
-        return { status: "Success", message: "DLL Injector Dispatched." };
+        const injectorPath = path.join(assetsPath, 'Extreme Injector v3.exe');
+        const cheatPath = path.join(assetsPath, fileName);
 
-        // --- EXTERNAL LOGIC (C++) ---
-        const success = spoofer.launchCheat(
-            String(gameUpper),
-            String(finalType),
-            String(cheatPath),
-            String(licenseKey)
-        );
+        // ===== DLL INJECTION =====
+        const { spawn, exec } = require("child_process");
 
-        if (success) {
-            // --- DISCORD UPDATE ---
+        if (gameUpper === "CS2" && finalType === "dll") {
+
+            const running = await isCS2Running();
+
+            if (!running) {
+
+                exec('start "" "steam://rungameid/730"');
+
+                await waitForCS2();
+            }
+
+            spawn(injectorPath, [], {
+                cwd: assetsPath,
+                detached: true,
+                stdio: "ignore",
+                windowsHide: true
+            }).unref();
+
+            return {
+                status: "Success",
+                message: "DLL injected successfully."
+            };
+        }
+
+        // ===== EXE LAUNCH =====
+        if (finalType === "external") {
+
+            const uName = userData?.username ?? "Unknown";
+            const uSub = userData?.subscription ?? "Unknown";
+            const uExp = getDaysRemaining(userData?.expiry);
+
+            const launchData = `${uName}|${uSub}|${uExp}`;
+
+            const externalCmd = `powershell -Command "& '${cheatPath}' '${launchData}'"`;
+
+            require('child_process').exec(externalCmd, { shell: true }, (err) => {
+                if (err) console.error("[EXTERNAL ERROR]", err.message);
+            });
+
             if (rpcClient) {
                 rpcClient.setActivity({
-                    details: `In-Game: ${gameUpper}`,
+                    details: `Playing ${gameUpper}`,
                     state: '🛡️ [STATUS_UNDETECTED]',
                     startTimestamp: new Date(),
                     largeImageKey: 'logo',
@@ -416,18 +557,18 @@ ipcMain.handle('launch-game', async (event, gameName, autoClose, licenseKey, inj
             }
 
             if (autoClose) {
-                console.log("[MAIN] Auto-close active. Exiting in 3s...");
                 setTimeout(() => { app.quit(); }, 3000);
             }
-            return { status: "Success", message: `${gameName} launched successfully!` };
-        } else {
-            return { status: "Error", message: `Access Denied: Invalid Key for ${gameName}` };
+
+            return { status: "Success", message: `${fileName} launched successfully!` };
         }
+
     } catch (err) {
-        console.error("[C++ CRASH]", err);
-        return { status: "Error", message: "Kernel communication failed." };
+        console.error("[LAUNCH CRASH]", err);
+        return { status: "Error", message: "Failed to communicate with loader assets." };
     }
 });
+
 
 
 
@@ -489,31 +630,13 @@ ipcMain.on('toggle-discord', async (event, enabled, gameName = null) => {
 
 
 // Listener for Machine ID
-ipcMain.handle('get-machine-id', async () => {
-    try {
+ipcMain.handle('get-hardware-snapshot', async (event, options = {}) => {
+    return getHardwareSnapshot(options);
+});
 
-        await new Promise(r => setTimeout(r, 1500));
-
-        const output = execSync(
-            'reg query "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Cryptography" /v MachineGuid',
-            { encoding: "utf8" }
-        );
-
-        const lines = output.split('\n');
-
-        for (const line of lines) {
-            if (line.includes("MachineGuid")) {
-                const parts = line.trim().split(/\s+/);
-                return parts[parts.length - 1];
-            }
-        }
-
-        return "GUID_NOT_FOUND";
-
-    } catch (err) {
-        console.error("[HWID READ ERROR]", err);
-        return "REG_ACCESS_FAILED";
-    }
+ipcMain.handle('get-machine-id', async (event, options = {}) => {
+    const snapshot = await getHardwareSnapshot(options);
+    return snapshot.machineId;
 });
 
 // Listener for Baseboard Serial
@@ -530,22 +653,14 @@ ipcMain.handle('get-gpuid', async () => {
     return spoofer.getGPUID();
 });
 
-ipcMain.handle("getSerial", async () => {
-    try {
-        const output = execSync("wmic diskdrive get serialnumber").toString();
-        return output.split("\n")[1].trim();
-    } catch {
-        return "UNKNOWN";
-    }
+ipcMain.handle("getSerial", async (event, options = {}) => {
+    const snapshot = await getHardwareSnapshot(options);
+    return snapshot.serial;
 });
 
-ipcMain.handle("getGPU", async () => {
-    try {
-        const output = execSync("wmic path win32_VideoController get PNPDeviceID").toString();
-        return output.split("\n")[1].trim();
-    } catch {
-        return "UNKNOWN";
-    }
+ipcMain.handle("getGPU", async (event, options = {}) => {
+    const snapshot = await getHardwareSnapshot(options);
+    return snapshot.gpu;
 });
 
 
