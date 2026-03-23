@@ -4,6 +4,7 @@ const mongoose = require('mongoose');
 const crypto = require('crypto');
 const bcrypt = require("bcryptjs");
 const cors = require('cors');
+const { initDiscordBot } = require('./discordBot');
 
 const fixDates = (data) => {
     for (let key in data) {
@@ -144,7 +145,7 @@ function buildDiscordAnnouncementPayload(message) {
 }
 
 async function fetchLatestDiscordAnnouncement() {
-    const botToken = process.env.DISCORD_BOT_TOKEN;
+    const botToken = process.env.DISCORD_BOT_TOKEN || process.env.DISCORD_TOKEN || process.env.TOKEN;
 
     if (!botToken) {
         return { enabled: false, reason: "missing_bot_token" };
@@ -967,3 +968,5 @@ const PORT = process.env.PORT || 10000;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 API Active on port ${PORT}`);
 });
+
+initDiscordBot({ User, mongoose });
