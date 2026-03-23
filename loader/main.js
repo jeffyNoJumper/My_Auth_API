@@ -19,6 +19,8 @@ let rpcClient = null;
 const execFileAsync = promisify(execFile);
 let hardwareSnapshotCache = null;
 let hardwareSnapshotPromise = null;
+const GAME_FEED_TTL_MS = 5 * 60 * 1000;
+const gameFeedCache = new Map();
 
 app.on('will-quit', async () => {
     if (rpcClient) {
@@ -614,6 +616,121 @@ function resolveSharedToolPath(assetsPath, fileName) {
     ];
 
     return candidates.find((entry) => fs.existsSync(entry)) || candidates[0];
+}
+
+function stripFeedMarkup(value = "") {
+    return String(value || "")
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/&amp;/gi, '&')
+        .replace(/&quot;/gi, '"')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function formatFeedStamp(value) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+        return "Live";
+    }
+
+    return date.toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit'
+    });
+}
+
+async function fetchSteamNewsFeed(appId, gameLabel) {
+    const url = `https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/?appid=${appId}&count=1&maxlength=180&format=json`;
+    const res = await fetch(url, { headers: { 'User-Agent': 'VEXION-Loader/1.0' } });
+
+    if (!res.ok) {
+        throw new Error(`Steam feed failed (${res.status})`);
+    }
+
+    const data = await res.json();
+    const item = data?.appnews?.newsitems?.[0];
+
+    if (!item) {
+        throw new Error(`Steam feed missing news for ${gameLabel}`);
+    }
+
+    return {
+        title: stripFeedMarkup(item.title) || `${gameLabel} feed updated`,
+        summary: stripFeedMarkup(item.contents) || `Latest ${gameLabel} headline pulled from Steam News.`,
+        meta: `${stripFeedMarkup(item.feedlabel || item.feedname || 'Steam News')} · ${formatFeedStamp((item.date || 0) * 1000)}`,
+        url: item.url || `https://store.steampowered.com/news/app/${appId}`
+    };
+}
+
+async function fetchFiveMStatusFeed() {
+    const res = await fetch('https://status.cfx.re/api/v2/summary.json', { headers: { 'User-Agent': 'VEXION-Loader/1.0' } });
+
+    if (!res.ok) {
+        throw new Error(`FiveM status feed failed (${res.status})`);
+    }
+
+    const data = await res.json();
+    const component = data?.components?.find((entry) => entry.name === 'Games')
+        || data?.components?.find((entry) => entry.name === 'CnL')
+        || data?.components?.[0];
+
+    if (!component) {
+        throw new Error('FiveM status feed missing components');
+    }
+
+    const titleStatus = String(component.status || 'unknown').replace(/_/g, ' ').toUpperCase();
+
+    return {
+        title: `FiveM ${component.name}: ${titleStatus}`,
+        summary: stripFeedMarkup(component.description) || 'Live operational status pulled from Cfx.re.',
+        meta: `Cfx.re Status · ${formatFeedStamp(data?.page?.updated_at || component.updated_at)}`,
+        url: 'https://status.cfx.re'
+    };
+}
+
+async function fetchWarzoneFeed() {
+    const res = await fetch('https://www.callofduty.com/blog/warzone', { headers: { 'User-Agent': 'VEXION-Loader/1.0' } });
+
+    if (!res.ok) {
+        throw new Error(`Warzone feed failed (${res.status})`);
+    }
+
+    const text = await res.text();
+    const match = text.match(/<a href=\"(\/(?:blog|patchnotes)\/[^\"]*warzone[^\"]*)\">\s*([^<]{12,200})\s*<\/a>/i);
+
+    if (!match) {
+        throw new Error('Warzone feed missing headline');
+    }
+
+    return {
+        title: stripFeedMarkup(match[2]),
+        summary: 'Latest official Warzone post detected from the Call of Duty site.',
+        meta: `Call of Duty Blog · ${formatFeedStamp(Date.now())}`,
+        url: new URL(match[1], 'https://www.callofduty.com').toString()
+    };
+}
+
+async function fetchGameFeed(gameName) {
+    switch (normalizeLaunchGameName(gameName)) {
+        case 'CS2':
+            return fetchSteamNewsFeed(730, 'CS2');
+        case 'GTAV':
+            return fetchSteamNewsFeed(271590, 'GTA V');
+        case 'FIVEM':
+            return fetchFiveMStatusFeed();
+        case 'WARZONE':
+            return fetchWarzoneFeed();
+        default:
+            return {
+                title: `${getLaunchGameLabel(gameName)} feed unavailable`,
+                summary: 'No live source is configured for this title yet.',
+                meta: 'Offline fallback',
+                url: ''
+            };
+    }
 }
 
 ipcMain.handle('get-game-module-availability', async (event, gameName) => {
