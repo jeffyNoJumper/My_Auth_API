@@ -7,10 +7,11 @@ let newsLoaded = false;
 let expiryCheckInterval = null;
 let isAuthProcessActive = false;
 let updateReminderInterval = null;
-const currentVersion = "1.1.3";
+let currentVersion = "1.1.3";
 let hardwareSnapshot = null;
 let hardwareSnapshotPromise = null;
 let updateCheckPromise = null;
+let cachedRemoteRelease = null;
 let serverHealthState = "CHECKING";
 let hwidResetPollInterval = null;
 let hwidResetApprovalStatus = "idle";
@@ -25,7 +26,7 @@ const themePresets = {
         key: "default",
         label: "Default",
         accent: "#1abc9c",
-        glow: "rgba(26, 188, 156, 0.35)",
+        panel: "#1d2630",
         sidebar: "#1e1e1e",
         content: "#2a2a2a",
         background: "#121212"
@@ -34,7 +35,7 @@ const themePresets = {
         key: "arctic",
         label: "Arctic",
         accent: "#4dc9ff",
-        glow: "rgba(77, 201, 255, 0.34)",
+        panel: "#1c3140",
         sidebar: "#131d28",
         content: "#213041",
         background: "#0f141d"
@@ -43,7 +44,7 @@ const themePresets = {
         key: "ember",
         label: "Ember",
         accent: "#ff8a4c",
-        glow: "rgba(255, 138, 76, 0.34)",
+        panel: "#35231a",
         sidebar: "#201510",
         content: "#322019",
         background: "#120c09"
@@ -52,10 +53,28 @@ const themePresets = {
         key: "emerald",
         label: "Emerald",
         accent: "#44d67f",
-        glow: "rgba(68, 214, 127, 0.32)",
+        panel: "#1b3025",
         sidebar: "#112019",
         content: "#1f3328",
         background: "#0c1410"
+    },
+    obsidian: {
+        key: "obsidian",
+        label: "Obsidian",
+        accent: "#e7edf5",
+        panel: "#23262b",
+        sidebar: "#141414",
+        content: "#21242a",
+        background: "#090909"
+    },
+    rose: {
+        key: "rose",
+        label: "Rose",
+        accent: "#ff6f91",
+        panel: "#321d26",
+        sidebar: "#24131a",
+        content: "#36212b",
+        background: "#130b10"
     }
 };
 
@@ -173,6 +192,150 @@ function getThemePreset(name) {
     return themePresets[name] || themePresets.default;
 }
 
+function normalizeHexColor(value, fallback) {
+    const candidate = String(value || '').trim();
+    if (/^#[0-9a-f]{6}$/i.test(candidate)) {
+        return candidate.toLowerCase();
+    }
+
+    if (/^#[0-9a-f]{3}$/i.test(candidate)) {
+        const hex = candidate.slice(1);
+        return `#${hex[0]}${hex[0]}${hex[1]}${hex[1]}${hex[2]}${hex[2]}`.toLowerCase();
+    }
+
+    return fallback.toLowerCase();
+}
+
+function clampColorChannel(value) {
+    return Math.max(0, Math.min(255, Math.round(value)));
+}
+
+function hexToRgb(hex) {
+    const cleanHex = normalizeHexColor(hex, '#000000').slice(1);
+    return {
+        r: parseInt(cleanHex.slice(0, 2), 16),
+        g: parseInt(cleanHex.slice(2, 4), 16),
+        b: parseInt(cleanHex.slice(4, 6), 16)
+    };
+}
+
+function rgbToHex({ r, g, b }) {
+    return `#${[r, g, b].map((channel) => clampColorChannel(channel).toString(16).padStart(2, '0')).join('')}`;
+}
+
+function mixHex(baseHex, mixHexValue, ratio = 0.5) {
+    const amount = Math.max(0, Math.min(1, ratio));
+    const base = hexToRgb(baseHex);
+    const mix = hexToRgb(mixHexValue);
+
+    return rgbToHex({
+        r: base.r + ((mix.r - base.r) * amount),
+        g: base.g + ((mix.g - base.g) * amount),
+        b: base.b + ((mix.b - base.b) * amount)
+    });
+}
+
+function rgbaFromHex(hex, alpha) {
+    const { r, g, b } = hexToRgb(hex);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function rgbStringFromHex(hex) {
+    const { r, g, b } = hexToRgb(hex);
+    return `${r}, ${g}, ${b}`;
+}
+
+function buildThemeTokens(config = {}) {
+    const accent = normalizeHexColor(config.accent, themePresets.default.accent);
+    const background = normalizeHexColor(config.background, themePresets.default.background);
+    const sidebar = normalizeHexColor(config.sidebar, themePresets.default.sidebar);
+    const content = normalizeHexColor(config.content || config.panel || themePresets.default.content, themePresets.default.content);
+    const panel = normalizeHexColor(config.panel || content, content);
+
+    return {
+        ...config,
+        accent,
+        panel,
+        sidebar,
+        content,
+        background,
+        accentRgb: rgbStringFromHex(accent),
+        glow: rgbaFromHex(accent, 0.35),
+        panelStart: rgbaFromHex(mixHex(panel, '#ffffff', 0.04), 0.96),
+        panelEnd: rgbaFromHex(mixHex(panel, '#000000', 0.24), 0.94),
+        panelBorder: rgbaFromHex('#ffffff', 0.08),
+        panelBorderSoft: rgbaFromHex('#ffffff', 0.05),
+        panelBorderStrong: rgbaFromHex(accent, 0.22),
+        panelBorderFocus: rgbaFromHex(accent, 0.4),
+        panelShadow: rgbaFromHex('#000000', 0.22),
+        panelShadowStrong: rgbaFromHex('#000000', 0.34),
+        surfaceMuted: rgbaFromHex(mixHex(panel, '#ffffff', 0.1), 0.18),
+        surfaceMutedStrong: rgbaFromHex(mixHex(panel, '#ffffff', 0.12), 0.26),
+        surfaceHover: rgbaFromHex(accent, 0.07),
+        surfaceHoverStrong: rgbaFromHex(accent, 0.14),
+        panelTextStrong: mixHex(accent, '#ffffff', 0.78),
+        sidebarTint: rgbaFromHex(accent, 0.08),
+        terminalSurface: rgbaFromHex(mixHex(background, '#000000', 0.25), 0.52)
+    };
+}
+
+function applyThemeTokens(tokens) {
+    const root = document.documentElement;
+    const tokenMap = {
+        '--accent-teal': tokens.accent,
+        '--accent': tokens.accent,
+        '--accent-rgb': tokens.accentRgb,
+        '--accent-glow': tokens.glow,
+        '--sidebar-bg': tokens.sidebar,
+        '--content-bg': tokens.content,
+        '--bg-dark': tokens.background,
+        '--panel-start': tokens.panelStart,
+        '--panel-end': tokens.panelEnd,
+        '--panel-border': tokens.panelBorder,
+        '--panel-border-soft': tokens.panelBorderSoft,
+        '--panel-border-strong': tokens.panelBorderStrong,
+        '--panel-border-focus': tokens.panelBorderFocus,
+        '--panel-shadow': tokens.panelShadow,
+        '--panel-shadow-strong': tokens.panelShadowStrong,
+        '--surface-muted': tokens.surfaceMuted,
+        '--surface-muted-strong': tokens.surfaceMutedStrong,
+        '--surface-hover': tokens.surfaceHover,
+        '--surface-hover-strong': tokens.surfaceHoverStrong,
+        '--panel-text-strong': tokens.panelTextStrong,
+        '--sidebar-tint': tokens.sidebarTint,
+        '--terminal-surface': tokens.terminalSurface
+    };
+
+    Object.entries(tokenMap).forEach(([key, value]) => {
+        root.style.setProperty(key, value);
+    });
+}
+
+function syncThemeColorInputs(themeConfig = {}) {
+    const accentInput = document.getElementById('theme-accent-picker');
+    const panelInput = document.getElementById('theme-panel-picker');
+    const sidebarInput = document.getElementById('theme-sidebar-picker');
+    const backgroundInput = document.getElementById('theme-background-picker');
+
+    if (accentInput) accentInput.value = normalizeHexColor(themeConfig.accent || themePresets.default.accent, themePresets.default.accent);
+    if (panelInput) panelInput.value = normalizeHexColor(themeConfig.panel || themeConfig.content || themePresets.default.panel, themePresets.default.panel);
+    if (sidebarInput) sidebarInput.value = normalizeHexColor(themeConfig.sidebar || themePresets.default.sidebar, themePresets.default.sidebar);
+    if (backgroundInput) backgroundInput.value = normalizeHexColor(themeConfig.background || themePresets.default.background, themePresets.default.background);
+}
+
+function getCustomThemeFromInputs() {
+    const preset = getThemePreset('default');
+    return {
+        key: 'custom',
+        label: 'Custom',
+        accent: document.getElementById('theme-accent-picker')?.value || preset.accent,
+        panel: document.getElementById('theme-panel-picker')?.value || preset.panel,
+        sidebar: document.getElementById('theme-sidebar-picker')?.value || preset.sidebar,
+        content: document.getElementById('theme-panel-picker')?.value || preset.content,
+        background: document.getElementById('theme-background-picker')?.value || preset.background
+    };
+}
+
 function updateThemeButtonState(activeTheme) {
     document.querySelectorAll('.theme-chip-btn').forEach((button) => {
         button.classList.toggle('is-active', button.dataset.theme === activeTheme);
@@ -181,20 +344,16 @@ function updateThemeButtonState(activeTheme) {
 
 function applyThemePreset(name = "default", options = {}) {
     const { persist = true, announce = false } = options;
-    const preset = getThemePreset(name);
-    const root = document.documentElement;
+    const preset = buildThemeTokens(getThemePreset(name));
 
-    root.style.setProperty('--accent-teal', preset.accent);
-    root.style.setProperty('--accent', preset.accent);
-    root.style.setProperty('--accent-glow', preset.glow);
-    root.style.setProperty('--sidebar-bg', preset.sidebar);
-    root.style.setProperty('--content-bg', preset.content);
-    root.style.setProperty('--bg-dark', preset.background);
+    applyThemeTokens(preset);
+    syncThemeColorInputs(preset);
 
     updateThemeButtonState(preset.key);
 
     if (persist) {
         localStorage.setItem('loader-theme', preset.key);
+        localStorage.removeItem('loader-theme-custom');
     }
 
     if (announce) {
@@ -207,11 +366,74 @@ function applyThemePreset(name = "default", options = {}) {
 
 function initializeLoaderTheme() {
     const savedTheme = localStorage.getItem('loader-theme') || 'default';
+
+    if (savedTheme === 'custom') {
+        try {
+            const customTheme = JSON.parse(localStorage.getItem('loader-theme-custom') || '{}');
+            const customTokens = buildThemeTokens({
+                ...getThemePreset('default'),
+                ...customTheme,
+                key: 'custom',
+                label: 'Custom'
+            });
+            applyThemeTokens(customTokens);
+            syncThemeColorInputs(customTokens);
+            updateThemeButtonState('custom');
+            return;
+        } catch (error) {
+            console.error("[THEME] Failed to restore custom theme:", error);
+        }
+    }
+
     applyThemePreset(savedTheme, { persist: false, announce: false });
+}
+
+function updateVersionLabels() {
+    const safeVersion = currentVersion || "UNKNOWN";
+    const versionLabel = document.getElementById("loader-version");
+    const legacyVersionLabel = document.getElementById("loader-version-legacy");
+    const settingsVersion = document.getElementById("settings-build-version");
+
+    if (versionLabel) versionLabel.innerText = safeVersion;
+    if (legacyVersionLabel) legacyVersionLabel.innerText = safeVersion;
+    if (settingsVersion) settingsVersion.innerText = safeVersion;
+}
+
+async function syncInstalledVersion() {
+    try {
+        const appVersion = await window.api.getAppVersion?.();
+        const normalizedVersion = normalizeVersionString(appVersion);
+        if (normalizedVersion) {
+            currentVersion = normalizedVersion;
+        } else if (typeof appVersion === 'string' && appVersion.trim()) {
+            currentVersion = appVersion.trim();
+        }
+    } catch (error) {
+        console.error("[VERSION] Failed to load installed app version:", error);
+    } finally {
+        updateVersionLabels();
+    }
 }
 
 function setLoaderTheme(name) {
     applyThemePreset(name, { persist: true, announce: true });
+}
+
+function applyCustomThemeFromInputs() {
+    const customTheme = getCustomThemeFromInputs();
+    const customTokens = buildThemeTokens(customTheme);
+
+    applyThemeTokens(customTokens);
+    syncThemeColorInputs(customTokens);
+    updateThemeButtonState('custom');
+    localStorage.setItem('loader-theme', 'custom');
+    localStorage.setItem('loader-theme-custom', JSON.stringify(customTheme));
+    addTerminalLine("> [THEME] CUSTOM colors applied.");
+    setSettingsStatus("CUSTOM THEME");
+}
+
+function resetCustomTheme() {
+    applyThemePreset('default', { persist: true, announce: true });
 }
 
 function renderAppDialogActions(actions = []) {
@@ -648,6 +870,41 @@ async function loadNews(forceRefresh = false) {
     }
 }
 
+function normalizeVersionString(version) {
+    return String(version || '')
+        .trim()
+        .replace(/^v/i, '')
+        .replace(/[^0-9.]/g, '');
+}
+
+function compareVersions(leftVersion, rightVersion) {
+    const left = normalizeVersionString(leftVersion).split('.').map((part) => parseInt(part || '0', 10));
+    const right = normalizeVersionString(rightVersion).split('.').map((part) => parseInt(part || '0', 10));
+    const maxLength = Math.max(left.length, right.length);
+
+    for (let index = 0; index < maxLength; index += 1) {
+        const leftPart = Number.isFinite(left[index]) ? left[index] : 0;
+        const rightPart = Number.isFinite(right[index]) ? right[index] : 0;
+
+        if (leftPart > rightPart) return 1;
+        if (leftPart < rightPart) return -1;
+    }
+
+    return 0;
+}
+
+function isRemoteReleaseNewer(release) {
+    if (!release?.version) {
+        return false;
+    }
+
+    return compareVersions(release.version, currentVersion) > 0;
+}
+
+function canInstallRelease(release) {
+    return Boolean(release?.url && isRemoteReleaseNewer(release));
+}
+
 async function runManualUpdateCheck() {
     const button = document.getElementById('check-updates-btn');
     const originalText = button ? button.textContent : "";
@@ -662,9 +919,18 @@ async function runManualUpdateCheck() {
     try {
         const release = await checkForUpdates({ manual: true });
 
-        if (release && release.version !== currentVersion) {
+        if (canInstallRelease(release)) {
             addTerminalLine(`> [UPDATE] New build detected: ${release.version}`);
             setSettingsStatus("UPDATE AVAILABLE");
+        } else if (release?.version && compareVersions(release.version, currentVersion) < 0) {
+            addTerminalLine(`> [UPDATE] Remote manifest is older (${release.version}). Staying on ${currentVersion}.`);
+            setSettingsStatus("UP TO DATE");
+        } else if (release?.version && compareVersions(release.version, currentVersion) === 0) {
+            addTerminalLine(`> [UPDATE] Already on the latest build (${currentVersion}).`);
+            setSettingsStatus("UP TO DATE");
+        } else if (release?.version && !release?.url) {
+            addTerminalLine(`> [UPDATE] Manifest found for ${release.version}, but no installer URL is published yet.`);
+            setSettingsStatus("PACKAGE PENDING");
         } else {
             addTerminalLine(`> [UPDATE] Already on the latest build (${currentVersion}).`);
             setSettingsStatus("UP TO DATE");
@@ -757,6 +1023,8 @@ document.addEventListener('DOMContentLoaded', () => {
     hoistModalToBody('external-link-modal');
     hoistModalToBody('app-dialog-modal');
     initializeLoaderTheme();
+    updateVersionLabels();
+    void syncInstalledVersion();
     void initializeLoader();
 });
 
@@ -911,6 +1179,17 @@ document.addEventListener('DOMContentLoaded', () => {
             applySettingValue(id, e.target.checked);
         });
     });
+
+    ['theme-accent-picker', 'theme-panel-picker', 'theme-sidebar-picker', 'theme-background-picker'].forEach((id) => {
+        const input = document.getElementById(id);
+        if (!input) {
+            return;
+        }
+
+        input.addEventListener('input', () => {
+            setSettingsStatus("CUSTOM THEME READY");
+        });
+    });
 });
 
 function toggleShadowWarning() {
@@ -991,12 +1270,16 @@ function showTerminalCommandHelp() {
         "> auto launch on/off, auto update on/off, auto close on/off",
         "> discord on/off, stream proof on/off",
         "> open discord, open support, open github",
-        "> theme default, theme arctic, theme ember, theme emerald"
+        "> theme default, arctic, ember, emerald, obsidian, rose",
+        "> theme custom, theme reset"
     ].forEach(addTerminalLine);
 }
 
 function showSystemStatus() {
-    const themeLabel = getThemePreset(localStorage.getItem('loader-theme') || 'default').label.toUpperCase();
+    const savedTheme = localStorage.getItem('loader-theme') || 'default';
+    const themeLabel = savedTheme === 'custom'
+        ? 'CUSTOM'
+        : getThemePreset(savedTheme).label.toUpperCase();
     addTerminalLine(`> [STATUS] API: ${serverHealthState}`);
     addTerminalLine(`> [STATUS] THEME: ${themeLabel}`);
     addTerminalLine(`> [STATUS] AUTO_UPDATE: ${document.getElementById('auto-update-loader')?.checked ? 'ON' : 'OFF'}`);
@@ -1087,7 +1370,24 @@ async function runTerminalCommand(rawCommand) {
         return;
     }
 
-    if (command === 'theme default' || command === 'theme arctic' || command === 'theme ember' || command === 'theme emerald') {
+    if (command === 'theme custom') {
+        applyCustomThemeFromInputs();
+        return;
+    }
+
+    if (command === 'theme reset') {
+        resetCustomTheme();
+        return;
+    }
+
+    if (
+        command === 'theme default' ||
+        command === 'theme arctic' ||
+        command === 'theme ember' ||
+        command === 'theme emerald' ||
+        command === 'theme obsidian' ||
+        command === 'theme rose'
+    ) {
         setLoaderTheme(command.split(' ')[1]);
         return;
     }
@@ -2933,10 +3233,8 @@ async function requestHWIDReset() {
     }
 
     document.addEventListener("DOMContentLoaded", () => {
-        const versionLabel = document.getElementById("loader-version");
-        if (versionLabel) versionLabel.innerText = currentVersion;
-        const settingsVersion = document.getElementById("settings-build-version");
-        if (settingsVersion) settingsVersion.innerText = currentVersion;
+        updateVersionLabels();
+        void syncInstalledVersion();
 
         if (localStorage.getItem('auto-update-loader') === 'true') {
             void checkForUpdates();
@@ -2954,14 +3252,27 @@ async function checkForUpdates(options = {}) {
     updateCheckPromise = (async () => {
         try {
             const release = await window.api.getLatestRelease();
-            if (release && release.version !== currentVersion) {
+            cachedRemoteRelease = release || null;
+            const updateModal = document.getElementById("update-modal");
+
+            if (canInstallRelease(release)) {
                 document.getElementById("update-version").innerText = release.version;
-                document.getElementById("update-modal").classList.remove("hidden");
+                updateModal?.classList.remove("hidden");
                 if (manual) {
                     setSettingsStatus("UPDATE AVAILABLE");
                 }
-            } else if (manual) {
-                setSettingsStatus("UP TO DATE");
+            } else {
+                updateModal?.classList.add("hidden");
+
+                if (manual && release?.version && compareVersions(release.version, currentVersion) < 0) {
+                    setSettingsStatus("UP TO DATE");
+                } else if (manual && release?.version && compareVersions(release.version, currentVersion) === 0) {
+                    setSettingsStatus("UP TO DATE");
+                } else if (manual && release?.version && !release?.url) {
+                    setSettingsStatus("PACKAGE PENDING");
+                } else if (manual) {
+                    setSettingsStatus("UP TO DATE");
+                }
             }
             return release;
         } catch (err) {
@@ -2982,8 +3293,12 @@ async function checkForUpdates(options = {}) {
     async function updateNow() {
 
         try {
+            const release = cachedRemoteRelease || await window.api.getLatestRelease();
+            cachedRemoteRelease = release || null;
 
-            const release = await window.api.getLatestRelease();
+            if (!canInstallRelease(release)) {
+                throw new Error("No newer published installer is available yet.");
+            }
 
             const filePath = await window.api.downloadUpdate(
                 release.url,
