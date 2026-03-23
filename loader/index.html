@@ -676,6 +676,55 @@
                                             <small>Green accent</small>
                                         </span>
                                     </button>
+
+                                    <button type="button" class="theme-chip-btn" data-theme="obsidian" onclick="setLoaderTheme('obsidian')">
+                                        <span class="theme-chip-swatches">
+                                            <span style="background:#f4f7fb;"></span>
+                                            <span style="background:#131313;"></span>
+                                        </span>
+                                        <span class="theme-chip-copy">
+                                            <strong>Obsidian</strong>
+                                            <small>Neutral monochrome</small>
+                                        </span>
+                                    </button>
+
+                                    <button type="button" class="theme-chip-btn" data-theme="rose" onclick="setLoaderTheme('rose')">
+                                        <span class="theme-chip-swatches">
+                                            <span style="background:#ff6f91;"></span>
+                                            <span style="background:#24131a;"></span>
+                                        </span>
+                                        <span class="theme-chip-copy">
+                                            <strong>Rose</strong>
+                                            <small>Soft red blend</small>
+                                        </span>
+                                    </button>
+                                </div>
+
+                                <div class="theme-custom-grid">
+                                    <label class="theme-picker-field">
+                                        <span>Accent</span>
+                                        <input type="color" id="theme-accent-picker" value="#1abc9c">
+                                    </label>
+
+                                    <label class="theme-picker-field">
+                                        <span>Panels</span>
+                                        <input type="color" id="theme-panel-picker" value="#1d2630">
+                                    </label>
+
+                                    <label class="theme-picker-field">
+                                        <span>Sidebar</span>
+                                        <input type="color" id="theme-sidebar-picker" value="#1e1e1e">
+                                    </label>
+
+                                    <label class="theme-picker-field">
+                                        <span>Frame</span>
+                                        <input type="color" id="theme-background-picker" value="#121212">
+                                    </label>
+                                </div>
+
+                                <div class="theme-custom-actions">
+                                    <button type="button" class="settings-action secondary" onclick="applyCustomThemeFromInputs()">APPLY CUSTOM COLORS</button>
+                                    <button type="button" class="settings-action ghost" onclick="resetCustomTheme()">RESET THEME</button>
                                 </div>
                             </div>
 
