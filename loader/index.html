@@ -247,75 +247,151 @@
 
                     <div class="steam-grid games-grid">
                         <button type="button"
+                                id="btn-fivem"
                                 class="game-card card-green"
+                                data-game="FiveM"
                                 data-images="./imgs/fivem1.png, ./imgs/fivem2.png, ./imgs/fivem3.png"
                                 onclick="launchGame('FiveM')">
                             <div class="game-card-topline">
                                 <span class="game-card-chip">MODULE</span>
-                                <span class="game-card-tone">FiveM</span>
+                                <span class="game-card-tone">CFX LAUNCHER</span>
                             </div>
                             <div class="game-card-media">
                                 <img class="card-img" alt="FiveM module preview">
                             </div>
                             <div class="game-card-footer">
-                                <strong>FiveM</strong>
-                                <span>Open the FiveM CFX launcher.</span>
+                                <div class="game-card-heading-row">
+                                    <strong>FiveM</strong>
+                                    <span class="game-card-state" data-game-state>LOCKED</span>
+                                </div>
+                                <span>Open the FiveM loader path, then choose the module route you want to use.</span>
+                                <div class="game-card-modules">
+                                    <span class="game-card-module-pill" data-module-type="internal">INTERNAL</span>
+                                    <span class="game-card-module-pill" data-module-type="external">EXTERNAL</span>
+                                </div>
                             </div>
-                            <div class="card-overlay"><span>Launch FiveM</span></div>
+                            <div class="card-overlay">
+                                <div class="game-hover-panel">
+                                    <span class="game-hover-kicker">MODULE FEED</span>
+                                    <strong>FiveM Launch Control</strong>
+                                    <p>Internal and external slots are staged now and will activate as soon as FiveM binaries are added.</p>
+                                    <div class="game-hover-meta">
+                                        <span data-game-access-pill>Requires FIVM</span>
+                                        <span>Access Aware</span>
+                                    </div>
+                                </div>
+                            </div>
                         </button>
 
                         <button type="button"
+                                id="btn-gtav"
                                 class="game-card card-gold"
+                                data-game="GTA V"
                                 data-images="./imgs/gtav1.png, ./imgs/gtav2.png, ./imgs/gtav3.png"
                                 onclick="launchGame('GTA V')">
                             <div class="game-card-topline">
                                 <span class="game-card-chip">MODULE</span>
-                                <span class="game-card-tone">GTA V</span>
+                                <span class="game-card-tone">ROCKSTAR</span>
                             </div>
                             <div class="game-card-media">
                                 <img class="card-img" alt="GTA V module preview">
                             </div>
                             <div class="game-card-footer">
-                                <strong>GTA V</strong>
-                                <span>Run the GTA V loader path from the RockStar Launcher.</span>
+                                <div class="game-card-heading-row">
+                                    <strong>GTA V</strong>
+                                    <span class="game-card-state" data-game-state>LOCKED</span>
+                                </div>
+                                <span>Use the Rockstar path, then choose internal or external once the GTA binaries are added.</span>
+                                <div class="game-card-modules">
+                                    <span class="game-card-module-pill" data-module-type="internal">INTERNAL</span>
+                                    <span class="game-card-module-pill" data-module-type="external">EXTERNAL</span>
+                                </div>
                             </div>
-                            <div class="card-overlay"><span>Launch GTA V</span></div>
+                            <div class="card-overlay">
+                                <div class="game-hover-panel">
+                                    <span class="game-hover-kicker">MODULE FEED</span>
+                                    <strong>GTA V Launch Control</strong>
+                                    <p>The selector is ready now and will automatically pick GTA-specific files once you drop them into assets.</p>
+                                    <div class="game-hover-meta">
+                                        <span data-game-access-pill>Requires GTAV</span>
+                                        <span>Future Ready</span>
+                                    </div>
+                                </div>
+                            </div>
                         </button>
 
                         <button type="button"
+                                id="btn-warzone"
                                 class="game-card card-blue"
+                                data-game="Warzone"
                                 data-images="./imgs/cod1.png, ./imgs/cod2.png, ./imgs/cod3.png"
                                 onclick="launchGame('Warzone')">
                             <div class="game-card-topline">
                                 <span class="game-card-chip">MODULE</span>
-                                <span class="game-card-tone">Warzone</span>
+                                <span class="game-card-tone">BATTLE.NET / XBOX</span>
                             </div>
                             <div class="game-card-media">
                                 <img class="card-img" alt="Warzone module preview">
                             </div>
                             <div class="game-card-footer">
-                                <strong>Warzone</strong>
-                                <span>Run the Warzone module from Xbox/Battle Net.</span>
+                                <div class="game-card-heading-row">
+                                    <strong>Warzone</strong>
+                                    <span class="game-card-state" data-game-state>LOCKED</span>
+                                </div>
+                                <span>Warzone now uses the same cleaner module selector with internal and external slots ready for later.</span>
+                                <div class="game-card-modules">
+                                    <span class="game-card-module-pill" data-module-type="internal">INTERNAL</span>
+                                    <span class="game-card-module-pill" data-module-type="external">EXTERNAL</span>
+                                </div>
                             </div>
-                            <div class="card-overlay"><span>Launch Warzone</span></div>
+                            <div class="card-overlay">
+                                <div class="game-hover-panel">
+                                    <span class="game-hover-kicker">MODULE FEED</span>
+                                    <strong>Warzone Launch Control</strong>
+                                    <p>Access-aware module selection is live now, with binary checks waiting for your Warzone files.</p>
+                                    <div class="game-hover-meta">
+                                        <span data-game-access-pill>Requires WARZ</span>
+                                        <span>Future Ready</span>
+                                    </div>
+                                </div>
+                            </div>
                         </button>
 
                         <button type="button"
+                                id="btn-cs2"
                                 class="game-card card-red"
+                                data-game="CS2"
                                 data-images="./imgs/cs2_alt1.png, ./imgs/cs2_alt2.png, ./imgs/cs2_alt3.png"
                                 onclick="launchGame('CS2')">
                             <div class="game-card-topline">
                                 <span class="game-card-chip">MODULE</span>
-                                <span class="game-card-tone">CS2</span>
+                                <span class="game-card-tone">STEAM</span>
                             </div>
                             <div class="game-card-media">
                                 <img class="card-img" alt="CS2 module preview">
                             </div>
                             <div class="game-card-footer">
-                                <strong>CS2</strong>
-                                <span>Open the CS2 launch workflow from the Steam client.</span>
+                                <div class="game-card-heading-row">
+                                    <strong>CS2</strong>
+                                    <span class="game-card-state" data-game-state>LOCKED</span>
+                                </div>
+                                <span>Open the CS2 Steam flow and choose the internal or external route before launch.</span>
+                                <div class="game-card-modules">
+                                    <span class="game-card-module-pill" data-module-type="internal">INTERNAL</span>
+                                    <span class="game-card-module-pill" data-module-type="external">EXTERNAL</span>
+                                </div>
                             </div>
-                            <div class="card-overlay"><span>Launch CS2</span></div>
+                            <div class="card-overlay">
+                                <div class="game-hover-panel">
+                                    <span class="game-hover-kicker">MODULE FEED</span>
+                                    <strong>CS2 Launch Control</strong>
+                                    <p>CS2 binaries are detected now, so both module routes are immediately available from the new selector.</p>
+                                    <div class="game-hover-meta">
+                                        <span data-game-access-pill>Requires CS2X</span>
+                                        <span>Ready Now</span>
+                                    </div>
+                                </div>
+                            </div>
                         </button>
                     </div>
                 </div>
@@ -1036,57 +1112,40 @@
             </div>
         </div>
 
-        <!-- CS2 MODULE SELECTION MODAL -->
-        <div id="cs2-modal" class="modal-overlay hidden">
-            <div class="modal-content glass-card" style="width: 400px; text-align: center; padding: 25px; border-radius: 16px; backdrop-filter: blur(12px); box-shadow: 0 0 40px rgba(0,255,255,0.1); border: 1px solid rgba(0,255,255,0.2);">
-
-                <div class="modal-header">
-                    <h3 class="glow-text-cyan" style="font-size: 22px; margin-bottom: 15px;">CS2 MODULE SELECT</h3>
+        <div id="game-launch-modal" class="modal-overlay hidden">
+            <div class="modal-content glass-card game-launch-modal-card">
+                <div class="game-launch-hero">
+                    <div>
+                        <span id="game-launch-kicker" class="game-launch-kicker">MODULE SELECT</span>
+                        <h3 id="game-launch-title" class="game-launch-title">GAME MODULE SELECT</h3>
+                    </div>
+                    <span id="game-launch-status" class="game-launch-status">ACCESS VERIFIED</span>
                 </div>
 
-                <div class="modal-body">
-                    <p style="font-size: 12px; color: #aaa; margin-bottom: 25px;">Choose your preferred injection method for Counter-Strike 2.</p>
+                <p id="game-launch-copy" class="game-launch-copy">Choose the module route you want to use for this title.</p>
+                <p id="game-launch-update" class="game-launch-update">Module availability is checked against the assets folder before launch.</p>
 
-                    <div class="choice-grid" style="display: flex; gap: 15px;">
+                <div class="game-launch-choice-grid">
+                    <button type="button" id="game-launch-internal" class="game-launch-choice" onclick="submitGameLaunchChoice('internal')">
+                        <span class="game-launch-choice-icon">INT</span>
+                        <span class="game-launch-choice-title">INTERNAL</span>
+                        <small id="game-launch-internal-note" class="game-launch-choice-note">DLL handoff through the injector.</small>
+                        <span class="game-launch-choice-foot">Best when you want the in-game route.</span>
+                    </button>
 
-                        <div class="choice-item" onclick="submitCS2Choice('dll')"
-                             style="flex: 1; padding: 25px; border-radius: 12px; cursor: pointer; background: rgba(0,0,0,0.25); border: 1px solid rgba(0,255,255,0.3); transition: all 0.2s ease; box-shadow: 0 0 10px rgba(0,255,255,0.05);">
-                            <div style="color: var(--accent); font-size: 22px; margin-bottom: 12px;">⚙️</div>
-                            <span style="font-weight: bold; display: block; font-size: 14px; color: #eee;">INTERNAL</span>
-                            <small style="font-size: 10px; color: #bbb;">DLL Injection</small>
-                        </div>
-
-                        <div class="choice-item" onclick="submitCS2Choice('external')"
-                             style="flex: 1; padding: 25px; border-radius: 12px; cursor: pointer; background: rgba(0,0,0,0.25); border: 1px solid rgba(0,255,255,0.3); transition: all 0.2s ease; box-shadow: 0 0 10px rgba(0,255,255,0.05);">
-                            <div style="color: var(--accent); font-size: 22px; margin-bottom: 12px;">🚀</div>
-                            <span style="font-weight: bold; display: block; font-size: 14px; color: #eee;">EXTERNAL</span>
-                            <small style="font-size: 10px; color: #bbb;">EXE Overlay</small>
-                        </div>
-
-                    </div>
-
-                    <button onclick="submitCS2Choice('cancel')"
-                            class="btn-small"
-                            style="margin-top: 25px; width: 100%; background: transparent; border: 1px solid rgba(0,255,255,0.3); color: #aaa; padding: 10px 0; border-radius: 10px; transition: all 0.2s ease;">
-                        CANCEL
+                    <button type="button" id="game-launch-external" class="game-launch-choice" onclick="submitGameLaunchChoice('external')">
+                        <span class="game-launch-choice-icon">EXT</span>
+                        <span class="game-launch-choice-title">EXTERNAL</span>
+                        <small id="game-launch-external-note" class="game-launch-choice-note">EXE overlay launch path.</small>
+                        <span class="game-launch-choice-foot">Best when you want the standalone route.</span>
                     </button>
                 </div>
+
+                <button type="button" class="game-launch-cancel" onclick="submitGameLaunchChoice('cancel')">
+                    CANCEL
+                </button>
             </div>
         </div>
-
-        <style>
-            #cs2-modal .choice-item:hover {
-                background: rgba(0,255,255,0.15);
-                box-shadow: 0 0 20px rgba(0,255,255,0.4);
-                transform: translateY(-2px);
-            }
-
-            #cs2-modal .btn-small:hover {
-                background: rgba(0,255,255,0.05);
-                border-color: var(--accent);
-                color: #fff;
-            }
-        </style>
 
         <!-- --- INJECTION PROGRESS SECTION --- -->
         <div id="injection-modal" class="modal-overlay hidden">
