@@ -92,6 +92,90 @@ function buildPendingVoucherEmail(key) {
     return `pending_${String(key || '').toLowerCase()}`;
 }
 
+const DISCORD_LOADER_ALERT_CHANNEL_ID = process.env.DISCORD_LOADER_ALERT_CHANNEL_ID || "1373760247658971256";
+
+function trimAnnouncementText(value, maxLength = 240) {
+    const clean = String(value || "")
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    if (!clean) {
+        return "";
+    }
+
+    return clean.length > maxLength
+        ? `${clean.slice(0, maxLength - 3).trimEnd()}...`
+        : clean;
+}
+
+function buildDiscordAnnouncementPayload(message) {
+    const firstEmbed = Array.isArray(message?.embeds) ? message.embeds[0] : null;
+    const firstField = Array.isArray(firstEmbed?.fields) ? firstEmbed.fields[0] : null;
+    const authorName = trimAnnouncementText(
+        message?.author?.global_name
+        || message?.author?.username
+        || firstEmbed?.author?.name
+        || "Admin",
+        80
+    );
+    const title = trimAnnouncementText(
+        firstEmbed?.title
+        || message?.content
+        || firstEmbed?.description
+        || firstField?.name
+        || "New Admin Notice",
+        120
+    );
+    const detail = trimAnnouncementText(
+        message?.content
+        || firstEmbed?.description
+        || firstField?.value
+        || title,
+        320
+    );
+
+    return {
+        id: String(message?.id || ""),
+        title: title || "New Admin Notice",
+        detail: detail || "A new admin notice was posted.",
+        author: authorName,
+        timestamp: message?.timestamp || new Date().toISOString()
+    };
+}
+
+async function fetchLatestDiscordAnnouncement() {
+    const botToken = process.env.DISCORD_BOT_TOKEN;
+
+    if (!botToken) {
+        return { enabled: false, reason: "missing_bot_token" };
+    }
+
+    const response = await fetch(`https://discord.com/api/v10/channels/${DISCORD_LOADER_ALERT_CHANNEL_ID}/messages?limit=1`, {
+        headers: {
+            Authorization: `Bot ${botToken}`,
+            'User-Agent': 'VEXION-Loader/1.0'
+        }
+    });
+
+    if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Discord API ${response.status}: ${errorBody.slice(0, 180)}`);
+    }
+
+    const messages = await response.json();
+    const latestMessage = Array.isArray(messages) ? messages[0] : null;
+
+    if (!latestMessage) {
+        return { enabled: true, channel_id: DISCORD_LOADER_ALERT_CHANNEL_ID, announcement: null };
+    }
+
+    return {
+        enabled: true,
+        channel_id: DISCORD_LOADER_ALERT_CHANNEL_ID,
+        announcement: buildDiscordAnnouncementPayload(latestMessage)
+    };
+}
+
 // --- 2. CREATE KEY ---
 app.post('/admin/create-key', verifyAdmin, async (req, res) => {
     try {
@@ -862,6 +946,19 @@ app.get('/health', (req, res) => {
         status: "online",
         database: mongoose.connection.readyState === 1 ? "connected" : "disconnected"
     });
+});
+
+app.get('/loader-notification/latest', async (req, res) => {
+    try {
+        const payload = await fetchLatestDiscordAnnouncement();
+        res.json(payload);
+    } catch (error) {
+        console.error("[DISCORD ANNOUNCEMENT ERROR]", error);
+        res.status(500).json({
+            enabled: false,
+            error: "discord_announcement_unavailable"
+        });
+    }
 });
 
 app.get('/', (req, res) => res.send('API Online & Connected.'));
