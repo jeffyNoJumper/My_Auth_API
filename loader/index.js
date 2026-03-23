@@ -5,8 +5,6 @@ const crypto = require('crypto');
 const bcrypt = require("bcryptjs");
 const cors = require('cors');
 
-const exePath = path.join(__dirname, 'bin', 'Volumeid64.exe');
-
 const newID = "12AB-34CD";
 
 let mainWindow
