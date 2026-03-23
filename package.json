@@ -1,7 +1,7 @@
 {
   "name": "My_Auth_API",
   "version": "1.0.6",
-  "main": "core/index.js",
+  "main": "loader/index.js",
   "scripts": {
     "start": "node loader/index.js"
   },
