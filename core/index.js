@@ -1,5 +1,6 @@
 require('dotenv').config();
 const express = require('express');
+const helmet = require('helmet');
 const mongoose = require('mongoose');
 const crypto = require('crypto');
 const bcrypt = require("bcryptjs");
@@ -21,6 +22,7 @@ if (mongoose.models.User) delete mongoose.models.User;
 const User = require('../src/user');
 
 const app = express();
+app.use(helmet());
 
 app.use(express.json());
 
