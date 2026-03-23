@@ -1,4 +1,6 @@
-const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
+require('dotenv').config();
+const express = require('express');
+const mongoose = require('mongoose');
 const crypto = require('crypto');
 const { autoUpdater } = require('electron-updater');
 const path = require('path');
