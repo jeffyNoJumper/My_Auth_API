@@ -269,6 +269,64 @@
             #manage-key-input::-webkit-scrollbar-thumb:hover {
                 background: var(--accent);
             }
+
+        #manage-key-input {
+            font-family: Consolas, 'Courier New', monospace;
+            line-height: 1.4;
+        }
+
+        .info-card {
+            margin-bottom: 12px;
+            padding: 10px;
+            border-radius: 6px;
+            border: 1px solid #222;
+            background: rgba(0, 149, 255, 0.02);
+        }
+
+        .info-grid {
+            display: grid;
+            gap: 7px;
+        }
+
+        .info-row {
+            display: grid;
+            grid-template-columns: 100px 1fr;
+            gap: 8px;
+            align-items: start;
+        }
+
+        .info-label-small {
+            color: #888;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+        }
+
+        .info-value {
+            color: #fff;
+            font-size: 10px;
+            font-family: Consolas, 'Courier New', monospace;
+            word-break: break-all;
+        }
+
+        .info-value.text {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            font-size: 11px;
+            word-break: normal;
+        }
+
+        .status-pill {
+            display: inline-flex;
+            width: fit-content;
+            padding: 3px 8px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid #333;
+            color: #fff;
+            font-size: 10px;
+            font-weight: 800;
+            letter-spacing: 0.8px;
+        }
     </style>
 </head>
 <body>
@@ -281,7 +339,7 @@
             </div>
         </div>
 
-        <h2 style="color:var(--accent); letter-spacing:3px; margin: 0 0 10px 0;">SK ADMIN PANEL</h2>
+        <h2 style="color:var(--accent); letter-spacing:3px; margin: 0 0 10px 0;">VEXION ADMIN PANEL</h2>
 
         <!-- Admin Auth Row -->
         <div style="display:flex; align-items:center; gap:10px; margin-bottom:15px;">
@@ -363,17 +421,43 @@
                 <div id="manage-info" style="background:rgba(0,0,0,0.3); padding:10px; border-radius:4px; min-height:190px;">
 
                     <!-- Admin/Key Info Display -->
-                    <div style="font-size:11px; margin-bottom:12px; line-height:1.7; border-bottom: 1px solid #333; padding-bottom: 10px; background: rgba(0, 149, 255, 0.02); padding: 10px; border-radius: 4px;">
+                    <div class="info-card">
                         <div style="font-size:9px; color:var(--accent); text-transform:uppercase; letter-spacing:1px; margin-bottom:5px; font-weight:800;">Session_Information</div>
 
-                        <span style="color:#888;">Linked_User:</span> <span id="info-email" style="color:#fff">---</span><br>
-
-                        <!-- THE HWID ROW -->
-                        <span style="color:#888;">Current_HWID:</span>
-                        <span id="info-hwid" style="color:var(--text-muted); font-family: 'Consolas', monospace; font-size: 10px; letter-spacing: 0.5px;">PENDING_HWID</span><br>
-
-                        <span style="color:#888;">Auth_Status:</span> <span id="manage-status" style="font-weight:bold; color: var(--red);">OFFLINE</span><br>
-                        <span style="color:#888;">Time_Remaining:</span> <span id="info-timer" style="color:#ffcc00; font-family: monospace;">--:--:--</span>
+                        <div class="info-grid">
+                            <div class="info-row">
+                                <span class="info-label-small">Identifier</span>
+                                <span id="info-identifier" class="info-value text">---</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label-small">License Key</span>
+                                <span id="info-license" class="info-value">---</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label-small">Linked User</span>
+                                <span id="info-email" class="info-value text">---</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label-small">Games</span>
+                                <span id="info-games" class="info-value text">---</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label-small">Expiry</span>
+                                <span id="info-expiry" class="info-value text">---</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label-small">Current HWID</span>
+                                <span id="info-hwid" class="info-value">PENDING_HWID</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label-small">Auth Status</span>
+                                <span id="manage-status" class="status-pill" style="color: var(--red);">OFFLINE</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label-small">Time Remaining</span>
+                                <span id="info-timer" class="info-value text" style="color:#ffcc00;">--:--:--</span>
+                            </div>
+                        </div>
                     </div>
 
 
@@ -434,365 +518,575 @@
         const { ipcRenderer, clipboard } = require('electron');
         const API = 'https://my-auth-api-1ykc.onrender.com';
 
-        function closeWin() { ipcRenderer.send('admin-close'); }
-        function minWin() { ipcRenderer.send('admin-min'); }
+        let loadedUser = null;
+        let countdownInterval = null;
 
-        async function generateKey() {
-            const btn = document.getElementById('gen-btn');
-            const adminPass = document.getElementById('admin-pass').value;
+        function closeWin() {
+            ipcRenderer.send('admin-close');
+        }
 
-            const days = parseFloat(document.getElementById('key-days').value);
-            const game = document.getElementById('key-game').value;
-            const keyText = document.getElementById('key-text');
+        function minWin() {
+            ipcRenderer.send('admin-min');
+        }
 
-            if (!adminPass) return alert("Enter Admin Password!");
+        function getAdminPassword() {
+            return document.getElementById('admin-pass')?.value.trim() || '';
+        }
 
-            btn.disabled = true;
-            btn.innerHTML = 'GENERATING...';
+        function getSelectedIdentifier() {
+            const manualValue = document.getElementById('single-key-input')?.value.trim();
+            const dropdownValue = document.getElementById('manage-key-input')?.value.trim();
+            return manualValue || dropdownValue || loadedUser?.identifier || '';
+        }
 
-            try {
-                // Only send email/password if provided (optional now)
-                const payload = {
-                    admin_password: adminPass,
-                    days: days,
-                    games: [game]
-                };
+        function normalizeLicenseKey(value) {
+            if (!value || value.includes('@')) {
+                return '';
+            }
 
-                // Include email/password only if manually entered
-                const userEmail = document.getElementById('new-user-email')?.value.trim();
-                const userPass = document.getElementById('new-user-pass')?.value.trim();
-                if (userEmail) payload.email = userEmail;
-                if (userPass) payload.password = userPass;
+            return value.trim().toUpperCase();
+        }
 
-                const response = await fetch(`${API}/admin/create-key`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        admin_password: pass,
-                        email: null,        // no email yet
-                        password: null,     // no password yet
-                        days: days,
-                        games: [game]
-                    })
-                });
+        function setFieldValue(id, value, titleValue = '') {
+            const element = document.getElementById(id);
+            if (!element) {
+                return;
+            }
 
-                const data = await response.json();
-
-                if (data.success) {
-                    keyText.innerText = data.key;
-                    document.getElementById('key-expiry').innerText = "Status: Pending Activation";
-
-                    // Copy key automatically
-                    if (clipboard) clipboard.writeText(data.key);
-
-                    alert("Key Generated! It will be tied to a user when redeemed in the loader.");
-                    loadKeysDropdown();
-                } else {
-                    alert("API Error: " + (data.error || "Access Denied"));
-                }
-            } catch (err) {
-                console.error("[GEN KEY ERROR]", err);
-                alert("Connection failed.");
-            } finally {
-                btn.disabled = false;
-                btn.innerHTML = 'GENERATE & SAVE';
+            const displayValue = value || '---';
+            element.textContent = displayValue;
+            if ('title' in element) {
+                element.title = titleValue || displayValue;
             }
         }
 
-        // LOAD ALL KEYS INTO DROPDOWN
-        async function loadKeysDropdown() {
-            const pass = document.getElementById('admin-pass').value;
+        function formatGames(games) {
+            return Array.isArray(games) && games.length ? games.join(', ') : 'No Access';
+        }
+
+        function formatExpiry(expiry) {
+            if (!expiry) {
+                return 'Pending Activation';
+            }
+
+            const parsedDate = new Date(expiry);
+            if (Number.isNaN(parsedDate.getTime())) {
+                return 'Pending Activation';
+            }
+
+            return parsedDate.toLocaleString();
+        }
+
+        function formatLinkedEmail(email) {
+            if (!email) {
+                return 'No Email Linked';
+            }
+
+            return email.startsWith('pending_') ? 'Pending Activation Slot' : email;
+        }
+
+        function getStatusMeta(user) {
+            if (!user) {
+                return { label: 'OFFLINE', color: 'var(--red)' };
+            }
+
+            if (user.is_banned) {
+                return { label: 'BANNED', color: 'var(--red)' };
+            }
+
+            if (user.is_paused) {
+                return { label: 'PAUSED', color: 'var(--gold)' };
+            }
+
+            if (!user.expiry) {
+                return { label: 'PENDING', color: 'var(--gold)' };
+            }
+
+            const expiryTime = new Date(user.expiry).getTime();
+            if (!Number.isNaN(expiryTime) && expiryTime <= Date.now()) {
+                return { label: 'EXPIRED', color: 'var(--red)' };
+            }
+
+            return { label: 'ACTIVE', color: 'var(--accent)' };
+        }
+
+        async function copyText(value) {
+            if (!value) {
+                throw new Error('Nothing to copy');
+            }
+
+            if (clipboard && typeof clipboard.writeText === 'function') {
+                clipboard.writeText(value);
+                return;
+            }
+
+            if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+                await navigator.clipboard.writeText(value);
+                return;
+            }
+
+            throw new Error('Clipboard unavailable');
+        }
+
+        async function postJson(path, payload) {
+            const response = await fetch(`${API}${path}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            const rawText = await response.text();
+            let data = {};
+
+            if (rawText) {
+                try {
+                    data = JSON.parse(rawText);
+                } catch (error) {
+                    throw new Error('Invalid server response');
+                }
+            }
+
+            if (!response.ok) {
+                throw new Error(data.error || `Request failed (${response.status})`);
+            }
+
+            return data;
+        }
+
+        async function generateKey() {
+            const button = document.getElementById('gen-btn');
+            const adminPass = getAdminPassword();
+            const days = parseFloat(document.getElementById('key-days')?.value || '0');
+            const game = document.getElementById('key-game')?.value;
+            const keyText = document.getElementById('key-text');
+            const expiryText = document.getElementById('key-expiry');
+            const userEmail = document.getElementById('new-user-email')?.value.trim() || '';
+            const userPass = document.getElementById('new-user-pass')?.value.trim() || '';
+
+            if (!adminPass) {
+                alert('Enter Admin Password first.');
+                return;
+            }
+
+            if (!userEmail || !userPass) {
+                alert('Enter user email and password before generating a key.');
+                return;
+            }
+
+            button.disabled = true;
+            button.textContent = 'GENERATING...';
+
+            try {
+                const payload = {
+                    admin_password: adminPass,
+                    days,
+                    games: [game],
+                    email: userEmail,
+                    password: userPass
+                };
+
+                const data = await postJson('/admin/create-key', payload);
+
+                if (!data.success) {
+                    alert(data.error || 'Failed to generate key.');
+                    return;
+                }
+
+                keyText.textContent = data.key || 'ERROR_GENERATING_KEY';
+                expiryText.textContent = `Account Ready: ${data.email || userEmail} | Games: ${formatGames(data.games)}`;
+
+                if (data.key) {
+                    await copyText(data.key);
+                }
+
+                document.getElementById('new-user-email').value = '';
+                document.getElementById('new-user-pass').value = '';
+                document.getElementById('single-key-input').value = data.key || '';
+                await loadKeysDropdown(data.key || '');
+
+                if (data.key) {
+                    await loadKey();
+                }
+            } catch (error) {
+                console.error('[ADMIN] Generate key failed:', error);
+                alert(error.message || 'Connection failed.');
+            } finally {
+                button.disabled = false;
+                button.textContent = 'GENERATE & SAVE';
+            }
+        }
+
+        function buildOptionLabel(entry) {
+            const status = entry.is_banned
+                ? 'BANNED'
+                : entry.is_paused
+                    ? 'PAUSED'
+                    : entry.expiry
+                        ? 'ACTIVE'
+                        : 'PENDING';
+
+            const identifier = entry.identifier || entry.license_key || entry.email || 'UNKNOWN';
+            const detail = entry.license_key
+                ? formatLinkedEmail(entry.email)
+                : formatGames(entry.games);
+
+            return `${status} | ${identifier} | ${detail}`;
+        }
+
+        async function loadKeysDropdown(preferredIdentifier = '') {
+
+            const adminPass = getAdminPassword();
             const select = document.getElementById('manage-key-input');
 
-            if (!pass) return alert("Enter Admin Password first!");
+            if (!select) {
+                return;
+            }
 
+            if (!adminPass) {
+                alert('Enter Admin Password first.');
+                return;
+            }
+
+            const previousSelection = preferredIdentifier || select.value;
             select.innerHTML = '<option value="">Connecting to API...</option>';
 
             try {
-                const res = await fetch(`${API}/admin/load-keys`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ admin_password: pass })
+                const data = await postJson('/admin/load-keys', {
+                    admin_password: adminPass
                 });
 
-                const data = await res.json();
-
-                if (data.success && data.keys) {
-                    select.innerHTML = '';
-
-                    if (data.keys.length === 0) {
-                        select.innerHTML = '<option value="">(No keys found in database)</option>';
-                        return;
-                    }
-
-                    data.keys.forEach(k => {
-                        const opt = document.createElement('option');
-                        opt.value = k.license_key;
-                        const status = k.is_banned ? "🔴" : (k.is_paused ? "🟡" : "🟢");
-                        opt.innerText = `${status} ${k.license_key || k.email}`;
-                        select.appendChild(opt);
-                    });
-                    console.log("Keys loaded successfully.");
-                } else {
-                    alert("Login Failed: " + (data.error || "Invalid Admin Key"));
-                    select.innerHTML = `<option value="">❌ ${data.error || "Access Denied"}</option>`;
+                if (!data.success || !Array.isArray(data.keys)) {
+                    select.innerHTML = '<option value="">Access Denied</option>';
+                    alert(data.error || 'Failed to load users.');
+                    return;
                 }
-            } catch (err) {
-                console.error("Fetch error:", err);
-                alert("Connection failed. Check if the API is online.");
-                select.innerHTML = '<option value="">(Connection Error)</option>';
+
+                select.innerHTML = '';
+
+                if (!data.keys.length) {
+                    select.innerHTML = '<option value="">No users found</option>';
+                    return;
+                }
+
+                data.keys.forEach(k => {
+
+                    const opt = document.createElement('option');
+
+                    const status =
+                        k.is_banned ? "🔴" :
+                            k.is_paused ? "🟡" :
+                                "🟢";
+
+                    const display = buildOptionLabel(k);
+                    const value = k.identifier || k.license_key || k.email || '';
+
+                    opt.value = value;
+                    opt.dataset.licenseKey = k.license_key || '';
+                    opt.dataset.email = k.email || '';
+                    opt.innerText = display;
+
+                    select.appendChild(opt);
+
+                });
+
+                if (previousSelection) {
+                    select.value = previousSelection;
+                }
+
+            } catch (error) {
+                console.error('[ADMIN] Load keys failed:', error);
+                select.innerHTML = '<option value="">Connection Error</option>';
+                alert(error.message || 'Failed to connect to the API.');
+            }
+
+        }
+
+        function setPendingState() {
+            const timerDisplay = document.getElementById('info-timer');
+            if (!timerDisplay) {
+                return;
+            }
+
+            timerDisplay.textContent = 'PENDING ACTIVATION';
+            timerDisplay.style.color = 'var(--gold)';
+        }
+
+        function renderPendingRequest(request) {
+            const requestBox = document.getElementById('request-alert-box');
+            const standardBtn = document.getElementById('standard-reset-btn');
+            const requestedHwidText = document.getElementById('requested-hwid-text');
+
+            if (!requestBox || !standardBtn || !requestedHwidText) {
+                return;
+            }
+
+            if (request && request.status === 'PENDING') {
+                const targetHwid = request.new_hwid || request.hwid || 'Unknown';
+                const currentHwid = request.old_hwid || 'Unknown';
+
+                requestBox.style.display = 'block';
+                standardBtn.style.display = 'none';
+                requestedHwidText.textContent = `Requested HWID: ${targetHwid} | Current HWID: ${currentHwid}`;
+                return;
+            }
+
+            requestBox.style.display = 'none';
+            standardBtn.style.display = 'block';
+            requestedHwidText.textContent = '';
+        }
+
+        function resetLoadedUser() {
+            loadedUser = null;
+            resetCountdown();
+
+            setFieldValue('info-identifier', '---');
+            setFieldValue('info-license', '---');
+            setFieldValue('info-email', '---');
+            setFieldValue('info-games', '---');
+            setFieldValue('info-expiry', '---');
+            setFieldValue('info-hwid', 'PENDING_HWID');
+            setFieldValue('info-timer', '--:--:--');
+
+            const statusElement = document.getElementById('manage-status');
+            if (statusElement) {
+                statusElement.textContent = 'OFFLINE';
+                statusElement.style.color = 'var(--red)';
+            }
+
+            renderPendingRequest(null);
+        }
+
+        function renderLoadedUser(data) {
+            loadedUser = {
+                identifier: data.identifier || data.license_key || data.email || '',
+                license_key: data.license_key || '',
+                email: data.email || '',
+                games: Array.isArray(data.games) ? data.games : [],
+                expiry: data.expiry || null,
+                hwid: data.hwid || '',
+                is_banned: Boolean(data.is_banned),
+                is_paused: Boolean(data.is_paused),
+                pending_request: data.pending_request || null
+            };
+
+            setFieldValue('info-identifier', loadedUser.identifier || '---');
+            setFieldValue('info-license', loadedUser.license_key || 'Not Assigned');
+            setFieldValue('info-email', formatLinkedEmail(loadedUser.email));
+            setFieldValue('info-games', formatGames(loadedUser.games));
+            setFieldValue('info-expiry', formatExpiry(loadedUser.expiry));
+            setFieldValue('info-hwid', loadedUser.hwid || 'NOT CAPTURED', loadedUser.hwid || 'NOT CAPTURED');
+
+            const statusElement = document.getElementById('manage-status');
+            const statusMeta = getStatusMeta(loadedUser);
+
+            if (statusElement) {
+                statusElement.textContent = statusMeta.label;
+                statusElement.style.color = statusMeta.color;
+            }
+
+            if (loadedUser.expiry) {
+                startCountdown(loadedUser.expiry);
+            } else {
+                resetCountdown();
+                setPendingState();
+            }
+
+            renderPendingRequest(loadedUser.pending_request);
+
+            const manualInput = document.getElementById('single-key-input');
+            if (manualInput) {
+                manualInput.value = loadedUser.license_key || loadedUser.identifier || '';
+            }
+
+            const dropdown = document.getElementById('manage-key-input');
+            if (dropdown && loadedUser.identifier) {
+                dropdown.value = loadedUser.identifier;
             }
         }
 
         async function loadKey() {
-            const keyInput = document.getElementById('single-key-input')?.value.trim();
-            const dropdown = document.getElementById('manage-key-input');
-            const key = keyInput || dropdown?.value;
-            const pass = document.getElementById('admin-pass')?.value;
+            const identifier = getSelectedIdentifier();
+            const adminPass = getAdminPassword();
 
-            if (!key || !pass) return alert("Select a key and enter Admin Password!");
+            if (!identifier || !adminPass) {
+                alert('Select a user and enter Admin Password first.');
+                return;
+            }
 
             try {
-                const res = await fetch(`${API}/admin/get-key`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ license_key: key, admin_password: pass })
+                const data = await postJson('/admin/get-key', {
+                    identifier,
+                    license_key: normalizeLicenseKey(identifier),
+                    admin_password: adminPass
                 });
-                const data = await res.json();
 
-                if (data.success) {
-                    // --- CORE INFO (Safe Assignment) ---
-                    const emailEl = document.getElementById('info-email');
-                    const hwidEl = document.getElementById('info-hwid');
-                    const timerDisplay = document.getElementById('info-timer');
-                    const statusDisplay = document.getElementById('manage-status');
-
-                    if (emailEl) emailEl.innerText = data.email || "No Email Linked";
-                    if (hwidEl) hwidEl.innerText = data.hwid || "NOT CAPTURED";
-
-                    // --- TIME & EXPIRY LOGIC ---
-                    if (!data.expiry) {
-                        if (window.countdownInterval) clearInterval(window.countdownInterval);
-                        if (timerDisplay) {
-                            timerDisplay.innerText = "PENDING ACTIVATION";
-                            timerDisplay.style.color = "var(--gold)";
-                        }
-                        if (statusDisplay) {
-                            statusDisplay.innerText = "INACTIVE (NEW)";
-                            statusDisplay.style.color = "var(--gold)";
-                        }
-                    } else {
-                        if (typeof startCountdown === "function") startCountdown(data.expiry);
-                        if (statusDisplay) {
-                            statusDisplay.innerText = data.is_banned ? "BANNED" : (data.is_paused ? "PAUSED" : "ACTIVE");
-                            statusDisplay.style.color = data.is_banned ? "var(--red)" : "var(--accent)";
-                        }
-                    }
-
-                    // --- HWID REQUEST HANDLING ---
-                    const requestBox = document.getElementById('request-alert-box');
-                    const standardBtn = document.getElementById('standard-reset-btn');
-                    const requestedHwidText = document.getElementById('requested-hwid-text');
-
-                    if (data.pending_request && data.pending_request.status === "PENDING") {
-                        if (requestBox) requestBox.style.display = 'block';
-                        if (standardBtn) standardBtn.style.display = 'none';
-                        if (requestedHwidText) requestedHwidText.innerText = "ID: " + (data.pending_request.hwid || "Unknown");
-                    } else {
-                        if (requestBox) requestBox.style.display = 'none';
-                        if (standardBtn) standardBtn.style.display = 'block';
-                    }
-
-                } else {
-                    alert(data.error || "Failed to load key");
+                if (!data.success) {
+                    alert(data.error || 'Failed to load selected user.');
+                    return;
                 }
-            } catch (err) {
-                console.error("Load Error:", err);
+
+                renderLoadedUser(data);
+                await loadKeysDropdown(data.identifier || data.license_key || identifier);
+            } catch (error) {
+                console.error('[ADMIN] Load user failed:', error);
+                alert(error.message || 'API connection failed.');
             }
         }
 
-        async function linkUserEmail() {
-            const key = document.getElementById('manage-key-input').value || document.getElementById('single-key-input').value;
-            const email = document.getElementById('quick-link-email').value.trim();
-            const pass = document.getElementById('admin-pass').value;
-
-            if (!key || !email) return alert("Select a key and enter an email first!");
-
-            const res = await fetch(`${API}/admin/update-key`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ admin_password: pass, license_key: key, email: email })
-            });
-
-            const data = await res.json();
-            if (data.success) {
-                alert(`Linked ${email} successfully!`);
-                document.getElementById('quick-link-email').value = "";
-                await loadKey();
-            }
-        }
 
         async function modifyKey(action, customDays = null) {
-            const inputKey = document.getElementById('single-key-input').value.trim();
-            const dropKey = document.getElementById('manage-key-input').value;
-            const key = inputKey || dropKey;
-            const pass = document.getElementById('admin-pass').value;
+            const identifier = loadedUser?.identifier || getSelectedIdentifier();
+            const adminPass = getAdminPassword();
 
-            console.log(`[DEBUG] Button Clicked: ${action} | Key: ${key}`);
-
-            if (!key || !pass) {
-                return alert("Error: Select a user and enter Admin Password first!");
+            if (!identifier || !adminPass) {
+                alert('Select a user and enter Admin Password first.');
+                return;
             }
 
             let daysToSend = customDays;
-            if (action === 'add-time' && !daysToSend) {
-                const inputVal = document.getElementById('add-days-input').value;
-                if (!inputVal || inputVal <= 0) return alert("Enter valid days!");
-                daysToSend = parseFloat(inputVal);
+            if (action === 'add-time' && daysToSend === null) {
+                const inputValue = parseFloat(document.getElementById('add-days-input')?.value || '0');
+                if (!inputValue || inputValue <= 0) {
+                    alert('Enter a valid amount of time.');
+                    return;
+                }
+
+                daysToSend = inputValue;
+            }
+
+            const payload = {
+                identifier,
+                license_key: loadedUser?.license_key || normalizeLicenseKey(identifier),
+                admin_password: adminPass
+            };
+
+            if (action === 'add-time') {
+                payload.days = daysToSend;
             }
 
             try {
-                const res = await fetch(`${API}/admin/${action}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        license_key: key,
-                        admin_password: pass,
-                        days: daysToSend
-                    })
-                });
+                const data = await postJson(`/admin/${action}`, payload);
 
-                const data = await res.json();
-                console.log("[DEBUG] Server Response:", data);
-
-                if (data.success) {
-                    // UI cleanup for HWID requests
-                    const requestBox = document.getElementById('request-alert-box');
-                    const standardBtn = document.getElementById('standard-reset-btn');
-
-                    if (requestBox && (action === 'reset-hwid' || action === 'deny-hwid')) {
-                        requestBox.style.display = 'none';
-                        if (standardBtn) standardBtn.style.display = 'block';
-                    }
-
-                    // Clear the time input if that was the action
-                    if (action === 'add-time') {
-                        document.getElementById('add-days-input').value = "";
-                        alert(`Added ${daysToSend} day(s) to ${key}`);
-                    }
-
-                    // Show server message for HWID reset so admin knows the key is unlocked
-                    if (action === 'reset-hwid' && data.message) {
-                        alert(data.message);
-                    }
-
-                    console.log(`[SUCCESS] ${action.toUpperCase()} completed.`, data.message || "");
-                    await loadKey(); // Refresh the user info and timer
-                } else {
-                    alert("API Error: " + data.error);
+                if (!data.success) {
+                    alert(data.error || `Failed to ${action}.`);
+                    return;
                 }
-            } catch (err) {
-                console.error("Fetch Error:", err);
-                alert("Connection Failed. Check Console (F12).");
+
+                if (action === 'delete') {
+                    document.getElementById('single-key-input').value = '';
+                    document.getElementById('manage-key-input').value = '';
+                    resetLoadedUser();
+                    await loadKeysDropdown();
+                    return;
+                }
+
+                if (action === 'add-time') {
+                    document.getElementById('add-days-input').value = '';
+                    document.getElementById('add-hours-input').value = '';
+                }
+
+                await loadKey();
+
+                if (data.message) {
+                    alert(data.message);
+                }
+            } catch (error) {
+                console.error(`[ADMIN] ${action} failed:`, error);
+                alert(error.message || 'Connection failed.');
             }
         }
 
-        function quickAdd(days) {
-            modifyKey('add-time', days);
-        }
-
-        // Function to handle the combined Days + Hours input
         async function addTimeCombined() {
-            const dInput = document.getElementById('add-days-input');
-            const hInput = document.getElementById('add-hours-input');
+            const daysInput = document.getElementById('add-days-input');
+            const hoursInput = document.getElementById('add-hours-input');
 
-            const days = parseFloat(dInput.value) || 0;
-            const hours = parseFloat(hInput.value) || 0;
+            const days = parseFloat(daysInput?.value || '0') || 0;
+            const hours = parseFloat(hoursInput?.value || '0') || 0;
 
-            if (days === 0 && hours === 0) {
-                return alert("Please enter at least some time (Days or Hours)!");
+            if (days <= 0 && hours <= 0) {
+                alert('Enter at least some time to add.');
+                return;
             }
 
-            // Convert everything to "Days" for the server
-            // Example: 1 Day + 12 Hours = 1.5 Days
-            const totalDaysToAdd = days + (hours / 24);
-
-            console.log(`[ADMIN] Adding ${days}d ${hours}h (Total: ${totalDaysToAdd.toFixed(4)} days)`);
-
-            // Call your existing modifyKey function
-            await modifyKey('add-time', totalDaysToAdd);
-
-            // Clear inputs on success
-            dInput.value = "";
-            hInput.value = "";
+            const totalDays = days + (hours / 24);
+            await modifyKey('add-time', totalDays);
         }
 
         function quickAdd(daysValue) {
             modifyKey('add-time', daysValue);
         }
 
-        function copyActiveKey() {
-            const keyInput = document.getElementById('single-key-input').value.trim();
-            const dropdown = document.getElementById('manage-key-input');
+        async function copyActiveKey() {
             const copyBtn = document.getElementById('copy-btn');
+            const keyToCopy = loadedUser?.license_key || normalizeLicenseKey(getSelectedIdentifier());
 
-            const keyToCopy = keyInput || dropdown.value;
-
-            if (!keyToCopy || keyToCopy === "") {
-                return alert("No key selected to copy!");
+            if (!keyToCopy) {
+                alert('No license key is available for this entry.');
+                return;
             }
 
-            if (typeof clipboard !== 'undefined') {
-                clipboard.writeText(keyToCopy);
-            } else {
-                navigator.clipboard.writeText(keyToCopy);
-            }
+            try {
+                await copyText(keyToCopy);
 
-            const originalText = copyBtn.innerText;
+                const originalTextFixed = copyBtn.textContent;
+                copyBtn.textContent = 'COPIED';
+                copyBtn.style.borderColor = '#00ff88';
+                copyBtn.style.color = '#00ff88';
+
+                setTimeout(() => {
+                    copyBtn.textContent = originalTextFixed;
+                    copyBtn.style.borderColor = 'var(--accent)';
+                    copyBtn.style.color = 'var(--accent)';
+                }, 1500);
+
+                return;
+                /*
+
+            const originalText = copyBtn.textContent;
             copyBtn.innerText = "✅ Done!";
-            copyBtn.style.borderColor = "#00ff88";
-            copyBtn.style.color = "#00ff88";
+            copyBtn.textContent = 'COPIED';
+            copyBtn.style.borderColor = '#00ff88';
+            copyBtn.style.color = '#00ff88';
 
             setTimeout(() => {
-                copyBtn.innerText = originalText;
-                copyBtn.style.borderColor = "var(--accent)";
-                copyBtn.style.color = "var(--accent)";
-            }, 1500);
+                copyBtn.textContent = originalText;
+                copyBtn.style.borderColor = 'var(--accent)';
+                copyBtn.style.color = 'var(--accent)';
+                }, 1500);
+                */
+            } catch (error) {
+                alert(error.message || 'Copy failed.');
+            }
         }
 
-        let countdownInterval;
+        function resetCountdown() {
+            if (countdownInterval) {
+                clearInterval(countdownInterval);
+                countdownInterval = null;
+            }
+        }
+
         function startCountdown(expiryDate) {
             const timerDisplay = document.getElementById('info-timer');
-            if (!timerDisplay) return;
-
-            // Clear any existing timer first
-            if (window.countdownInterval) clearInterval(window.countdownInterval);
-
-            // --- HANDLE PENDING STATE ---
-            if (!expiryDate || expiryDate === "Pending Activation" || expiryDate === "Not Activated") {
-                timerDisplay.innerText = "PENDING ACTIVATION";
-                timerDisplay.style.color = "var(--gold)";
+            if (!timerDisplay) {
                 return;
             }
 
-            const targetDate = new Date(expiryDate).getTime();
+            resetCountdown();
 
-            if (isNaN(targetDate) || targetDate < 1000000000000) {
-                timerDisplay.innerText = "PENDING ACTIVATION";
-                timerDisplay.style.color = "var(--gold)";
+            const targetTime = new Date(expiryDate).getTime();
+            if (!expiryDate || Number.isNaN(targetTime)) {
+                setPendingState();
                 return;
             }
 
-            timerDisplay.style.color = "#ffcc00";
+            const updateTimer = () => {
+                const distance = targetTime - Date.now();
 
-            window.countdownInterval = setInterval(() => {
-                const now = new Date().getTime();
-                const distance = targetDate - now;
-
-                if (distance < 0) {
-                    clearInterval(window.countdownInterval);
-                    timerDisplay.innerText = "EXPIRED";
-                    timerDisplay.style.color = "var(--red)";
+                if (distance <= 0) {
+                    resetCountdown();
+                    timerDisplay.textContent = 'EXPIRED';
+                    timerDisplay.style.color = 'var(--red)';
                     return;
                 }
 
@@ -801,9 +1095,62 @@
                 const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
                 const seconds = Math.floor((distance % (1000 * 60)) / 1000);
 
-                timerDisplay.innerText = `${days}d ${hours}h ${minutes}m ${seconds}s`;
-            }, 1000);
+                timerDisplay.textContent = `${days}d ${hours}h ${minutes}m ${seconds}s`;
+                timerDisplay.style.color = '#ffcc00';
+            };
+
+            updateTimer();
+            countdownInterval = setInterval(updateTimer, 1000);
         }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            resetLoadedUser();
+
+            const generatedKey = document.getElementById('key-text');
+            const manualInput = document.getElementById('single-key-input');
+            const dropdown = document.getElementById('manage-key-input');
+            const adminInput = document.getElementById('admin-pass');
+
+            generatedKey?.addEventListener('click', async () => {
+                if (!generatedKey.textContent || generatedKey.textContent === '---') {
+                    return;
+                }
+
+                try {
+                    await copyText(generatedKey.textContent);
+                } catch (error) {
+                    console.error('[ADMIN] Copy generated key failed:', error);
+                }
+            });
+
+            manualInput?.addEventListener('input', () => {
+                if (manualInput.value.trim()) {
+                    dropdown.value = '';
+                }
+            });
+
+            manualInput?.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter') {
+                    loadKey();
+                }
+            });
+
+            dropdown?.addEventListener('change', () => {
+                if (dropdown.value) {
+                    manualInput.value = '';
+                }
+            });
+
+            dropdown?.addEventListener('dblclick', () => {
+                loadKey();
+            });
+
+            adminInput?.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter') {
+                    loadKeysDropdown();
+                }
+            });
+        });
     </script>
 </body>
 </html>
