@@ -16,20 +16,24 @@
     "url": "https://github.com/jeffyNoJumper/My_Auth_API"
   },
   "dependencies": {
+    "axios": "^1.13.6",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.6",
     "crypto": "^1.0.1",
     "discord-rpc": "^4.0.1",
+    "discord.js": "^14.25.1",
     "dotenv": "^17.2.4",
     "electron-updater": "^6.1.7",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
+    "mongodb": "^7.1.0",
     "mongoose": "^9.2.4",
     "node-addon-api": "^7.1.0"
   },
   "devDependencies": {
     "electron": "^28.2.0",
-    "electron-builder": "^24.13.3"
+    "electron-builder": "^24.13.3",
+    "eslint": "^10.0.3"
   },
   "build": {
     "appId": "com.vex.allinone",
