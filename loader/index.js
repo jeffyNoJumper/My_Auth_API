@@ -2,12 +2,8 @@ require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const crypto = require('crypto');
-const { autoUpdater } = require('electron-updater');
-const path = require('path');
-const { execFile, exec, spawn } = require('child_process');
-const fs = require('fs');
-const axios = require('axios');
-const { promisify } = require('util');
+const bcrypt = require("bcryptjs");
+const cors = require('cors');
 
 const exePath = path.join(__dirname, 'bin', 'Volumeid64.exe');
 
