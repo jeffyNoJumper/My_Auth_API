@@ -17,6 +17,7 @@
                 <p>Enter your credentials to access the loader</p>
             </div>
 
+            <form id="login-form" class="login-form" onsubmit="handleLoginSubmit(event)" novalidate>
             <!-- Login Notice (hidden by default) -->
             <p id="login-notice" class="hidden login-warning"></p>
 
@@ -42,8 +43,9 @@
                 <button type="button" class="login-link-btn" onclick="openModal('register-modal')">CREATE ACCOUNT</button>
             </div>
 
-            <button onclick="handleLogin()" id="login-btn">LOGIN</button>
+            <button type="submit" id="login-btn">LOGIN</button>
             <div id="login-loader" class="spinner hidden"></div>
+            </form>
         </div>
     </div>
 
@@ -621,6 +623,62 @@
                                 </label>
                             </div>
 
+                            <div class="settings-theme-block">
+                                <div class="settings-theme-head">
+                                    <div>
+                                        <div class="setting-title">Loader Theme</div>
+                                        <div class="setting-meta">Swap the client accent and panel palette without restarting the loader.</div>
+                                    </div>
+                                    <div class="settings-chip">LIVE</div>
+                                </div>
+
+                                <div class="theme-picker-grid">
+                                    <button type="button" class="theme-chip-btn" data-theme="default" onclick="setLoaderTheme('default')">
+                                        <span class="theme-chip-swatches">
+                                            <span style="background:#1abc9c;"></span>
+                                            <span style="background:#0f1c1a;"></span>
+                                        </span>
+                                        <span class="theme-chip-copy">
+                                            <strong>Default</strong>
+                                            <small>Classic teal</small>
+                                        </span>
+                                    </button>
+
+                                    <button type="button" class="theme-chip-btn" data-theme="arctic" onclick="setLoaderTheme('arctic')">
+                                        <span class="theme-chip-swatches">
+                                            <span style="background:#4dc9ff;"></span>
+                                            <span style="background:#131d28;"></span>
+                                        </span>
+                                        <span class="theme-chip-copy">
+                                            <strong>Arctic</strong>
+                                            <small>Cool cyan</small>
+                                        </span>
+                                    </button>
+
+                                    <button type="button" class="theme-chip-btn" data-theme="ember" onclick="setLoaderTheme('ember')">
+                                        <span class="theme-chip-swatches">
+                                            <span style="background:#ff8a4c;"></span>
+                                            <span style="background:#221612;"></span>
+                                        </span>
+                                        <span class="theme-chip-copy">
+                                            <strong>Ember</strong>
+                                            <small>Warm orange</small>
+                                        </span>
+                                    </button>
+
+                                    <button type="button" class="theme-chip-btn" data-theme="emerald" onclick="setLoaderTheme('emerald')">
+                                        <span class="theme-chip-swatches">
+                                            <span style="background:#44d67f;"></span>
+                                            <span style="background:#132018;"></span>
+                                        </span>
+                                        <span class="theme-chip-copy">
+                                            <strong>Emerald</strong>
+                                            <small>Green accent</small>
+                                        </span>
+                                    </button>
+                                </div>
+                            </div>
+
                             <div class="settings-quick-grid">
                                 <button id="check-updates-btn" class="settings-action" onclick="runManualUpdateCheck()">CHECK FOR UPDATES</button>
                                 <button class="settings-action secondary" onclick="loadNews(true)">REFRESH TERMINAL</button>
@@ -694,6 +752,36 @@
                 <div class="modal-actions exit-modal-actions">
                     <button class="btn-secondary" onclick="closeModal('exit-modal')">Cancel</button>
                 </div>
+            </div>
+        </div>
+
+        <div id="external-link-modal" class="modal-overlay hidden">
+            <div class="modal-content glass-card external-link-modal-card" style="width:420px;text-align:center;">
+                <div id="external-link-kicker" class="external-link-kicker">EXTERNAL LINK</div>
+                <h2 id="external-link-title" class="glow-text-cyan">Open External Link</h2>
+                <p id="external-link-copy" class="external-link-copy">
+                    Continue to the selected VEXION destination outside the loader.
+                </p>
+                <div id="external-link-url" class="external-link-url">https://example.com</div>
+                <p id="external-link-note" class="external-link-note">
+                    The loader will hand this off to your browser or the matching desktop client.
+                </p>
+
+                <div class="modal-actions external-link-actions">
+                    <button class="btn-secondary" onclick="copyExternalLink()">Copy Link</button>
+                    <button id="external-link-confirm" class="btn-primary" onclick="confirmExternalLink()">Open Now</button>
+                    <button class="btn-secondary" onclick="closeExternalLinkModal()">Cancel</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="app-dialog-modal" class="modal-overlay hidden">
+            <div id="app-dialog-card" class="modal-content glass-card app-dialog-card" style="width:420px;text-align:center;">
+                <div id="app-dialog-kicker" class="app-dialog-kicker">SYSTEM NOTICE</div>
+                <h2 id="app-dialog-title" class="glow-text-cyan">Notification</h2>
+                <p id="app-dialog-message" class="app-dialog-copy">Loader notice.</p>
+                <div id="app-dialog-detail" class="app-dialog-detail hidden"></div>
+                <div id="app-dialog-actions" class="modal-actions app-dialog-actions"></div>
             </div>
         </div>
 
