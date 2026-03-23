@@ -20,6 +20,7 @@ let injectionProgressTimer = null;
 let autoLoginRequestToken = 0;
 let activeExternalLink = null;
 let activeAppDialogResolver = null;
+let activeGameLaunchResolver = null;
 
 const themePresets = {
     default: {
@@ -109,6 +110,181 @@ const externalLinkConfigs = {
 };
 
 let currentUserPrefix = localStorage.getItem('user_prefix') || "";
+
+const gameModuleConfigs = {
+    CS2: {
+        key: "CS2",
+        displayName: "CS2",
+        prefix: "CS2X",
+        launcher: "Steam",
+        modalCopy: "Choose the CS2 route you want to use before the Steam handoff begins.",
+        internalNote: "Uses the CS2 DLL injector path from assets.",
+        externalNote: "Uses the CS2 external EXE route from assets."
+    },
+    FIVEM: {
+        key: "FIVEM",
+        displayName: "FiveM",
+        prefix: "FIVM",
+        launcher: "CFX Launcher",
+        modalCopy: "FiveM launch routing is ready now. Its internal and external slots will light up when you add the FiveM binaries.",
+        internalNote: "Requires a FiveM DLL module in assets.",
+        externalNote: "Requires a FiveM EXE module in assets."
+    },
+    GTAV: {
+        key: "GTAV",
+        displayName: "GTA V",
+        prefix: "GTAV",
+        launcher: "Rockstar",
+        modalCopy: "GTA V is prepared for a dedicated internal and external route as soon as the GTA module files are added.",
+        internalNote: "Requires a GTA V DLL module in assets.",
+        externalNote: "Requires a GTA V EXE module in assets."
+    },
+    WARZONE: {
+        key: "WARZONE",
+        displayName: "Warzone",
+        prefix: "WARZ",
+        launcher: "Battle.net / Xbox",
+        modalCopy: "Warzone now uses the same module select flow, and its buttons will go live once the Warzone assets are present.",
+        internalNote: "Requires a Warzone DLL module in assets.",
+        externalNote: "Requires a Warzone EXE module in assets."
+    }
+};
+
+function normalizeGameName(gameName = "") {
+    const value = String(gameName || "").trim().toUpperCase();
+
+    switch (value) {
+        case "FIVEM":
+            return "FIVEM";
+        case "GTA V":
+        case "GTAV":
+            return "GTAV";
+        case "WARZONE":
+            return "WARZONE";
+        case "CS2":
+            return "CS2";
+        default:
+            return value;
+    }
+}
+
+function getGameModuleConfig(gameName) {
+    const normalized = normalizeGameName(gameName);
+    return gameModuleConfigs[normalized] || {
+        key: normalized,
+        displayName: String(gameName || normalized),
+        prefix: normalized,
+        launcher: "Launcher",
+        modalCopy: "Choose the module route you want to use for this title.",
+        internalNote: "Internal route requires a matching DLL module in assets.",
+        externalNote: "External route requires a matching EXE module in assets."
+    };
+}
+
+function getGameAssetFolderName(gameName) {
+    return normalizeGameName(gameName).toLowerCase().replace(/\s+/g, '-');
+}
+
+async function getGameModuleAvailability(gameName) {
+    if (!window.api?.getGameModuleAvailability) {
+        return { hasInternal: false, hasExternal: false };
+    }
+
+    try {
+        return await window.api.getGameModuleAvailability(gameName);
+    } catch (error) {
+        console.warn("[MODULE CHECK ERROR]", error);
+        return { hasInternal: false, hasExternal: false };
+    }
+}
+
+function applyModuleAvailabilityToChoice(button, isAvailable) {
+    if (!button) {
+        return;
+    }
+
+    button.disabled = !isAvailable;
+    button.classList.toggle("is-unavailable", !isAvailable);
+}
+
+function updateGameLaunchModal(gameName, availability) {
+    const config = getGameModuleConfig(gameName);
+    const assetFolder = `assets/${getGameAssetFolderName(gameName)}/`;
+    const hasInternal = Boolean(availability?.hasInternal);
+    const hasExternal = Boolean(availability?.hasExternal);
+    const hasAnyModule = hasInternal || hasExternal;
+    const title = document.getElementById("game-launch-title");
+    const kicker = document.getElementById("game-launch-kicker");
+    const status = document.getElementById("game-launch-status");
+    const copy = document.getElementById("game-launch-copy");
+    const update = document.getElementById("game-launch-update");
+    const internalNote = document.getElementById("game-launch-internal-note");
+    const externalNote = document.getElementById("game-launch-external-note");
+    const internalButton = document.getElementById("game-launch-internal");
+    const externalButton = document.getElementById("game-launch-external");
+
+    if (title) title.textContent = `${config.displayName.toUpperCase()} MODULE SELECT`;
+    if (kicker) kicker.textContent = `${config.launcher.toUpperCase()} ROUTE`;
+    if (copy) copy.textContent = config.modalCopy;
+    if (internalNote) internalNote.textContent = config.internalNote;
+    if (externalNote) externalNote.textContent = config.externalNote;
+
+    if (status) {
+        status.classList.toggle("is-pending", !hasAnyModule || !hasInternal || !hasExternal);
+        if (!hasAnyModule) {
+            status.textContent = "AWAITING BINARIES";
+        } else if (hasInternal && hasExternal) {
+            status.textContent = "READY";
+        } else {
+            status.textContent = "PARTIAL";
+        }
+    }
+
+    if (update) {
+        if (!hasAnyModule) {
+            update.textContent = `${config.displayName} does not have module binaries yet. Drop its DLL and EXE into ${assetFolder} and these buttons will enable automatically.`;
+        } else if (!hasInternal || !hasExternal) {
+            update.textContent = `${config.displayName} has only one launch route available right now. Add the missing binary into ${assetFolder} to unlock the full selector.`;
+        } else {
+            update.textContent = `${config.displayName} binaries are present. The loader will use the matching file from ${assetFolder} for the option you pick.`;
+        }
+    }
+
+    applyModuleAvailabilityToChoice(internalButton, hasInternal);
+    applyModuleAvailabilityToChoice(externalButton, hasExternal);
+}
+
+async function openGameLaunchModal(gameName, availability) {
+    updateGameLaunchModal(gameName, availability);
+    await openModal("game-launch-modal");
+
+    return new Promise((resolve) => {
+        activeGameLaunchResolver = resolve;
+    });
+}
+
+function submitGameLaunchChoice(choice) {
+    const internalButton = document.getElementById("game-launch-internal");
+    const externalButton = document.getElementById("game-launch-external");
+
+    if (choice === "internal" && internalButton?.disabled) {
+        return;
+    }
+
+    if (choice === "external" && externalButton?.disabled) {
+        return;
+    }
+
+    const resolver = activeGameLaunchResolver;
+    activeGameLaunchResolver = null;
+    closeModal("game-launch-modal");
+
+    if (resolver) {
+        resolver(choice);
+    }
+}
+
+window.submitGameLaunchChoice = submitGameLaunchChoice;
 
 function showAutoLoginModal() {
     const modal = document.getElementById('auto-login-modal');
@@ -1020,6 +1196,7 @@ async function initializeLoader() {
 document.addEventListener('DOMContentLoaded', () => {
     hoistModalToBody('register-modal');
     hoistModalToBody('auto-login-modal');
+    hoistModalToBody('game-launch-modal');
     hoistModalToBody('external-link-modal');
     hoistModalToBody('app-dialog-modal');
     initializeLoaderTheme();
@@ -1061,6 +1238,8 @@ async function startCS2() {
 }
 
 async function launchGame(gameName) {
+    const gameConfig = getGameModuleConfig(gameName);
+
     if (!hasAccess(gameName)) return;
 
     const key = localStorage.getItem('license_key');
@@ -1073,35 +1252,23 @@ async function launchGame(gameName) {
     const autoCloseActive = document.getElementById('auto-close-launcher').checked;
 
     const injectionModal = document.getElementById('injection-modal');
+    const moduleAvailability = await getGameModuleAvailability(gameName);
+    const injectionType = await openGameLaunchModal(gameName, moduleAvailability);
 
-    let injectionType = "external";
-
-    // --- CS2 MODAL LOGIC ---
-    if (gameName.toLowerCase() === 'cs2') {
-        const cs2Modal = document.getElementById('cs2-modal');
-        cs2Modal.classList.remove('hidden'); // Open Selection
-
-        injectionType = await new Promise((resolve) => {
-            window.submitCS2Choice = (choice) => {
-                cs2Modal.classList.add('hidden'); // Close Selection
-                resolve(choice);
-            };
-        });
-
-        if (injectionType === 'cancel') {
-            addTerminalLine("> [SYSTEM] CS2 Injection cancelled.");
-            return;
-        }
+    if (injectionType === 'cancel') {
+        addTerminalLine(`> [SYSTEM] ${gameConfig.displayName.toUpperCase()} launch cancelled.`);
+        return;
     }
 
     // --- START INJECTION OVERLAY ---
     if (injectionModal) {
         resetInjectionProgressUI();
         injectionModal.classList.remove('hidden');
-        startInjectionProgressAnimation(gameName);
+        startInjectionProgressAnimation(gameConfig.displayName);
     }
 
-    addTerminalLine(`> [SYSTEM] Initializing ${gameName.toUpperCase()}...`);
+    addTerminalLine(`> [MODULE] ${gameConfig.displayName.toUpperCase()} -> ${injectionType.toUpperCase()} selected.`);
+    addTerminalLine(`> [SYSTEM] Initializing ${gameConfig.displayName.toUpperCase()}...`);
 
     const rawEmail = localStorage.getItem("user_email");
     const rawExpiry = localStorage.getItem("expiry_date");
@@ -1128,7 +1295,7 @@ async function launchGame(gameName) {
     };
 
     // Pass userData as the 5th argument to your launch function
-    const result = await window.api.launchCheat(gameName, autoCloseActive, key, injectionType, userData);
+    const result = await window.api.launchCheat(gameConfig.displayName, autoCloseActive, key, injectionType, userData);
 
     if (result.status === "Success") {
         stopInjectionProgressAnimation();
@@ -1148,13 +1315,6 @@ async function launchGame(gameName) {
     }
 
     addTerminalLine(`> ${result.status === "Success" ? "[SUCCESS]" : "[ERROR]"} ${result.message}`);
-}
-
-let resolveCS2;
-function submitCS2Choice(choice) {
-    if (resolveCS2) {
-        resolveCS2(choice);
-    }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -1190,6 +1350,8 @@ document.addEventListener('DOMContentLoaded', () => {
             setSettingsStatus("CUSTOM THEME READY");
         });
     });
+
+    void refreshGameCardsForAvailability(getCurrentPrefix());
 });
 
 function toggleShadowWarning() {
@@ -1969,24 +2131,16 @@ function updateSubscriptionStatus(expiryDate) {
     }
 }
 function hasAccess(gameName) {
-    const accessMap = {
-        'CS2': 'CS2X',
-        'FiveM': 'FIVM',
-        'GTAV': 'GTAV',     // Changed from GTAX to GTAV to match your server
-        'WARZONE': 'WARZ',  // Changed from WZX to WARZ to match your server
-        'FORTNITE': 'FRTX'
-    };
-
+    const config = getGameModuleConfig(gameName);
     const prefix = currentUserPrefix || localStorage.getItem('user_prefix');
 
-    // ALLX bypasses all checks
     if (prefix === "ALLX") return true;
 
-    if (prefix === accessMap[gameName]) {
+    if (prefix === config.prefix) {
         return true;
     }
 
-    void showErrorDialog("Access Denied", `Your current key (${prefix}) is not valid for ${gameName}.`);
+    void showErrorDialog("Access Denied", `Your current key (${prefix}) is not valid for ${config.displayName}.`);
     return false;
 }
 
@@ -2011,23 +2165,77 @@ function setSessionAccess(key) {
 
 
 function hasAccessQuietly(gameName) {
+    const config = getGameModuleConfig(gameName);
     const prefix = currentUserPrefix || localStorage.getItem('user_prefix');
     if (prefix === "ALLX") return true;
 
-    const map = {
-        'CS2': 'CS2X',
-        'VALORANT': 'VALX',
-        'WARZONE': 'WZX',
-        'GTAV': 'GTAX',
-        'FORTNITE': 'FRTX'
-    };
+    return config.prefix === prefix;
+}
 
-    return map[gameName] === prefix;
+async function refreshGameCardsForAvailability(currentPrefix = getCurrentPrefix()) {
+    const cards = Array.from(document.querySelectorAll('.game-card[data-game]'));
+
+    await Promise.all(cards.map(async (card) => {
+        const gameName = card.dataset.game || "";
+        const config = getGameModuleConfig(gameName);
+        const hasModuleAccess = (currentPrefix === "ALLX") || hasAccessQuietly(gameName);
+        const availability = await getGameModuleAvailability(gameName);
+        const hasInternal = Boolean(availability?.hasInternal);
+        const hasExternal = Boolean(availability?.hasExternal);
+        let accessState = "locked";
+
+        if (hasModuleAccess && hasInternal && hasExternal) {
+            accessState = "ready";
+        } else if (hasModuleAccess && (hasInternal || hasExternal)) {
+            accessState = "partial";
+        } else if (hasModuleAccess) {
+            accessState = "pending";
+        }
+
+        card.dataset.access = accessState;
+        card.classList.toggle('locked', !hasModuleAccess);
+
+        const stateLabel = card.querySelector('[data-game-state]');
+        if (stateLabel) {
+            stateLabel.textContent = accessState === "ready"
+                ? "READY"
+                : accessState === "partial"
+                    ? "PARTIAL"
+                    : accessState === "pending"
+                        ? "PENDING"
+                        : "LOCKED";
+        }
+
+        const accessPill = card.querySelector('[data-game-access-pill]');
+        if (accessPill) {
+            accessPill.textContent = hasModuleAccess
+                ? accessState === "ready"
+                    ? "Modules Ready"
+                    : accessState === "partial"
+                        ? "Partial Build"
+                        : "Awaiting Assets"
+                : `Requires ${config.prefix}`;
+        }
+
+        card.querySelectorAll('[data-module-type]').forEach((pill) => {
+            const isInternal = pill.dataset.moduleType === "internal";
+            const isReady = isInternal ? hasInternal : hasExternal;
+            pill.classList.toggle('is-ready', isReady);
+            pill.classList.toggle('is-missing', !isReady);
+        });
+
+        if (currentPrefix === "ALLX") {
+            card.style.boxShadow = "0 0 10px rgba(255, 215, 0, 0.2)";
+            card.style.borderColor = "var(--gold)";
+        } else {
+            card.style.removeProperty("box-shadow");
+            card.style.removeProperty("border-color");
+        }
+    }));
 }
 
 function updateUIForAccess() {
 
-    const savedKey = localStorage.getItem('license_key') || "";
     const currentPrefix = getCurrentPrefix();
     const expiry = localStorage.getItem('expiry_date');
     const email = localStorage.getItem('user_email') || "User";
@@ -2045,22 +2253,7 @@ function updateUIForAccess() {
         }
     }
 
-    const games = ['CS2', 'VALORANT', 'WARZONE', 'GTAV', 'FORTNITE'];
-    games.forEach(game => {
-        const btn = document.getElementById(`btn-${game.toLowerCase()}`);
-        if (btn) {
-            const hasAccess = (currentPrefix === "ALLX") || hasAccessQuietly(game);
-            btn.classList.toggle('locked', !hasAccess);
-
-            if (currentPrefix === "ALLX") {
-                btn.style.boxShadow = "0 0 10px rgba(255, 215, 0, 0.2)";
-                btn.style.borderColor = "var(--gold)";
-            } else {
-                btn.style.boxShadow = "none";
-                btn.style.borderColor = "";
-            }
-        }
-    });
+    void refreshGameCardsForAvailability(currentPrefix);
 
     if (typeof updateHomeTabUI === "function") {
         updateHomeTabUI();
@@ -2235,6 +2428,8 @@ function closeModal(id) {
 
     if (id === 'external-link-modal') {
         activeExternalLink = null;
+    } else if (id === 'game-launch-modal') {
+        activeGameLaunchResolver = null;
     }
 }
 
