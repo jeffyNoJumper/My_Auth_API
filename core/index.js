@@ -189,7 +189,7 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                 try {
                     // Using raw connection to match the 'reset-hwid' collection exactly
                     pendingRequest = await mongoose.connection.collection('requests').findOne({
-                        license_key: license_key.toUpperCase(),
+                        license_key: String(license_key).toUpperCase(),
                         status: "PENDING"
                     });
                 } catch (e) { console.log("Request fetch failed"); }
