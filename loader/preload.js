@@ -92,6 +92,7 @@ contextBridge.exposeInMainWorld('api', {
     getGPU: () => ipcRenderer.invoke("getGPU"),
     getAppVersion: () => ipcRenderer.invoke('get-app-version'),
     getGameModuleAvailability: (gameName) => ipcRenderer.invoke('get-game-module-availability', gameName),
+    getGameLiveFeed: (gameName) => ipcRenderer.invoke('get-game-live-feed', gameName),
     close: () => ipcRenderer.send('window-close'),
     minimize: () => ipcRenderer.send('window-minimize'),
     openExternal: (url) => shell.openExternal(url),
