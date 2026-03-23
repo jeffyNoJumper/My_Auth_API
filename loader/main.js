@@ -235,7 +235,11 @@ function createWindow() {
     mainWindow.loadFile('index.html');
 
     mainWindow.once('ready-to-show', () => {
-        autoUpdater.checkForUpdatesAndNotify();
+        if (process.env.ENABLE_NATIVE_UPDATER === 'true') {
+            autoUpdater.checkForUpdatesAndNotify();
+        } else {
+            console.log("[UPDATER] Native updater disabled. Loader will use the custom manifest-based update flow.");
+        }
         mainWindow.center(); 
         mainWindow.show();
     });
@@ -248,6 +252,10 @@ ipcMain.on('window-close', () => {
 
 ipcMain.on('window-minimize', () => {
     if (mainWindow) mainWindow.minimize();
+});
+
+ipcMain.handle('get-app-version', () => {
+    return app.getVersion();
 });
 
 ipcMain.handle('start-spoof', async (event, options) => {
@@ -392,7 +400,7 @@ ipcMain.handle('start-spoof', async (event, options) => {
 
 ipcMain.handle('check-version', async () => {
     return {
-        version: '1.1.3',
+        version: app.getVersion(),
         url: 'https://raw.githubusercontent.com/jeffyNoJumper/My_Auth_API/refs/heads/main/version.txt'
     };
 });
