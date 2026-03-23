@@ -785,6 +785,7 @@ async function handleModal(interaction, deps) {
 
 function initDiscordBot({ User, mongoose }) {
     const token = process.env.DISCORD_TOKEN || process.env.DISCORD_BOT_TOKEN || process.env.TOKEN;
+    console.log(`[DISCORD BOT] Init requested. token_present=${token ? 'yes' : 'no'} guild_id=${GUILD_ID}`);
 
     if (!token) {
         console.log('[DISCORD BOT] Skipping Discord bot startup: no token configured.');
@@ -797,6 +798,25 @@ function initDiscordBot({ User, mongoose }) {
 
     const client = new Client({
         intents: [GatewayIntentBits.Guilds]
+    });
+
+    client.on('error', error => {
+        console.error('[DISCORD BOT] Client error:', error);
+    });
+
+    client.on('warn', message => {
+        console.warn('[DISCORD BOT] Warn:', message);
+    });
+
+    client.on('shardError', error => {
+        console.error('[DISCORD BOT] Shard error:', error);
+    });
+
+    client.on('debug', message => {
+        if (message.includes('Heartbeat acknowledged') || message.includes('Keeping up')) {
+            return;
+        }
+        console.log('[DISCORD BOT] Debug:', message);
     });
 
     client.once('ready', async readyClient => {
@@ -843,6 +863,8 @@ function initDiscordBot({ User, mongoose }) {
             }
         }
     });
+
+    console.log('[DISCORD BOT] Starting login...');
 
     client.login(token).catch(error => {
         console.error('[DISCORD BOT] Login failed:', error.message);
