@@ -5,18 +5,31 @@ const os = require('os');
 
 contextBridge.exposeInMainWorld('api', {
 
-    launchCheat: (name, close, key, type) => {
+    launchCheat: (name, close, key, type, userData) => {
         console.log("[PRELOAD] Forwarding Key:", key);
-        return ipcRenderer.invoke('launch-game', name, close, key, type);
-    },
+        console.log("[PRELOAD] Forwarding userData:", userData);
 
+        return ipcRenderer.invoke(
+            "launch-game",
+            name,
+            close,
+            key,
+            type,
+            userData
+        );
+    },
     toggleStreamProof: (enabled) => ipcRenderer.send('toggle-stream-proof', enabled),
     onApplyStreamProof: (callback) => ipcRenderer.on('apply-stream-proof', (event, enabled) => callback(enabled)),
     toggleDiscord: (enabled) => ipcRenderer.send('toggle-discord', enabled),
     getNews: () => ipcRenderer.invoke('get-news'),
+    getLatestRelease: () => ipcRenderer.invoke('get-latest-release'),
+    downloadUpdate: (url, fileName) => ipcRenderer.invoke('download-update', url, fileName),
+    runUpdate: (filePath) => ipcRenderer.invoke('run-update', filePath),
+
     checkVersion: () => ipcRenderer.invoke('check-version'),
 
     startSpoof: (options) => ipcRenderer.invoke('start-spoof', options),
+    getHardwareSnapshot: (forceRefresh = false) => ipcRenderer.invoke('get-hardware-snapshot', { forceRefresh }),
     getMachineID: () => ipcRenderer.invoke('get-machine-id'),
     getBaseboard: () => ipcRenderer.invoke('get-baseboard'),
     getGPUID: () => ipcRenderer.invoke('get-gpuid'),
@@ -51,12 +64,8 @@ contextBridge.exposeInMainWorld('api', {
 
         const buffer = Buffer.from(await res.arrayBuffer());
 
-        const downloads = path.resolve(path.join(os.homedir(), "Downloads"));
-        const savePath = path.resolve(downloads, fileName);
-        const relativePath = path.relative(downloads, savePath);
-        if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
-            throw new Error("Invalid file path");
-        }
+        const downloads = path.join(os.homedir(), "Downloads");
+        const savePath = path.join(downloads, fileName);
 
         fs.writeFileSync(savePath, buffer);
 
