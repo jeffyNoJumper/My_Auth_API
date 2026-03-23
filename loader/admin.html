@@ -351,9 +351,13 @@
 
             <!-- COLUMN 1: CREATE ACCOUNT & KEY -->
             <div class="column">
-                <div class="section-label">1. Create Account</div>
+                <div class="section-label">1. Create Key / Pre-Register</div>
                 <input type="email" id="new-user-email" placeholder="User Email">
-                <input type="text" id="new-user-pass" placeholder="User Password">
+                <input type="text" id="new-user-pass" placeholder="User Password (Optional)">
+                <label style="display:flex; align-items:center; gap:8px; margin:6px 0 10px; font-size:10px; color:#bdbdbd; text-transform:uppercase; letter-spacing:0.8px;">
+                    <input type="checkbox" id="pre-register-user">
+                    Pre-register account before key redemption
+                </label>
 
                 <div style="display:flex; gap:5px;">
                     <select id="key-days">
@@ -577,12 +581,16 @@
             return parsedDate.toLocaleString();
         }
 
-        function formatLinkedEmail(email) {
+        function formatLinkedEmail(email, reservedEmail = '') {
             if (!email) {
                 return 'No Email Linked';
             }
 
-            return email.startsWith('pending_') ? 'Pending Activation Slot' : email;
+            if (email.startsWith('pending_')) {
+                return reservedEmail ? `Reserved for ${reservedEmail}` : 'Pending Activation Slot';
+            }
+
+            return email;
         }
 
         function getStatusMeta(user) {
@@ -662,14 +670,16 @@
             const expiryText = document.getElementById('key-expiry');
             const userEmail = document.getElementById('new-user-email')?.value.trim() || '';
             const userPass = document.getElementById('new-user-pass')?.value.trim() || '';
+            const preregisterToggle = document.getElementById('pre-register-user');
+            const shouldPreRegister = Boolean(preregisterToggle?.checked || userPass);
 
             if (!adminPass) {
                 alert('Enter Admin Password first.');
                 return;
             }
 
-            if (!userEmail || !userPass) {
-                alert('Enter user email and password before generating a key.');
+            if (shouldPreRegister && !userEmail) {
+                alert('Enter a user email before pre-registering an account.');
                 return;
             }
 
@@ -682,7 +692,8 @@
                     days,
                     games: [game],
                     email: userEmail,
-                    password: userPass
+                    password: userPass,
+                    pre_register: shouldPreRegister
                 };
 
                 const data = await postJson('/admin/create-key', payload);
@@ -693,7 +704,16 @@
                 }
 
                 keyText.textContent = data.key || 'ERROR_GENERATING_KEY';
-                expiryText.textContent = `Account Ready: ${data.email || userEmail} | Games: ${formatGames(data.games)}`;
+                const modeSummary = {
+                    'standalone-key': 'Standalone Key Ready',
+                    'reserved-key': `Key Reserved${data.reserved_email ? `: ${data.reserved_email}` : ''}`,
+                    'pre-registered-new-user': data.requires_password_setup
+                        ? `Pre-Registered Email Saved: ${data.email || userEmail}`
+                        : `Account Ready: ${data.email || userEmail}`,
+                    'pre-registered-existing-user': `Existing User Key Ready: ${data.email || userEmail}`
+                };
+
+                expiryText.textContent = `${modeSummary[data.mode] || 'Key Ready'} | Games: ${formatGames(data.games)}`;
 
                 if (data.key) {
                     await copyText(data.key);
@@ -701,6 +721,7 @@
 
                 document.getElementById('new-user-email').value = '';
                 document.getElementById('new-user-pass').value = '';
+                if (preregisterToggle) preregisterToggle.checked = false;
                 document.getElementById('single-key-input').value = data.key || '';
                 await loadKeysDropdown(data.key || '');
 
@@ -727,7 +748,7 @@
 
             const identifier = entry.identifier || entry.license_key || entry.email || 'UNKNOWN';
             const detail = entry.license_key
-                ? formatLinkedEmail(entry.email)
+                ? formatLinkedEmail(entry.email, entry.reserved_email)
                 : formatGames(entry.games);
 
             return `${status} | ${identifier} | ${detail}`;
@@ -783,6 +804,7 @@
                     opt.value = value;
                     opt.dataset.licenseKey = k.license_key || '';
                     opt.dataset.email = k.email || '';
+                    opt.dataset.reservedEmail = k.reserved_email || '';
                     opt.innerText = display;
 
                     select.appendChild(opt);
@@ -861,6 +883,7 @@
                 identifier: data.identifier || data.license_key || data.email || '',
                 license_key: data.license_key || '',
                 email: data.email || '',
+                reserved_email: data.reserved_email || '',
                 games: Array.isArray(data.games) ? data.games : [],
                 expiry: data.expiry || null,
                 hwid: data.hwid || '',
@@ -871,7 +894,7 @@
 
             setFieldValue('info-identifier', loadedUser.identifier || '---');
             setFieldValue('info-license', loadedUser.license_key || 'Not Assigned');
-            setFieldValue('info-email', formatLinkedEmail(loadedUser.email));
+            setFieldValue('info-email', formatLinkedEmail(loadedUser.email, loadedUser.reserved_email));
             setFieldValue('info-games', formatGames(loadedUser.games));
             setFieldValue('info-expiry', formatExpiry(loadedUser.expiry));
             setFieldValue('info-hwid', loadedUser.hwid || 'NOT CAPTURED', loadedUser.hwid || 'NOT CAPTURED');
