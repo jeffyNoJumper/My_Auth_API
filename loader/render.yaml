@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: vexion-auth-api
+    env: node
+    rootDir: .
+    buildCommand: npm install
+    startCommand: node loader/index.js
+    envVars:
+      - key: NODE_VERSION
+        value: 22.22.0
+      - key: MONGO_URL
+        sync: false
+      - key: ADMIN_SECRET
+        sync: false
+      - key: DISCORD_TOKEN
+        sync: false
+      - key: DISCORD_BOT_TOKEN
+        sync: false
+      - key: DISCORD_LOADER_ALERT_CHANNEL_ID
+        value: 1373760247658971256
+      - key: GUILD_ID
+        value: 1244947057320661043
+      - key: ADMIN_USER_ID
+        value: 1280926025789870209
+      - key: PANEL_CHANNEL_ID
+        value: 1469005198700712046
+      - key: HWID_RESET_CHANNEL_ID
+        value: 1403918366623797268
+      - key: STORE_URL
+        value: https://whosthesource.mysellauth.com
