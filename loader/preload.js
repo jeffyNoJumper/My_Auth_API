@@ -38,6 +38,7 @@ contextBridge.exposeInMainWorld('api', {
 
     close: () => ipcRenderer.send('window-close'),
     minimize: () => ipcRenderer.send('window-minimize'),
+    openExternal: (url) => shell.openExternal(url),
 
     // ---------- UPDATE SYSTEM ----------
 
