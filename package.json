@@ -3,7 +3,7 @@
   "version": "1.0.6",
   "main": "core/index.js",
   "scripts": {
-    "start": "node core/index.js"
+    "start": "node loader/index.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
