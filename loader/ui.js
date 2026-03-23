@@ -17,8 +17,77 @@ let hwidResetApprovalStatus = "idle";
 let latestHwidResetRequestId = null;
 let injectionProgressTimer = null;
 let autoLoginRequestToken = 0;
+let activeExternalLink = null;
+let activeAppDialogResolver = null;
 
-const shell = window.api.shell;
+const themePresets = {
+    default: {
+        key: "default",
+        label: "Default",
+        accent: "#1abc9c",
+        glow: "rgba(26, 188, 156, 0.35)",
+        sidebar: "#1e1e1e",
+        content: "#2a2a2a",
+        background: "#121212"
+    },
+    arctic: {
+        key: "arctic",
+        label: "Arctic",
+        accent: "#4dc9ff",
+        glow: "rgba(77, 201, 255, 0.34)",
+        sidebar: "#131d28",
+        content: "#213041",
+        background: "#0f141d"
+    },
+    ember: {
+        key: "ember",
+        label: "Ember",
+        accent: "#ff8a4c",
+        glow: "rgba(255, 138, 76, 0.34)",
+        sidebar: "#201510",
+        content: "#322019",
+        background: "#120c09"
+    },
+    emerald: {
+        key: "emerald",
+        label: "Emerald",
+        accent: "#44d67f",
+        glow: "rgba(68, 214, 127, 0.32)",
+        sidebar: "#112019",
+        content: "#1f3328",
+        background: "#0c1410"
+    }
+};
+
+const externalLinkConfigs = {
+    discord: {
+        key: "discord",
+        kicker: "COMMUNITY",
+        title: "Join VEXION Discord",
+        body: "Open the main VEXION Discord for announcements, community updates, and live status posts.",
+        url: "https://discord.gg/vCrBfRsRvb",
+        confirmLabel: "OPEN DISCORD",
+        note: "This opens outside the loader in your browser or Discord client."
+    },
+    support: {
+        key: "support",
+        kicker: "SHOP / SUPPORT",
+        title: "Open Support Hub",
+        body: "Orders, support questions, and account help are handled through the VEXION support hub.",
+        url: "https://discord.gg/RG7bEgrHF9",
+        confirmLabel: "OPEN SUPPORT",
+        note: "If Discord is installed, the invite may open directly in the app."
+    },
+    github: {
+        key: "github",
+        kicker: "DEVELOPER",
+        title: "Open GitHub",
+        body: "View releases, repositories, and project updates from the developer profile.",
+        url: "https://github.com/jeffyNoJumper?tab=repositories",
+        confirmLabel: "OPEN GITHUB",
+        note: "This opens in your default browser."
+    }
+};
 
 let currentUserPrefix = localStorage.getItem('user_prefix') || "";
 
@@ -36,11 +105,44 @@ function hideAutoLoginModal() {
     modal.classList.add('hidden');
 }
 
+function setLoginNotice(message = "", state = "error") {
+    const loginNotice = document.getElementById("login-notice");
+    if (!loginNotice) return;
+
+    if (message) {
+        loginNotice.innerText = message;
+        loginNotice.dataset.state = state;
+        loginNotice.classList.remove("hidden");
+        return;
+    }
+
+    loginNotice.innerText = "";
+    loginNotice.classList.add("hidden");
+    loginNotice.removeAttribute("data-state");
+}
+
+function focusLoginField(input) {
+    if (!input) return;
+
+    input.focus();
+
+    if (typeof input.select === "function") {
+        input.select();
+    }
+}
+
+function handleLoginSubmit(event) {
+    if (event) {
+        event.preventDefault();
+    }
+
+    void handleLogin();
+}
+
 function showManualLoginState(noticeText = null, keepAutoLoginModal = false) {
     const loginScreen = document.getElementById("login-screen");
     const dashboard = document.getElementById("dashboard-wrapper");
     const sidebar = document.getElementById("sidebar");
-    const loginNotice = document.getElementById("login-notice");
 
     if (!keepAutoLoginModal) {
         hideAutoLoginModal();
@@ -55,15 +157,7 @@ function showManualLoginState(noticeText = null, keepAutoLoginModal = false) {
         sidebar.style.removeProperty("display");
     }
 
-    if (loginNotice) {
-        if (noticeText) {
-            loginNotice.innerText = noticeText;
-            loginNotice.classList.remove("hidden");
-        } else {
-            loginNotice.innerText = "";
-            loginNotice.classList.add("hidden");
-        }
-    }
+    setLoginNotice(noticeText, noticeText ? "info" : "error");
 }
 
 function hoistModalToBody(id) {
@@ -73,6 +167,226 @@ function hoistModalToBody(id) {
     }
 
     document.body.appendChild(modal);
+}
+
+function getThemePreset(name) {
+    return themePresets[name] || themePresets.default;
+}
+
+function updateThemeButtonState(activeTheme) {
+    document.querySelectorAll('.theme-chip-btn').forEach((button) => {
+        button.classList.toggle('is-active', button.dataset.theme === activeTheme);
+    });
+}
+
+function applyThemePreset(name = "default", options = {}) {
+    const { persist = true, announce = false } = options;
+    const preset = getThemePreset(name);
+    const root = document.documentElement;
+
+    root.style.setProperty('--accent-teal', preset.accent);
+    root.style.setProperty('--accent', preset.accent);
+    root.style.setProperty('--accent-glow', preset.glow);
+    root.style.setProperty('--sidebar-bg', preset.sidebar);
+    root.style.setProperty('--content-bg', preset.content);
+    root.style.setProperty('--bg-dark', preset.background);
+
+    updateThemeButtonState(preset.key);
+
+    if (persist) {
+        localStorage.setItem('loader-theme', preset.key);
+    }
+
+    if (announce) {
+        addTerminalLine(`> [THEME] ${preset.label.toUpperCase()} preset applied.`);
+        setSettingsStatus(`${preset.label.toUpperCase()} THEME`);
+    }
+
+    return preset;
+}
+
+function initializeLoaderTheme() {
+    const savedTheme = localStorage.getItem('loader-theme') || 'default';
+    applyThemePreset(savedTheme, { persist: false, announce: false });
+}
+
+function setLoaderTheme(name) {
+    applyThemePreset(name, { persist: true, announce: true });
+}
+
+function renderAppDialogActions(actions = []) {
+    const actionsHost = document.getElementById('app-dialog-actions');
+    if (!actionsHost) {
+        return;
+    }
+
+    actionsHost.innerHTML = "";
+
+    actions.forEach((action) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = action.label;
+        button.className = action.variant === 'danger'
+            ? 'btn-danger'
+            : action.variant === 'secondary'
+                ? 'btn-secondary'
+                : 'btn-primary';
+
+        button.addEventListener('click', () => {
+            closeModal('app-dialog-modal');
+
+            const resolver = activeAppDialogResolver;
+            activeAppDialogResolver = null;
+
+            if (resolver) {
+                resolver(action.value);
+            }
+        });
+
+        actionsHost.appendChild(button);
+    });
+}
+
+function showAppDialog(options = {}) {
+    const {
+        title = "Notification",
+        message = "",
+        detail = "",
+        tone = "info",
+        kicker = "SYSTEM NOTICE",
+        actions = [{ label: "OK", value: true, variant: "primary" }]
+    } = options;
+
+    const card = document.getElementById('app-dialog-card');
+    const kickerEl = document.getElementById('app-dialog-kicker');
+    const titleEl = document.getElementById('app-dialog-title');
+    const messageEl = document.getElementById('app-dialog-message');
+    const detailEl = document.getElementById('app-dialog-detail');
+
+    if (!card || !kickerEl || !titleEl || !messageEl || !detailEl) {
+        return Promise.resolve(false);
+    }
+
+    if (activeAppDialogResolver) {
+        activeAppDialogResolver(false);
+        activeAppDialogResolver = null;
+    }
+
+    card.dataset.tone = tone;
+    kickerEl.textContent = kicker;
+    titleEl.textContent = title;
+    messageEl.textContent = message;
+    detailEl.textContent = detail || "";
+    detailEl.classList.toggle('hidden', !detail);
+    renderAppDialogActions(actions);
+    activeExternalLink = null;
+    closeModal('external-link-modal');
+    openModal('app-dialog-modal');
+
+    return new Promise((resolve) => {
+        activeAppDialogResolver = resolve;
+    });
+}
+
+function showSuccessDialog(title, message, detail = "") {
+    return showAppDialog({
+        title,
+        message,
+        detail,
+        tone: "success",
+        kicker: "SUCCESS",
+        actions: [{ label: "OK", value: true, variant: "primary" }]
+    });
+}
+
+function showErrorDialog(title, message, detail = "") {
+    return showAppDialog({
+        title,
+        message,
+        detail,
+        tone: "error",
+        kicker: "ERROR",
+        actions: [{ label: "OK", value: true, variant: "danger" }]
+    });
+}
+
+function showConfirmDialog(title, message, options = {}) {
+    return showAppDialog({
+        title,
+        message,
+        detail: options.detail || "",
+        tone: options.tone || "warning",
+        kicker: options.kicker || "CONFIRM ACTION",
+        actions: [
+            { label: options.cancelLabel || "Cancel", value: false, variant: "secondary" },
+            { label: options.confirmLabel || "Continue", value: true, variant: options.confirmVariant || "primary" }
+        ]
+    });
+}
+
+function closeExternalLinkModal() {
+    activeExternalLink = null;
+    closeModal('external-link-modal');
+}
+
+function showExternalActionModal(key) {
+    const modal = document.getElementById('external-link-modal');
+    const config = externalLinkConfigs[key];
+
+    if (!modal || !config) {
+        return;
+    }
+
+    hideUserDropdown();
+    activeExternalLink = config;
+
+    const kickerEl = document.getElementById('external-link-kicker');
+    const titleEl = document.getElementById('external-link-title');
+    const copyEl = document.getElementById('external-link-copy');
+    const urlEl = document.getElementById('external-link-url');
+    const noteEl = document.getElementById('external-link-note');
+    const confirmButton = document.getElementById('external-link-confirm');
+
+    if (kickerEl) kickerEl.textContent = config.kicker;
+    if (titleEl) titleEl.textContent = config.title;
+    if (copyEl) copyEl.textContent = config.body;
+    if (urlEl) urlEl.textContent = config.url;
+    if (noteEl) noteEl.textContent = config.note;
+    if (confirmButton) confirmButton.textContent = config.confirmLabel;
+
+    modal.classList.remove('hidden');
+}
+
+async function confirmExternalLink() {
+    if (!activeExternalLink?.url) {
+        return;
+    }
+
+    try {
+        await window.api.openExternal(activeExternalLink.url);
+        addTerminalLine(`> [LINK] Opening ${activeExternalLink.title.toUpperCase()}...`);
+        setSettingsStatus("OPENING LINK");
+        closeExternalLinkModal();
+    } catch (err) {
+        console.error("[LINK] Failed to open external link:", err);
+        closeExternalLinkModal();
+        await showErrorDialog("Link Launch Failed", "The loader could not open the external destination.", err?.message || "");
+    }
+}
+
+async function copyExternalLink() {
+    if (!activeExternalLink?.url) {
+        return;
+    }
+
+    try {
+        await navigator.clipboard.writeText(activeExternalLink.url);
+        addTerminalLine(`> [LINK] Copied ${activeExternalLink.title.toUpperCase()} URL.`);
+        setSettingsStatus("LINK COPIED");
+    } catch (err) {
+        console.error("[LINK] Failed to copy URL:", err);
+        await showErrorDialog("Copy Failed", "The loader could not copy the external link to your clipboard.", err?.message || "");
+    }
 }
 
 async function loadHardwareSnapshot(forceRefresh = false) {
@@ -440,6 +754,9 @@ async function initializeLoader() {
 document.addEventListener('DOMContentLoaded', () => {
     hoistModalToBody('register-modal');
     hoistModalToBody('auto-login-modal');
+    hoistModalToBody('external-link-modal');
+    hoistModalToBody('app-dialog-modal');
+    initializeLoaderTheme();
     void initializeLoader();
 });
 
@@ -451,16 +768,6 @@ function cancelAutoLogin() {
 function toggleDropdown() {
     document.getElementById('user-dropdown').classList.toggle('hidden');
 }
-
-function openShop() {
-
-    shell.openExternal("https://discord.com/channels/1244947057320661043/1373758276960911380");
-}
-
-function openSocial(platform) {
-    if (platform === 'discord') shell.openExternal("https://discord.com/channels/1244947057320661043/1373757489241395292");
-}
-
 
 const getSetting = (id) => document.getElementById(id).checked;
 
@@ -490,8 +797,8 @@ async function launchGame(gameName) {
 
     const key = localStorage.getItem('license_key');
     if (!key) {
-        alert("Access Denied: Please redeem a License key in your Profile First!\n");
-        showtab('user-pic');
+        await showErrorDialog("License Required", "Redeem a license key from your profile before launching a game.");
+        openModal('settings-modal');
         return;
     }
 
@@ -601,11 +908,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         el.addEventListener('change', (e) => {
-            const isChecked = e.target.checked;
-            localStorage.setItem(id, isChecked);
-
-            handleSettingChange(id, isChecked);
-            addTerminalLine(`> [CONFIG] ${id.replace(/-/g, '_').toUpperCase()} set to ${isChecked}`);
+            applySettingValue(id, e.target.checked);
         });
     });
 });
@@ -659,6 +962,144 @@ function handleSettingChange(id, value) {
             setSettingsStatus(value ? "AUTO CLOSE ON" : "AUTO CLOSE OFF");
             break;
     }
+}
+
+function formatSettingKey(id) {
+    return id.replace(/-/g, '_').toUpperCase();
+}
+
+function applySettingValue(id, value) {
+    const input = document.getElementById(id);
+    const normalizedValue = Boolean(value);
+
+    if (!input) {
+        return false;
+    }
+
+    input.checked = normalizedValue;
+    localStorage.setItem(id, String(normalizedValue));
+    handleSettingChange(id, normalizedValue);
+    addTerminalLine(`> [CONFIG] ${formatSettingKey(id)} set to ${normalizedValue ? 'ON' : 'OFF'}`);
+    return true;
+}
+
+function showTerminalCommandHelp() {
+    [
+        "> Available commands:",
+        "> help, clear, status, refresh, check updates",
+        "> home, games, hwid, spoofing, settings",
+        "> auto launch on/off, auto update on/off, auto close on/off",
+        "> discord on/off, stream proof on/off",
+        "> open discord, open support, open github",
+        "> theme default, theme arctic, theme ember, theme emerald"
+    ].forEach(addTerminalLine);
+}
+
+function showSystemStatus() {
+    const themeLabel = getThemePreset(localStorage.getItem('loader-theme') || 'default').label.toUpperCase();
+    addTerminalLine(`> [STATUS] API: ${serverHealthState}`);
+    addTerminalLine(`> [STATUS] THEME: ${themeLabel}`);
+    addTerminalLine(`> [STATUS] AUTO_UPDATE: ${document.getElementById('auto-update-loader')?.checked ? 'ON' : 'OFF'}`);
+    addTerminalLine(`> [STATUS] AUTO_CLOSE: ${document.getElementById('auto-close-launcher')?.checked ? 'ON' : 'OFF'}`);
+    addTerminalLine(`> [STATUS] RPC: ${document.getElementById('discord-rpc')?.checked ? 'ON' : 'OFF'} | STREAM_PROOF: ${document.getElementById('stream-proof')?.checked ? 'ON' : 'OFF'}`);
+}
+
+function parseSettingToggleCommand(command) {
+    const togglePatterns = [
+        { regex: /^(?:set )?auto launch (on|off)$/i, id: 'auto-launch' },
+        { regex: /^(?:set )?auto update(?: loader)? (on|off)$/i, id: 'auto-update-loader' },
+        { regex: /^(?:set )?auto close(?: launcher)? (on|off)$/i, id: 'auto-close-launcher' },
+        { regex: /^(?:set )?discord(?: rpc)? (on|off)$/i, id: 'discord-rpc' },
+        { regex: /^(?:set )?stream proof (on|off)$/i, id: 'stream-proof' }
+    ];
+
+    for (const pattern of togglePatterns) {
+        const match = command.match(pattern.regex);
+        if (match) {
+            return {
+                id: pattern.id,
+                value: match[1].toLowerCase() === 'on'
+            };
+        }
+    }
+
+    return null;
+}
+
+async function runTerminalCommand(rawCommand) {
+    const command = rawCommand.trim().replace(/\s+/g, ' ').toLowerCase();
+    if (!command) {
+        return;
+    }
+
+    addTerminalLine(`SK-USER:~$ ${rawCommand.trim()}`);
+
+    if (command === 'clear' || command === 'cls') {
+        clearLogs();
+        return;
+    }
+
+    if (command === 'help') {
+        showTerminalCommandHelp();
+        return;
+    }
+
+    if (command === 'status') {
+        showSystemStatus();
+        return;
+    }
+
+    if (command === 'refresh' || command === 'refresh feed' || command === 'news') {
+        newsLoaded = false;
+        await loadNews(true);
+        addTerminalLine("> [FEED] Terminal refreshed.");
+        return;
+    }
+
+    if (command === 'update' || command === 'check update' || command === 'check updates' || command === 'check for updates') {
+        await runManualUpdateCheck();
+        return;
+    }
+
+    if (command === 'reset' || command === 'reset settings' || command === 'factory reset') {
+        await resetConfig();
+        return;
+    }
+
+    if (command === 'home' || command === 'games' || command === 'hwid' || command === 'spoofing' || command === 'settings') {
+        showTab(command);
+        addTerminalLine(`> [NAV] Switched to ${command.toUpperCase()}.`);
+        return;
+    }
+
+    if (command === 'discord' || command === 'open discord') {
+        showExternalActionModal('discord');
+        return;
+    }
+
+    if (command === 'shop' || command === 'support' || command === 'shop support' || command === 'open shop' || command === 'open support') {
+        showExternalActionModal('support');
+        return;
+    }
+
+    if (command === 'github' || command === 'open github') {
+        showExternalActionModal('github');
+        return;
+    }
+
+    if (command === 'theme default' || command === 'theme arctic' || command === 'theme ember' || command === 'theme emerald') {
+        setLoaderTheme(command.split(' ')[1]);
+        return;
+    }
+
+    const toggleCommand = parseSettingToggleCommand(command);
+    if (toggleCommand) {
+        applySettingValue(toggleCommand.id, toggleCommand.value);
+        return;
+    }
+
+    addTerminalLine(`> Unknown command: ${command}`);
+    addTerminalLine("> Type HELP for the available client controls.");
 }
 
 // Function to force-apply the PFP to all relevant elements
@@ -851,38 +1292,31 @@ async function updateHWIDDisplay(forceRefresh = false) {
 async function handleLogin(isAutoLogin = false, creds = {}) {
     if (isAuthProcessActive && !isAutoLogin) return;
 
-    const email = isAutoLogin ? creds.email : document.getElementById('login-email')?.value;
-    const password = isAutoLogin ? creds.password : document.getElementById('login-password')?.value;
+    const emailInput = document.getElementById('login-email');
+    const passwordInput = document.getElementById('login-password');
+    const email = (isAutoLogin ? creds.email : emailInput?.value || '').trim();
+    const password = isAutoLogin ? (creds.password || '') : (passwordInput?.value || '');
     const requestToken = isAutoLogin ? creds.requestToken : null;
     const rememberMe = document.getElementById('remember-me')?.checked;
     const btn = document.getElementById('login-btn');
-
     const autoLoginModal = document.getElementById("auto-login-modal");
-    const loginNotice = document.getElementById("login-notice");
 
     // ---------- NO CREDENTIALS FOUND ----------
     if (!email || !password) {
         if (isAutoLogin) {
-            // Close auto-login modal and show notice
             if (autoLoginModal) hideAutoLoginModal();
-
-            if (!loginNotice) {
-                const screen = document.getElementById("login-screen");
-                const notice = document.createElement("p");
-                notice.id = "login-notice";
-                notice.style.color = "var(--red)";
-                notice.style.fontSize = "12px";
-                notice.style.marginTop = "5px";
-                notice.innerText = "No valid session found. Please login manually.";
-                screen?.querySelector(".login-card")?.appendChild(notice);
-            }
+            setLoginNotice("No valid session found. Please login manually.", "info");
         } else {
-            alert("Enter Email and Password");
+            setLoginNotice("Enter your email and password.");
+            focusLoginField(!email ? emailInput : passwordInput);
         }
         return;
     }
 
     isAuthProcessActive = true;
+    if (!isAutoLogin) {
+        setLoginNotice("");
+    }
 
     // Spinner for manual login
     if (btn && !isAutoLogin) {
@@ -893,7 +1327,7 @@ async function handleLogin(isAutoLogin = false, creds = {}) {
     try {
         const { machineId: hwid } = await loadHardwareSnapshot();
 
-        const res = await fetch("https://my-auth-api-1ykc.onrender.com/login", {
+        const res = await fetch(`${API}/login`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ email, password, hwid })
@@ -918,7 +1352,7 @@ async function handleLogin(isAutoLogin = false, creds = {}) {
 
             // Hide auto-login modal
             if (autoLoginModal) hideAutoLoginModal();
-            if (loginNotice) loginNotice.remove();
+            setLoginNotice("");
 
             // ---------- SAVE SESSION ----------
             localStorage.setItem("user_email", email);
@@ -973,24 +1407,21 @@ async function handleLogin(isAutoLogin = false, creds = {}) {
             if (autoLoginModal) hideAutoLoginModal();
 
             if (isAutoLogin) {
-                // Show notice
-                if (!loginNotice) {
-                    const screen = document.getElementById("login-screen");
-                    const notice = document.createElement("p");
-                    notice.id = "login-notice";
-                    notice.style.color = "var(--red)";
-                    notice.style.fontSize = "12px";
-                    notice.style.marginTop = "5px";
-                    notice.innerText = "No valid session found. Please login manually.";
-                    screen?.querySelector(".login-card")?.appendChild(notice);
-                }
+                setLoginNotice("No valid session found. Please login manually.", "info");
             } else {
-                alert("Login Failed: " + (data.error || "Invalid credentials"));
+                const errorMessage = data.error || "Invalid credentials.";
+                const shouldEditEmail = /user not found|invalid email|email/i.test(errorMessage);
+
+                setLoginNotice(errorMessage);
+                focusLoginField(shouldEditEmail ? emailInput : passwordInput);
             }
         }
     } catch (err) {
         console.error("[AUTH ERROR]", err);
-        if (!isAutoLogin) alert("API Connection Error");
+        if (!isAutoLogin) {
+            setLoginNotice("API connection error. Check the server and try again.");
+            focusLoginField(passwordInput || emailInput);
+        }
     } finally {
         isAuthProcessActive = false;
 
@@ -1136,13 +1567,21 @@ async function handleRegister() {
     const btn = document.getElementById('register-btn');
 
     // ---------- BASIC FIELD CHECKS ----------
-    if (!email || !pass || !confirm) return alert("All fields are required!");
-    if (pass !== confirm) return alert("Passwords do not match!");
+    if (!email || !pass || !confirm) {
+        await showErrorDialog("Registration Incomplete", "All registration fields are required.");
+        return;
+    }
+
+    if (pass !== confirm) {
+        await showErrorDialog("Passwords Do Not Match", "Re-enter the same password in both registration fields.");
+        return;
+    }
 
     // ---------- EMAIL FORMAT VALIDATION ----------
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
-        return alert("Please enter a valid email address.");
+        await showErrorDialog("Invalid Email", "Enter a valid email address before creating the account.");
+        return;
     }
 
     // ---------- OPTIONAL: FRONTEND EMAIL VERIFICATION ----------
@@ -1152,7 +1591,8 @@ async function handleRegister() {
         const verifyData = await verifyRes.json();
 
         if (verifyData.disposable) {
-            return alert("Disposable or fake emails are not allowed. Use a real email.");
+            await showErrorDialog("Disposable Email Blocked", "Disposable or fake emails are not allowed. Use a real email address.");
+            return;
         }
     } catch (err) {
         console.warn("[EMAIL VERIFY] Could not verify email, proceeding anyway.", err);
@@ -1166,7 +1606,7 @@ async function handleRegister() {
         const { machineId: hwid } = await loadHardwareSnapshot();
 
         // ---------- SEND TO BACKEND ----------
-        const response = await fetch('https://my-auth-api-1ykc.onrender.com/register', {
+        const response = await fetch(`${API}/register`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -1179,17 +1619,17 @@ async function handleRegister() {
         const data = await response.json();
 
         if (data.status === "Success") {
-            alert("Account Created! You can now log in.");
+            await showSuccessDialog("Account Ready", data.message || "Account created successfully. You can now log in.");
             closeModal('register-modal');
         } else if (data.error === "invalid_email") {
-            alert("Registration Failed: Email is invalid or disposable.");
+            await showErrorDialog("Registration Failed", "Email is invalid or disposable.");
         } else {
-            alert("Registration Failed: " + (data.error || "Unknown error"));
+            await showErrorDialog("Registration Failed", data.error || "Unknown error");
         }
 
     } catch (err) {
         console.error("Register Error:", err);
-        alert("Failed to connect to registration server.");
+        await showErrorDialog("Registration Server Unreachable", "Failed to connect to the registration server.", err?.message || "");
     } finally {
         btn.innerHTML = "REGISTER NOW";
         btn.disabled = false;
@@ -1246,7 +1686,7 @@ function hasAccess(gameName) {
         return true;
     }
 
-    alert(`Access Denied! Your key (${prefix}) is not valid for ${gameName}.`);
+    void showErrorDialog("Access Denied", `Your current key (${prefix}) is not valid for ${gameName}.`);
     return false;
 }
 
@@ -1363,6 +1803,12 @@ window.addEventListener('DOMContentLoaded', async () => {
     if (savedPass && passInput) passInput.value = savedPass;
     if (savedKey && licenseInput) licenseInput.value = savedKey;
 
+    [emailInput, passInput].forEach((input) => {
+        input?.addEventListener('input', () => {
+            setLoginNotice("");
+        });
+    });
+
     // Check the box if they have saved credentials
     if (rememberCheckbox) rememberCheckbox.checked = rememberEnabled;
 
@@ -1420,7 +1866,10 @@ async function redeemNewKey() {
     const redeemBtn = document.getElementById('redeem-key-btn');
     const hwidDisplay = document.getElementById('settings-hwid-display');
 
-    if (!newKey) return alert("Please enter a valid license key!");
+    if (!newKey) {
+        await showErrorDialog("License Key Missing", "Enter a valid license key before redeeming.");
+        return;
+    }
 
     if (redeemBtn) {
         redeemBtn.innerText = "REDEEMING...";
@@ -1446,7 +1895,7 @@ async function redeemNewKey() {
         const data = await response.json();
 
         if (data.status === "Success") {
-            alert("Subscription Updated Successfully!");
+            await showSuccessDialog("Subscription Updated", data.message || "The new license key was redeemed successfully.");
 
             // 1. Update the stored license key string
             localStorage.setItem('license_key', newKey);
@@ -1463,11 +1912,11 @@ async function redeemNewKey() {
             console.log(`[AUTH] Key Upgraded to: ${newKey}`);
         } else {
             // Handle logical errors (Invalid Key, Already Used, etc.)
-            alert("Redeem Failed: " + (data.error || "Unknown Error"));
+            await showErrorDialog("Redeem Failed", data.error || "Unknown error");
         }
     } catch (err) {
         console.error("Redeem Error:", err);
-        alert("Connection Error: " + err.message);
+        await showErrorDialog("Connection Error", "The loader could not reach the redemption server.", err?.message || "");
     } finally {
         // ALWAYS reset the button so the user can try again if it fails
         if (redeemBtn) {
@@ -1482,6 +1931,10 @@ function closeModal(id) {
     const modal = document.getElementById(id);
     if (modal) {
         modal.classList.add('hidden');
+    }
+
+    if (id === 'external-link-modal') {
+        activeExternalLink = null;
     }
 }
 
@@ -1509,7 +1962,7 @@ async function saveProfileChanges() {
 
     const userEmail = localStorage.getItem('user_email');
     if (!userEmail) {
-        alert("Session Error: No user email found. Please log in again.");
+        await showErrorDialog("Session Error", "No user email was found for this session. Log in again and retry.");
         return;
     }
 
@@ -1559,14 +2012,14 @@ async function saveProfileChanges() {
                 document.querySelectorAll('#user-pic, #modal-pfp').forEach(img => img.src = profilePicData);
             }
 
-            alert("Profile updated successfully!");
+            await showSuccessDialog("Profile Updated", "Profile changes were saved successfully.");
             if (typeof closeModal === "function") closeModal('settings-modal');
         } else {
-            alert("Error: " + (data.error || "Unknown Error"));
+            await showErrorDialog("Profile Update Failed", data.error || "Unknown error");
         }
     } catch (e) {
         console.error("[SAVE PROFILE ERROR]", e);
-        alert("Failed to save: Image might still be too large or server is down.");
+        await showErrorDialog("Save Failed", "Profile changes could not be saved. The image may still be too large or the server may be unavailable.", e?.message || "");
     } finally {
         btn.innerText = "SAVE CHANGES";
         btn.disabled = false;
@@ -1738,11 +2191,15 @@ async function startSpoofing() {
     const isDeepClean = el("deep-clean")?.checked;
 
     if (isDeepClean) {
-        const confirmClean = window.confirm(
-            "WARNING: Deep Clean will wipe game logs and traces.\n\n" +
-            "To escape a shadow ban, you MUST use a NEW game account after this.\n" +
-            "Logging into a flagged account will RE-BAN your hardware immediately.\n\n" +
-            "Do you wish to proceed?"
+        const confirmClean = await showConfirmDialog(
+            "Deep Clean Warning",
+            "Deep Clean will wipe game logs and traces from this system.",
+            {
+                detail: "To escape a shadow ban, you must use a new game account after this. Logging into a flagged account can immediately re-ban the hardware.",
+                confirmLabel: "Run Deep Clean",
+                confirmVariant: "danger",
+                kicker: "HIGH RISK ACTION"
+            }
         );
         if (!confirmClean) return;
     }
@@ -1798,9 +2255,9 @@ async function startSpoofing() {
                 statusText.classList.add("status-active");
             }
 
-            alert("Spoof Complete! Please RESTART your PC before launching the game.");
+            await showSuccessDialog("Spoof Complete", "Please restart your PC before launching the game.");
         } else {
-            alert("Spoof Failed! Check the logs.");
+            await showErrorDialog("Spoof Failed", "The spoofing flow did not finish successfully. Check the logs and try again.");
             updateSpoofStatus("inactive");
             loader?.classList.add("hidden");
         }
@@ -2268,26 +2725,23 @@ async function requestHWIDReset() {
     // Terminal Input Handler
     const terminalInput = document.getElementById('terminal-cmd');
     if (terminalInput) {
-        terminalInput.addEventListener('keypress', function (e) {
-            if (e.key === 'Enter') {
-                const cmd = e.target.value.trim().toLowerCase();
-                if (cmd !== "") {
-                    addTerminalLine(`SK-USER:~$ ${cmd}`);
+        terminalInput.addEventListener('keydown', async function (e) {
+            if (e.key !== 'Enter') {
+                return;
+            }
 
-                    if (cmd === 'clear') {
-                        document.getElementById('main-terminal').innerHTML = '<div id="news-feed-text" class="typewriter"></div>';
-                    } else if (cmd === 'help') {
-                        addTerminalLine("> Available: status, inject, version, clear");
-                    } else if (cmd === 'status') {
-                        addTerminalLine("> [SYSTEM] Security: Secure | Modules: Loaded");
-                    } else {
-                        addTerminalLine(`> Unknown command: ${cmd}`);
-                    }
+            e.preventDefault();
+            const rawCommand = e.target.value.trim();
+            if (!rawCommand) {
+                return;
+            }
 
-                    e.target.value = "";
-                    const box = document.getElementById('main-terminal');
-                    box.scrollTop = box.scrollHeight;
-                }
+            e.target.value = "";
+            await runTerminalCommand(rawCommand);
+
+            const box = document.getElementById('main-terminal');
+            if (box) {
+                box.scrollTop = box.scrollHeight;
             }
         });
     }
@@ -2311,11 +2765,18 @@ async function requestHWIDReset() {
             console.log("[UI] Terminal logs cleared by user.");
         }
     }
-    function resetConfig() {
-        const confirmed = confirm("WARNING: This will reset all saved settings and preferences and preforme a restart of the loader. Continue?");
+    async function resetConfig() {
+        const confirmed = await showConfirmDialog(
+            "Reset Client Settings",
+            "This will clear saved loader preferences for this device and restart the UI.",
+            {
+                detail: "This does not delete your account. It only resets local loader preferences.",
+                confirmLabel: "Reset Now",
+                confirmVariant: "danger"
+            }
+        );
 
         if (confirmed) {
-
             localStorage.clear();
 
             const checkboxes = document.querySelectorAll('.switch-container input[type="checkbox"]');
@@ -2326,6 +2787,8 @@ async function requestHWIDReset() {
                     cb.checked = false;
                 }
             });
+
+            initializeLoaderTheme();
 
             addTerminalLine("> [SYSTEM] Configuration reset. Reloading UI...");
             setSettingsStatus("RESETTING");
@@ -2362,20 +2825,12 @@ async function requestHWIDReset() {
     }
 
     function openShop() {
-
-        window.api.openExternal("https://discord.gg/RG7bEgrHF9");
-        hideUserDropdown();
+        showExternalActionModal('support');
     }
 
     function openSocial(platform) {
-        const links = {
-            'discord': 'https://discord.gg/vCrBfRsRvb',
-            'github': 'https://github.com/jeffyNoJumper?tab=repositories'
-        };
-        if (links[platform]) {
-            window.api.openExternal(links[platform]);
-            hideUserDropdown();
-        }
+        const target = platform === 'discord' ? 'discord' : platform === 'github' ? 'github' : 'support';
+        showExternalActionModal(target);
     }
 
     function hideUserDropdown() {
@@ -2537,7 +2992,7 @@ async function checkForUpdates(options = {}) {
 
             await window.api.runUpdate(filePath);
 
-            alert("Update downloaded. Installer launching.");
+            await showSuccessDialog("Update Ready", "The update finished downloading. The installer is launching now.");
 
             setTimeout(() => {
                 closeModal('update-modal');
@@ -2548,7 +3003,7 @@ async function checkForUpdates(options = {}) {
         } catch (err) {
 
             console.error("Update failed:", err);
-            alert("Update failed. Try again.");
+            await showErrorDialog("Update Failed", "The loader could not finish the update. Try again.", err?.message || "");
 
         }
     }
