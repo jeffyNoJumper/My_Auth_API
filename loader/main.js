@@ -469,12 +469,170 @@ function waitForCS2() {
     });
 }
 
+const gameAssetAliases = {
+    CS2: ['cs2', 'counter-strike', 'counter strike', 'counterstrike'],
+    FIVEM: ['fivem', 'cfx'],
+    GTAV: ['gtav', 'gta v', 'gta5', 'gta'],
+    WARZONE: ['warzone', 'call of duty', 'cod', 'mw3', 'mwii']
+};
+
+const gameAssetDirectories = {
+    CS2: ['cs2', 'counter-strike-2'],
+    FIVEM: ['fivem'],
+    GTAV: ['gtav', 'gta-v'],
+    WARZONE: ['warzone']
+};
+
+function normalizeLaunchGameName(gameName = "") {
+    const value = String(gameName || "").trim().toUpperCase();
+
+    switch (value) {
+        case "FIVEM":
+            return "FIVEM";
+        case "GTA V":
+        case "GTAV":
+            return "GTAV";
+        case "WARZONE":
+            return "WARZONE";
+        case "CS2":
+            return "CS2";
+        default:
+            return value;
+    }
+}
+
+function getLaunchGameLabel(gameName) {
+    const normalized = normalizeLaunchGameName(gameName);
+
+    switch (normalized) {
+        case "FIVEM":
+            return "FiveM";
+        case "GTAV":
+            return "GTA V";
+        case "WARZONE":
+            return "Warzone";
+        case "CS2":
+            return "CS2";
+        default:
+            return String(gameName || normalized);
+    }
+}
+
+function getModuleExtension(injectionType) {
+    return injectionType === "internal" || injectionType === "dll" ? ".dll" : ".exe";
+}
+
+function isUsableModuleAsset(fileName, targetExt) {
+    const name = String(fileName || "").toLowerCase();
+    const ext = path.extname(name);
+
+    if (ext !== targetExt) {
+        return false;
+    }
+
+    return !name.includes('extreme injector')
+        && !name.includes('volumeid')
+        && !name.includes('kdmapper')
+        && !name.endsWith('.sys')
+        && !name.endsWith('.ini')
+        && !name.endsWith('.xml')
+        && !name.endsWith('.blockmap');
+}
+
+function getGameAssetSearchPaths(assetsPath, gameName) {
+    const normalized = normalizeLaunchGameName(gameName);
+    const directories = [assetsPath, ...(gameAssetDirectories[normalized] || [normalized.toLowerCase()])]
+        .map((entry) => entry === assetsPath ? entry : path.join(assetsPath, entry))
+        .filter((entry, index, array) => array.indexOf(entry) === index);
+
+    return directories.filter((entry) => {
+        try {
+            return fs.existsSync(entry) && fs.statSync(entry).isDirectory();
+        } catch {
+            return false;
+        }
+    });
+}
+
+function collectModuleCandidates(assetsPath, gameName, injectionType) {
+    const targetExt = getModuleExtension(injectionType);
+    const searchPaths = getGameAssetSearchPaths(assetsPath, gameName);
+    const candidates = [];
+
+    searchPaths.forEach((directory) => {
+        fs.readdirSync(directory, { withFileTypes: true }).forEach((entry) => {
+            if (!entry.isFile() || !isUsableModuleAsset(entry.name, targetExt)) {
+                return;
+            }
+
+            const fullPath = path.join(directory, entry.name);
+            candidates.push({
+                fileName: entry.name,
+                fullPath,
+                relativePath: path.relative(assetsPath, fullPath)
+            });
+        });
+    });
+
+    return candidates;
+}
+
+function resolveModuleAsset(assetsPath, gameName, injectionType) {
+    const normalized = normalizeLaunchGameName(gameName);
+    const aliases = gameAssetAliases[normalized] || [normalized.toLowerCase()];
+    const candidates = collectModuleCandidates(assetsPath, gameName, injectionType);
+
+    const aliasMatch = candidates.find((file) => {
+        const lower = file.fileName.toLowerCase();
+        return aliases.some((alias) => lower.includes(alias));
+    });
+
+    if (aliasMatch) {
+        return aliasMatch;
+    }
+
+    if (normalized === "CS2") {
+        const fallbackName = getModuleExtension(injectionType) === ".dll" ? "vexion menu.dll" : "vexion menu.exe";
+        return candidates.find((file) => file.fileName.toLowerCase() === fallbackName) || null;
+    }
+
+    return null;
+}
+
+function getModuleAvailability(assetsPath, gameName) {
+    return {
+        game: normalizeLaunchGameName(gameName),
+        hasInternal: Boolean(resolveModuleAsset(assetsPath, gameName, "internal")),
+        hasExternal: Boolean(resolveModuleAsset(assetsPath, gameName, "external"))
+    };
+}
+
+function resolveSharedToolPath(assetsPath, fileName) {
+    const candidates = [
+        path.join(assetsPath, 'tools', fileName),
+        path.join(assetsPath, fileName)
+    ];
+
+    return candidates.find((entry) => fs.existsSync(entry)) || candidates[0];
+}
+
+ipcMain.handle('get-game-module-availability', async (event, gameName) => {
+    const assetsPath = path.join(__dirname, '..', 'assets');
+
+    if (!fs.existsSync(assetsPath)) {
+        return { game: normalizeLaunchGameName(gameName), hasInternal: false, hasExternal: false };
+    }
+
+    return getModuleAvailability(assetsPath, gameName);
+});
+
 ipcMain.handle('launch-game', async (event, gameName, autoClose, licenseKey, injectionType, userData) => {
 
     console.log("[LAUNCH] Received userData:", userData);
 
-    const finalType = injectionType || "external";
-    const gameUpper = gameName.toUpperCase();
+    const finalType = injectionType === "dll" ? "internal" : (injectionType || "external");
+    const normalizedGame = normalizeLaunchGameName(gameName);
+    const gameLabel = getLaunchGameLabel(gameName);
     const assetsPath = path.join(__dirname, '..', 'assets');
 
     function getDaysRemaining(expiry) {
@@ -497,34 +655,33 @@ ipcMain.handle('launch-game', async (event, gameName, autoClose, licenseKey, inj
             return { status: "Error", message: "Assets folder missing!" };
         }
 
-        const files = fs.readdirSync(assetsPath);
-        const targetExt = (gameUpper === 'CS2' && finalType === "dll") ? ".dll" : ".exe";
+        const moduleAsset = resolveModuleAsset(assetsPath, gameName, finalType);
 
-        const fileName = files.find(file => {
-            const name = file.toLowerCase();
-            const ext = path.extname(name);
-            return ext === targetExt && !name.includes('extreme injector') && !name.includes('.sys');
-        });
-
-        if (!fileName) {
-            return { status: "Error", message: `No valid ${targetExt} found in assets!` };
+        if (!moduleAsset) {
+            const missingType = finalType === "internal" ? "internal DLL" : "external EXE";
+            const folderName = normalizeLaunchGameName(gameName).toLowerCase().replace(/\s+/g, '-');
+            return { status: "Error", message: `No ${gameLabel} ${missingType} module was found in assets/${folderName}.` };
         }
 
-        const injectorPath = path.join(assetsPath, 'Extreme Injector v3.exe');
-        const cheatPath = path.join(assetsPath, fileName);
+        const injectorPath = resolveSharedToolPath(assetsPath, 'Extreme Injector v3.exe');
+        const cheatPath = moduleAsset.fullPath;
 
-        // ===== DLL INJECTION =====
         const { spawn, exec } = require("child_process");
 
-        if (gameUpper === "CS2" && finalType === "dll") {
+        if (finalType === "internal") {
+            if (!fs.existsSync(injectorPath)) {
+                return { status: "Error", message: "Extreme Injector v3.exe is missing from assets." };
+            }
 
-            const running = await isCS2Running();
+            if (normalizedGame === "CS2") {
+                const running = await isCS2Running();
 
-            if (!running) {
+                if (!running) {
 
-                exec('start "" "steam://rungameid/730"');
+                    exec('start "" "steam://rungameid/730"');
 
-                await waitForCS2();
+                    await waitForCS2();
+                }
             }
 
             spawn(injectorPath, [], {
@@ -536,11 +693,12 @@ ipcMain.handle('launch-game', async (event, gameName, autoClose, licenseKey, inj
 
             return {
                 status: "Success",
-                message: "DLL injected successfully."
+                message: normalizedGame === "CS2"
+                    ? `${moduleAsset.relativePath} injector opened for CS2.`
+                    : `Internal injector opened for ${gameLabel}. Attach ${moduleAsset.relativePath} after ${gameLabel} is running.`
             };
         }
 
-        // ===== EXE LAUNCH =====
         if (finalType === "external") {
 
             const uName = userData?.username ?? "Unknown";
@@ -557,7 +715,7 @@ ipcMain.handle('launch-game', async (event, gameName, autoClose, licenseKey, inj
 
             if (rpcClient) {
                 rpcClient.setActivity({
-                    details: `Playing ${gameUpper}`,
+                    details: `Playing ${gameLabel.toUpperCase()}`,
                     state: '🛡️ [STATUS_UNDETECTED]',
                     startTimestamp: new Date(),
                     largeImageKey: 'logo',
@@ -568,8 +726,10 @@ ipcMain.handle('launch-game', async (event, gameName, autoClose, licenseKey, inj
                 setTimeout(() => { app.quit(); }, 3000);
             }
 
-            return { status: "Success", message: `${fileName} launched successfully!` };
+            return { status: "Success", message: `${gameLabel} external module (${moduleAsset.relativePath}) launched successfully!` };
         }
+
+        return { status: "Error", message: `Unknown launch type requested for ${gameLabel}.` };
 
     } catch (err) {
         console.error("[LAUNCH CRASH]", err);
