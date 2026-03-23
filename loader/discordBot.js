@@ -28,6 +28,17 @@ const FOUNDER_ROLE_NAME = process.env.FOUNDER_ROLE_NAME || 'SB | OWNER';
 const PRODUCT_CHOICES = ['CS2', 'FiveM', 'GTAV', 'Warzone', 'All-Access'];
 
 let discordClient = null;
+const discordBotState = {
+    initRequestedAt: null,
+    loginStartedAt: null,
+    readyAt: null,
+    ready: false,
+    userTag: null,
+    lastError: null,
+    lastWarn: null,
+    lastDebug: null,
+    shardStatus: 'idle'
+};
 
 function normalizeGameName(value) {
     const cleaned = String(value || '').trim();
@@ -785,9 +796,11 @@ async function handleModal(interaction, deps) {
 
 function initDiscordBot({ User, mongoose }) {
     const token = process.env.DISCORD_TOKEN || process.env.DISCORD_BOT_TOKEN || process.env.TOKEN;
+    discordBotState.initRequestedAt = new Date().toISOString();
     console.log(`[DISCORD BOT] Init requested. token_present=${token ? 'yes' : 'no'} guild_id=${GUILD_ID}`);
 
     if (!token) {
+        discordBotState.lastError = 'missing_token';
         console.log('[DISCORD BOT] Skipping Discord bot startup: no token configured.');
         return null;
     }
@@ -801,25 +814,51 @@ function initDiscordBot({ User, mongoose }) {
     });
 
     client.on('error', error => {
+        discordBotState.lastError = error?.message || String(error);
         console.error('[DISCORD BOT] Client error:', error);
     });
 
     client.on('warn', message => {
+        discordBotState.lastWarn = message;
         console.warn('[DISCORD BOT] Warn:', message);
     });
 
     client.on('shardError', error => {
+        discordBotState.lastError = error?.message || String(error);
+        discordBotState.shardStatus = 'error';
         console.error('[DISCORD BOT] Shard error:', error);
+    });
+
+    client.on('shardReady', shardId => {
+        discordBotState.shardStatus = `ready:${shardId}`;
+        console.log(`[DISCORD BOT] Shard ready: ${shardId}`);
+    });
+
+    client.on('shardDisconnect', (event, shardId) => {
+        discordBotState.shardStatus = `disconnected:${shardId}`;
+        discordBotState.lastError = `disconnect code=${event?.code || 'unknown'}`;
+        console.error(`[DISCORD BOT] Shard disconnected: ${shardId} code=${event?.code || 'unknown'}`);
+    });
+
+    client.on('invalidated', () => {
+        discordBotState.shardStatus = 'invalidated';
+        discordBotState.lastError = 'session invalidated';
+        console.error('[DISCORD BOT] Session invalidated.');
     });
 
     client.on('debug', message => {
         if (message.includes('Heartbeat acknowledged') || message.includes('Keeping up')) {
             return;
         }
+        discordBotState.lastDebug = message;
         console.log('[DISCORD BOT] Debug:', message);
     });
 
     client.once('ready', async readyClient => {
+        discordBotState.ready = true;
+        discordBotState.readyAt = new Date().toISOString();
+        discordBotState.userTag = readyClient.user.tag;
+        discordBotState.shardStatus = 'ready';
         console.log(`[DISCORD BOT] Logged in as ${readyClient.user.tag}`);
 
         try {
@@ -864,14 +903,33 @@ function initDiscordBot({ User, mongoose }) {
         }
     });
 
+    discordBotState.loginStartedAt = new Date().toISOString();
     console.log('[DISCORD BOT] Starting login...');
 
     client.login(token).catch(error => {
+        discordBotState.lastError = error?.message || String(error);
+        discordBotState.shardStatus = 'login_failed';
         console.error('[DISCORD BOT] Login failed:', error.message);
     });
+
+    setTimeout(() => {
+        if (!discordBotState.ready) {
+            console.warn(`[DISCORD BOT] Ready timeout. last_debug=${discordBotState.lastDebug || 'none'} last_error=${discordBotState.lastError || 'none'} shard_status=${discordBotState.shardStatus}`);
+        }
+    }, 30000);
 
     discordClient = client;
     return client;
 }
 
-module.exports = { initDiscordBot };
+function getDiscordBotStatus() {
+    return {
+        ...discordBotState,
+        client_exists: Boolean(discordClient),
+        client_ready: Boolean(discordClient?.isReady?.()),
+        guild_id: GUILD_ID,
+        alert_channel_id: LOADER_ALERT_CHANNEL_ID
+    };
+}
+
+module.exports = { initDiscordBot, getDiscordBotStatus };
