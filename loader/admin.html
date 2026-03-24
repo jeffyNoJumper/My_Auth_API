@@ -876,6 +876,25 @@
             ownerCard.style.display = activeAdminRole === 'owner' ? 'block' : 'none';
         }
 
+        function fitAdminAuthWindow() {
+            if (isAdminAuthenticated) {
+                return;
+            }
+
+            const card = document.querySelector('.admin-auth-card');
+            if (!card) {
+                return;
+            }
+
+            requestAnimationFrame(() => {
+                const rect = card.getBoundingClientRect();
+                ipcRenderer.send('admin-fit-auth-card', {
+                    width: Math.ceil(rect.width),
+                    height: Math.ceil(rect.height)
+                });
+            });
+        }
+
         function setAdminAuthState(authenticated) {
             isAdminAuthenticated = Boolean(authenticated);
             const overlay = document.getElementById('admin-auth-screen');
@@ -897,7 +916,11 @@
                 chip.style.color = isAdminAuthenticated ? '#63f3b1' : '#8fa8b8';
             }
 
-            ipcRenderer.send(isAdminAuthenticated ? 'admin-expand' : 'admin-collapse');
+            if (isAdminAuthenticated) {
+                ipcRenderer.send('admin-expand');
+            } else {
+                fitAdminAuthWindow();
+            }
             setOwnerToolsVisibility();
         }
 
@@ -1792,6 +1815,7 @@
         document.addEventListener('DOMContentLoaded', () => {
             resetLoadedUser();
             setAdminAuthState(false);
+            fitAdminAuthWindow();
             warmApi().then(() => {
                 startApiKeepAlive();
             }).catch(() => { });
@@ -1925,6 +1949,10 @@
                 syncAdminEmailInput('');
                 overlayAdminEmail?.focus();
             }
+        });
+
+        window.addEventListener('resize', () => {
+            fitAdminAuthWindow();
         });
     </script>
 </body>
