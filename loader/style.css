@@ -41,6 +41,10 @@ body {
     user-select: none;
 }
 
+body.login-active {
+    display: block;
+}
+
 * {
     scrollbar-width: none;
     -ms-overflow-style: none;
@@ -218,6 +222,18 @@ input,
     border-radius: 16px;
 }
 
+body.login-active #login-screen {
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    padding: 8px;
+    align-items: stretch;
+    justify-content: stretch;
+    pointer-events: auto;
+    box-sizing: border-box;
+    border-radius: 0;
+}
+
 #login-screen .login-card {
     pointer-events: auto; /* card captures clicks */
 }
@@ -240,6 +256,16 @@ input,
     user-select: none;
     opacity: 1;
     isolation: isolate; /* blocks bleed-through from behind */
+}
+
+body.login-active #login-screen .login-card {
+    width: 100%;
+    max-width: none;
+    min-height: 100%;
+    height: 100%;
+    padding: 32px 28px 24px;
+    border-radius: 18px;
+    box-sizing: border-box;
 }
 
 .login-form {
