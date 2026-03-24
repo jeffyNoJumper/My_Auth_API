@@ -1274,6 +1274,29 @@ body.logged-in .main-content {
     margin: 0;
 }
 
+.hwid-request-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 72px;
+    padding: 7px 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(52, 211, 153, 0.28);
+    background: rgba(16, 185, 129, 0.12);
+    color: #c6ffe4;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.hwid-request-badge.is-empty {
+    border-color: rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-secondary);
+}
+
 .panel-kicker {
     display: inline-flex;
     align-items: center;
