@@ -96,6 +96,7 @@ contextBridge.exposeInMainWorld('api', {
     close: () => ipcRenderer.send('window-close'),
     minimize: () => ipcRenderer.send('window-minimize'),
     openExternal: (url) => shell.openExternal(url),
+    showSystemNotification: (title, body) => ipcRenderer.invoke('show-system-notification', { title, body }),
 
     // ---------- UPDATE SYSTEM ----------
     getLatestRelease: fetchVersionManifest,
