@@ -393,6 +393,11 @@ async function ensureHwidTicketNumber(requestsCollection, requestDoc) {
 }
 
 const DISCORD_LOADER_ALERT_CHANNEL_ID = process.env.DISCORD_LOADER_ALERT_CHANNEL_ID || "1373760247658971256";
+const DISCORD_REDEEM_LOG_CHANNEL_ID = process.env.DISCORD_REDEEM_LOG_CHANNEL_ID || "1374477027247394866";
+
+function getDiscordBotToken() {
+    return process.env.DISCORD_BOT_TOKEN || process.env.DISCORD_TOKEN || process.env.TOKEN || "";
+}
 
 function trimAnnouncementText(value, maxLength = 240) {
     const clean = String(value || "")
@@ -444,7 +449,7 @@ function buildDiscordAnnouncementPayload(message) {
 }
 
 async function fetchLatestDiscordAnnouncement() {
-    const botToken = process.env.DISCORD_BOT_TOKEN || process.env.DISCORD_TOKEN || process.env.TOKEN;
+    const botToken = getDiscordBotToken();
 
     if (!botToken) {
         return { enabled: false, reason: "missing_bot_token" };
@@ -511,6 +516,94 @@ async function fetchLatestLoaderAnnouncement() {
     }
 
     return fetchLatestDiscordAnnouncement();
+}
+
+function formatDiscordLogValue(value, fallback = "Not Set") {
+    const clean = String(value ?? "").trim();
+    return clean ? `\`${clean.slice(0, 1000)}\`` : `\`${fallback}\``;
+}
+
+function formatRedeemDuration(daysValue) {
+    const days = Number(daysValue);
+
+    if (!Number.isFinite(days) || days <= 0) {
+        return "Unknown";
+    }
+
+    if (days >= 999) {
+        return "Lifetime";
+    }
+
+    if (days < 1) {
+        const hours = Math.round(days * 24 * 100) / 100;
+        return `${hours} Hours`;
+    }
+
+    if (Number.isInteger(days)) {
+        return `${days} Days`;
+    }
+
+    return `${Math.round(days * 100) / 100} Days`;
+}
+
+async function postDiscordChannelEmbed(channelId, embedPayload) {
+    const botToken = getDiscordBotToken();
+
+    if (!botToken || !channelId) {
+        return false;
+    }
+
+    const response = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
+        method: 'POST',
+        headers: {
+            Authorization: `Bot ${botToken}`,
+            'Content-Type': 'application/json',
+            'User-Agent': 'VEXION-Loader/1.0'
+        },
+        body: JSON.stringify({
+            embeds: [embedPayload]
+        })
+    });
+
+    if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Discord API ${response.status}: ${errorBody.slice(0, 300)}`);
+    }
+
+    return true;
+}
+
+async function sendRedeemDiscordLog({ email, hwid, user, voucher, daysToAdd, sourceKey }) {
+    const games = Array.isArray(user?.games) && user.games.length
+        ? user.games.join(', ')
+        : 'General';
+    const embedPayload = {
+        title: 'Loader Key Redeemed',
+        description: 'A user redeemed a subscription key from the loader profile panel.',
+        color: 0x22C55E,
+        timestamp: new Date().toISOString(),
+        fields: [
+            { name: 'Redeemed By', value: formatDiscordLogValue(email, 'Unknown User'), inline: false },
+            { name: 'License Key', value: formatDiscordLogValue(sourceKey || user?.license_key, 'Unknown Key'), inline: false },
+            { name: 'Time Added', value: formatDiscordLogValue(formatRedeemDuration(daysToAdd), 'Unknown'), inline: true },
+            { name: 'New Expiry', value: formatDiscordLogValue(user?.expiry_date ? new Date(user.expiry_date).toLocaleString() : 'Pending'), inline: true },
+            { name: 'Games', value: formatDiscordLogValue(games, 'No Access'), inline: false },
+            { name: 'HWID', value: formatDiscordLogValue(hwid || user?.hwid || 'Not Captured'), inline: false }
+        ],
+        footer: {
+            text: 'VEXION Redeem Log'
+        }
+    };
+
+    if (voucher?.reserved_email) {
+        embedPayload.fields.splice(1, 0, {
+            name: 'Reserved Email',
+            value: formatDiscordLogValue(voucher.reserved_email, 'None'),
+            inline: false
+        });
+    }
+
+    return postDiscordChannelEmbed(DISCORD_REDEEM_LOG_CHANNEL_ID, embedPayload);
 }
 
 app.post('/admin-auth/login', async (req, res) => {
@@ -1526,6 +1619,16 @@ app.post('/redeem', async (req, res) => {
         await user.save();
 
         console.log(`[REDEEM] ${email} redeemed ${daysToAdd} days via ${license_key}`);
+        void sendRedeemDiscordLog({
+            email: email.toLowerCase().trim(),
+            hwid,
+            user,
+            voucher,
+            daysToAdd,
+            sourceKey: license_key
+        }).catch((error) => {
+            console.error("[REDEEM LOG ERROR]", error);
+        });
 
         res.json({
             status: "Success",
