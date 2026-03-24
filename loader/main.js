@@ -19,7 +19,7 @@ let hardwareSnapshotCache = null;
 let hardwareSnapshotPromise = null;
 const GAME_FEED_TTL_MS = 5 * 60 * 1000;
 const gameFeedCache = new Map();
-const AUTH_WINDOW_SIZE = { width: 452, height: 590 };
+const AUTH_WINDOW_SIZE = { width: 432, height: 468 };
 const APP_WINDOW_SIZE = { width: 980, height: 780 };
 
 function resizeMainWindow(size) {
