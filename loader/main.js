@@ -19,6 +19,8 @@ let hardwareSnapshotCache = null;
 let hardwareSnapshotPromise = null;
 const GAME_FEED_TTL_MS = 5 * 60 * 1000;
 const gameFeedCache = new Map();
+const AUTH_WINDOW_SIZE = { width: 468, height: 620 };
+const APP_WINDOW_SIZE = { width: 980, height: 780 };
 
 function getBundledAssetsPath() {
     return app.isPackaged
@@ -228,8 +230,8 @@ app.setAppUserModelId("com.vexion.allinone");
 // --- 1. WINDOW SETUP ---
 function createWindow() {
     mainWindow = new BrowserWindow({
-        width: 980,
-        height: 780,
+        width: AUTH_WINDOW_SIZE.width,
+        height: AUTH_WINDOW_SIZE.height,
         show: false,
         frame: false,
         resizable: false,
@@ -246,6 +248,15 @@ function createWindow() {
             sandbox: false
         }
     });
+
+    const resizeMainWindow = (size) => {
+        if (!mainWindow || mainWindow.isDestroyed()) {
+            return;
+        }
+
+        mainWindow.setSize(size.width, size.height, true);
+        mainWindow.center();
+    };
 
     let windowRevealed = false;
     const revealWindow = () => {
@@ -280,6 +291,20 @@ ipcMain.on('window-close', () => {
 
 ipcMain.on('window-minimize', () => {
     if (mainWindow) mainWindow.minimize();
+});
+
+ipcMain.on('loader-window-expand', () => {
+    if (mainWindow) {
+        mainWindow.setResizable(false);
+    }
+    resizeMainWindow(APP_WINDOW_SIZE);
+});
+
+ipcMain.on('loader-window-auth', () => {
+    if (mainWindow) {
+        mainWindow.setResizable(false);
+    }
+    resizeMainWindow(AUTH_WINDOW_SIZE);
 });
 
 ipcMain.handle('show-system-notification', async (event, payload = {}) => {
