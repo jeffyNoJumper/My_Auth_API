@@ -21,6 +21,7 @@ const fixDates = (data) => {
 if (mongoose.models.User) delete mongoose.models.User;
 
 const User = require('../core/user');
+const AdminUser = require('../core/adminUser');
 
 const app = express();
 
@@ -33,10 +34,15 @@ app.use(cors());
 
 // --- 3. DATABASE CONNECTION ---
 mongoose.connect(process.env.MONGO_URL) // <- remove old options
-    .then(() => console.log('✅ MongoDB Connected'))
+    .then(async () => {
+        console.log('✅ MongoDB Connected');
+        await ensureBootstrapAdmin();
+    })
     .catch(err => console.error('❌ MongoDB Connection Error:', err));
 
 const ADMIN_SESSION_DURATION_MS = 30 * 24 * 60 * 60 * 1000;
+const DEFAULT_OWNER_EMAIL = process.env.ADMIN_OWNER_EMAIL || 'owner@vexion.local';
+const DEFAULT_OWNER_LABEL = process.env.ADMIN_OWNER_LABEL || 'VEXION Owner';
 
 function getAdminAuthCollection() {
     return mongoose.connection.collection('admin_auth_logins');
@@ -44,6 +50,38 @@ function getAdminAuthCollection() {
 
 function hashAdminSessionToken(token) {
     return crypto.createHash('sha256').update(String(token || '')).digest('hex');
+}
+
+async function ensureBootstrapAdmin() {
+    try {
+        const ownerEmail = String(DEFAULT_OWNER_EMAIL || '').toLowerCase().trim();
+        const ownerPassword = String(process.env.ADMIN_OWNER_PASSWORD || process.env.ADMIN_SECRET || '').trim();
+        const ownerLabel = String(DEFAULT_OWNER_LABEL || 'VEXION Owner').trim() || 'VEXION Owner';
+
+        if (!ownerEmail || !ownerPassword) {
+            console.warn('[ADMIN BOOTSTRAP] Skipped: owner email or password is missing.');
+            return;
+        }
+
+        const existingOwner = await AdminUser.findOne({ email: ownerEmail });
+        if (existingOwner) {
+            return;
+        }
+
+        const passwordHash = await bcrypt.hash(ownerPassword, 12);
+        await AdminUser.create({
+            email: ownerEmail,
+            password_hash: passwordHash,
+            label: ownerLabel,
+            role: 'owner',
+            is_active: true,
+            created_by: 'bootstrap'
+        });
+
+        console.log(`[ADMIN BOOTSTRAP] Owner account ready: ${ownerEmail}`);
+    } catch (error) {
+        console.error('[ADMIN BOOTSTRAP ERROR]', error);
+    }
 }
 
 async function resolveAdminSession(sessionToken) {
@@ -64,15 +102,42 @@ async function resolveAdminSession(sessionToken) {
         return null;
     }
 
+    const adminUser = session.admin_user_id
+        ? await AdminUser.findById(session.admin_user_id).lean()
+        : null;
+
+    if (!adminUser || !adminUser.is_active) {
+        await sessions.updateOne(
+            { _id: session._id },
+            {
+                $set: {
+                    revoked_at: now,
+                    status: 'REVOKED'
+                }
+            }
+        );
+        return null;
+    }
+
     await sessions.updateOne(
         { _id: session._id },
         {
-            $set: { last_used_at: now },
+            $set: {
+                last_used_at: now,
+                admin_label: adminUser.label || session.admin_label || 'VEXION Admin'
+            },
             $inc: { use_count: 1 }
         }
     );
 
-    return { ...session, last_used_at: now };
+    return {
+        ...session,
+        admin_user_id: String(adminUser._id),
+        admin_email: adminUser.email,
+        admin_label: adminUser.label || session.admin_label || 'VEXION Admin',
+        admin_role: adminUser.role || 'admin',
+        last_used_at: now
+    };
 }
 
 async function verifyAdmin(req, res, next) {
@@ -80,7 +145,7 @@ async function verifyAdmin(req, res, next) {
         const adminPassword = String(req.body?.admin_password || '').trim();
 
         if (adminPassword && adminPassword === process.env.ADMIN_SECRET) {
-            req.adminAuth = { mode: 'secret', label: 'ADMIN_SECRET' };
+            req.adminAuth = { mode: 'secret', label: 'ADMIN_SECRET', role: 'owner', email: DEFAULT_OWNER_EMAIL };
             return next();
         }
 
@@ -94,6 +159,9 @@ async function verifyAdmin(req, res, next) {
         req.adminAuth = {
             mode: 'session',
             label: session.admin_label || 'Admin',
+            email: session.admin_email || '',
+            role: session.admin_role || 'admin',
+            admin_user_id: session.admin_user_id || '',
             session_id: String(session._id)
         };
 
@@ -102,6 +170,14 @@ async function verifyAdmin(req, res, next) {
         console.error('[ADMIN AUTH ERROR]', error);
         return res.status(500).json({ success: false, error: "Admin authentication failed" });
     }
+}
+
+function requireOwner(req, res, next) {
+    if (req.adminAuth?.role !== 'owner' && req.adminAuth?.mode !== 'secret') {
+        return res.status(403).json({ success: false, error: 'Owner access required.' });
+    }
+
+    return next();
 }
 
 function applyDuration(baseDate, daysValue) {
@@ -388,12 +464,22 @@ async function fetchLatestLoaderAnnouncement() {
 
 app.post('/admin-auth/login', async (req, res) => {
     try {
+        const adminEmail = String(req.body?.admin_email || '').toLowerCase().trim();
         const adminPassword = String(req.body?.admin_password || '').trim();
-        const adminLabel = String(req.body?.admin_label || '').trim() || 'VEXION Admin';
         const deviceInfo = String(req.body?.device_info || '').trim() || 'Unknown Device';
 
-        if (!adminPassword || adminPassword !== process.env.ADMIN_SECRET) {
-            return res.status(401).json({ success: false, error: 'Invalid admin secret.' });
+        if (!adminEmail || !adminPassword) {
+            return res.status(400).json({ success: false, error: 'Admin email and password are required.' });
+        }
+
+        const adminUser = await AdminUser.findOne({ email: adminEmail });
+        if (!adminUser || !adminUser.is_active) {
+            return res.status(401).json({ success: false, error: 'Invalid admin credentials.' });
+        }
+
+        const passwordValid = await bcrypt.compare(adminPassword, adminUser.password_hash);
+        if (!passwordValid) {
+            return res.status(401).json({ success: false, error: 'Invalid admin credentials.' });
         }
 
         const sessions = getAdminAuthCollection();
@@ -403,7 +489,10 @@ app.post('/admin-auth/login', async (req, res) => {
 
         const sessionRecord = {
             token_hash: hashAdminSessionToken(sessionToken),
-            admin_label: adminLabel,
+            admin_user_id: String(adminUser._id),
+            admin_email: adminUser.email,
+            admin_label: adminUser.label || 'VEXION Admin',
+            admin_role: adminUser.role || 'admin',
             device_info: deviceInfo,
             source: 'admin_panel',
             created_at: now,
@@ -417,11 +506,17 @@ app.post('/admin-auth/login', async (req, res) => {
         };
 
         const insertResult = await sessions.insertOne(sessionRecord);
+        await AdminUser.updateOne(
+            { _id: adminUser._id },
+            { $set: { last_login_at: now } }
+        );
 
         return res.json({
             success: true,
             session_token: sessionToken,
-            admin_label: adminLabel,
+            admin_email: adminUser.email,
+            admin_label: adminUser.label || 'VEXION Admin',
+            admin_role: adminUser.role || 'admin',
             device_info: deviceInfo,
             expires_at: expiresAt,
             session_id: String(insertResult.insertedId)
@@ -443,7 +538,9 @@ app.post('/admin-auth/restore', async (req, res) => {
 
         return res.json({
             success: true,
+            admin_email: session.admin_email || '',
             admin_label: session.admin_label || 'VEXION Admin',
+            admin_role: session.admin_role || 'admin',
             device_info: session.device_info || 'Unknown Device',
             expires_at: session.expires_at,
             session_id: String(session._id)
@@ -451,6 +548,51 @@ app.post('/admin-auth/restore', async (req, res) => {
     } catch (error) {
         console.error('[ADMIN AUTH RESTORE ERROR]', error);
         return res.status(500).json({ success: false, error: 'Failed to restore admin session.' });
+    }
+});
+
+app.post('/admin-auth/create-admin', verifyAdmin, requireOwner, async (req, res) => {
+    try {
+        const adminEmail = String(req.body?.email || '').toLowerCase().trim();
+        const adminPassword = String(req.body?.password || '').trim();
+        const adminLabel = String(req.body?.label || '').trim() || adminEmail;
+
+        if (!adminEmail || !adminPassword) {
+            return res.status(400).json({ success: false, error: 'Admin email and password are required.' });
+        }
+
+        if (!emailRegex.test(adminEmail)) {
+            return res.status(400).json({ success: false, error: 'Enter a valid admin email address.' });
+        }
+
+        const existingAdmin = await AdminUser.findOne({ email: adminEmail });
+        if (existingAdmin) {
+            return res.status(400).json({ success: false, error: 'An admin with that email already exists.' });
+        }
+
+        const passwordHash = await bcrypt.hash(adminPassword, 12);
+        const createdAdmin = await AdminUser.create({
+            email: adminEmail,
+            password_hash: passwordHash,
+            label: adminLabel,
+            role: 'admin',
+            is_active: true,
+            created_by: req.adminAuth?.email || req.adminAuth?.label || 'owner'
+        });
+
+        return res.json({
+            success: true,
+            admin: {
+                id: String(createdAdmin._id),
+                email: createdAdmin.email,
+                label: createdAdmin.label,
+                role: createdAdmin.role
+            },
+            message: `Admin login created for ${createdAdmin.email}.`
+        });
+    } catch (error) {
+        console.error('[ADMIN CREATE ERROR]', error);
+        return res.status(500).json({ success: false, error: 'Failed to create admin login.' });
     }
 });
 
