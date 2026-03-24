@@ -1,4382 +1,3061 @@
-
-const API = 'https://my-auth-api-1ykc.onrender.com';
-
-let countdownInterval;
-let progress = 0;
-let newsLoaded = false;
-let expiryCheckInterval = null;
-let expirySequenceTriggered = false;
-let isAuthProcessActive = false;
-let updateReminderInterval = null;
-let currentVersion = "1.1.3";
-let hardwareSnapshot = null;
-let hardwareSnapshotPromise = null;
-let updateCheckPromise = null;
-let cachedRemoteRelease = null;
-let serverHealthState = "CHECKING";
-let hwidResetPollInterval = null;
-let hwidResetApprovalStatus = "idle";
-let latestHwidResetRequestId = null;
-let latestHwidResetTicketNumber = null;
-let injectionProgressTimer = null;
-let autoLoginRequestToken = 0;
-let activeExternalLink = null;
-let activeAppDialogResolver = null;
-let activeGameLaunchResolver = null;
-let gameFeedRefreshInterval = null;
-let discordAnnouncementPollInterval = null;
-let latestDiscordAnnouncementId = localStorage.getItem('last_seen_discord_loader_notification_id') || "";
-const expiryLockedTabs = new Set(['games', 'hwid', 'spoofing', 'settings']);
-
-const themePresets = {
-    default: {
-        key: "default",
-        label: "Default",
-        accent: "#1abc9c",
-        panel: "#1d2630",
-        sidebar: "#1e1e1e",
-        content: "#2a2a2a",
-        background: "#121212"
-    },
-    arctic: {
-        key: "arctic",
-        label: "Arctic",
-        accent: "#4dc9ff",
-        panel: "#1c3140",
-        sidebar: "#131d28",
-        content: "#213041",
-        background: "#0f141d"
-    },
-    ember: {
-        key: "ember",
-        label: "Ember",
-        accent: "#ff8a4c",
-        panel: "#35231a",
-        sidebar: "#201510",
-        content: "#322019",
-        background: "#120c09"
-    },
-    emerald: {
-        key: "emerald",
-        label: "Emerald",
-        accent: "#44d67f",
-        panel: "#1b3025",
-        sidebar: "#112019",
-        content: "#1f3328",
-        background: "#0c1410"
-    },
-    obsidian: {
-        key: "obsidian",
-        label: "Obsidian",
-        accent: "#e7edf5",
-        panel: "#23262b",
-        sidebar: "#141414",
-        content: "#21242a",
-        background: "#090909"
-    },
-    rose: {
-        key: "rose",
-        label: "Rose",
-        accent: "#ff6f91",
-        panel: "#321d26",
-        sidebar: "#24131a",
-        content: "#36212b",
-        background: "#130b10"
-    }
-};
-
-const externalLinkConfigs = {
-    discord: {
-        key: "discord",
-        kicker: "COMMUNITY",
-        title: "Join VEXION Discord",
-        body: "Open the main VEXION Discord for announcements, community updates, and live status posts.",
-        url: "https://discord.gg/vCrBfRsRvb",
-        confirmLabel: "OPEN DISCORD",
-        note: "This opens outside the loader in your browser or Discord client."
-    },
-    support: {
-        key: "support",
-        kicker: "SHOP / SUPPORT",
-        title: "Open Support Hub",
-        body: "Orders, support questions, and account help are handled through the VEXION support hub.",
-        url: "https://discord.gg/RG7bEgrHF9",
-        confirmLabel: "OPEN SUPPORT",
-        note: "If Discord is installed, the invite may open directly in the app."
-    },
-    github: {
-        key: "github",
-        kicker: "DEVELOPER",
-        title: "Open GitHub",
-        body: "View releases, repositories, and project updates from the developer profile.",
-        url: "https://github.com/jeffyNoJumper?tab=repositories",
-        confirmLabel: "OPEN GITHUB",
-        note: "This opens in your default browser."
-    }
-};
-
-let currentUserPrefix = localStorage.getItem('user_prefix') || "";
-
-const gameModuleConfigs = {
-    CS2: {
-        key: "CS2",
-        displayName: "CS2",
-        prefix: "CS2X",
-        launcher: "Steam",
-        modalCopy: "Choose the CS2 route you want to use before the Steam handoff begins.",
-        internalNote: "Uses the CS2 DLL injector path from assets.",
-        externalNote: "Uses the CS2 external EXE route from assets."
-    },
-    FIVEM: {
-        key: "FIVEM",
-        displayName: "FiveM",
-        prefix: "FIVM",
-        launcher: "CFX Launcher",
-        modalCopy: "FiveM launch routing is ready now. Its internal and external slots will light up when you add the FiveM binaries.",
-        internalNote: "Requires a FiveM DLL module in assets.",
-        externalNote: "Requires a FiveM EXE module in assets."
-    },
-    GTAV: {
-        key: "GTAV",
-        displayName: "GTA V",
-        prefix: "GTAV",
-        launcher: "Rockstar",
-        modalCopy: "GTA V is prepared for a dedicated internal and external route as soon as the GTA module files are added.",
-        internalNote: "Requires a GTA V DLL module in assets.",
-        externalNote: "Requires a GTA V EXE module in assets."
-    },
-    WARZONE: {
-        key: "WARZONE",
-        displayName: "Warzone",
-        prefix: "WARZ",
-        launcher: "Battle.net / Xbox",
-        modalCopy: "Warzone now uses the same module select flow, and its buttons will go live once the Warzone assets are present.",
-        internalNote: "Requires a Warzone DLL module in assets.",
-        externalNote: "Requires a Warzone EXE module in assets."
-    }
-};
-
-function normalizeGameName(gameName = "") {
-    const value = String(gameName || "").trim().toUpperCase();
-
-    switch (value) {
-        case "FIVEM":
-            return "FIVEM";
-        case "GTA V":
-        case "GTAV":
-            return "GTAV";
-        case "WARZONE":
-            return "WARZONE";
-        case "CS2":
-            return "CS2";
-        default:
-            return value;
-    }
+:root {
+    --bg-dark: #121212;
+    --sidebar-bg: #1e1e1e;
+    --content-bg: #2a2a2a;
+    --accent-teal: #1abc9c;
+    --accent: #1abc9c;
+    --accent-rgb: 26, 188, 156;
+    --accent-glow: rgba(26, 188, 156, 0.35);
+    --panel-start: rgba(29, 38, 48, 0.96);
+    --panel-end: rgba(14, 19, 24, 0.94);
+    --panel-border: rgba(255, 255, 255, 0.08);
+    --panel-border-soft: rgba(255, 255, 255, 0.05);
+    --panel-border-strong: rgba(26, 188, 156, 0.22);
+    --panel-border-focus: rgba(26, 188, 156, 0.4);
+    --panel-shadow: rgba(0, 0, 0, 0.22);
+    --panel-shadow-strong: rgba(0, 0, 0, 0.34);
+    --surface-muted: rgba(255, 255, 255, 0.04);
+    --surface-muted-strong: rgba(255, 255, 255, 0.05);
+    --surface-hover: rgba(26, 188, 156, 0.07);
+    --surface-hover-strong: rgba(26, 188, 156, 0.14);
+    --panel-text-strong: #d7fff6;
+    --sidebar-tint: rgba(26, 188, 156, 0.08);
+    --terminal-surface: rgba(0, 0, 0, 0.52);
+    --text-main: #ffffff;
+    --text-secondary: #b3b3b3;
+    --online-green: #2ecc71;
+    --gold: #f1c40f;
+    --red: #ff5c5c;
+    --exit-red: #e74c3c;
 }
 
-function getGameModuleConfig(gameName) {
-    const normalized = normalizeGameName(gameName);
-    return gameModuleConfigs[normalized] || {
-        key: normalized,
-        displayName: String(gameName || normalized),
-        prefix: normalized,
-        launcher: "Launcher",
-        modalCopy: "Choose the module route you want to use for this title.",
-        internalNote: "Internal route requires a matching DLL module in assets.",
-        externalNote: "External route requires a matching EXE module in assets."
-    };
+body {
+    margin: 0;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: transparent !important;
+    color: var(--text-main);
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+    -webkit-app-region: drag;
+    user-select: none;
 }
 
-function getGameAssetFolderName(gameName) {
-    return normalizeGameName(gameName).toLowerCase().replace(/\s+/g, '-');
+body.login-active {
+    display: block;
 }
 
-async function getGameModuleAvailability(gameName) {
-    if (!window.api?.getGameModuleAvailability) {
-        return { hasInternal: false, hasExternal: false };
-    }
-
-    try {
-        return await window.api.getGameModuleAvailability(gameName);
-    } catch (error) {
-        console.warn("[MODULE CHECK ERROR]", error);
-        return { hasInternal: false, hasExternal: false };
-    }
+* {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
 }
 
-function updateGameFeedCard(card, feed) {
-    if (!card || !feed) {
-        return;
-    }
-
-    const title = card.querySelector('[data-game-feed-title]');
-    const copy = card.querySelector('[data-game-feed-copy]');
-    const meta = card.querySelector('[data-game-feed-meta]');
-
-    if (title && feed.title) {
-        title.textContent = feed.title;
-    }
-
-    if (copy && feed.summary) {
-        copy.textContent = feed.summary;
-    }
-
-    if (meta && feed.meta) {
-        meta.textContent = feed.meta;
-    }
+*::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
+    background: transparent;
 }
 
-async function refreshGameCardFeeds() {
-    if (!window.api?.getGameLiveFeed) {
-        return;
-    }
-
-    const cards = Array.from(document.querySelectorAll('.game-card[data-game]'));
-
-    await Promise.all(cards.map(async (card) => {
-        try {
-            const feed = await window.api.getGameLiveFeed(card.dataset.game || "");
-            updateGameFeedCard(card, feed);
-        } catch (error) {
-            console.warn("[GAME FEED UI ERROR]", card.dataset.game, error);
-        }
-    }));
+.nav-item,
+.action-btn,
+button,
+.dropdown-item,
+.tab-content *,
+.stat-tile,
+.action-btn,
+input,
+.profile-trigger,
+.sidebar-logo img,
+.toast-notification {
+    -webkit-app-region: no-drag !important;
+    cursor: pointer !important;
+}
+.close-x {
+    -webkit-app-region: no-drag;
+    cursor: pointer;
+    font-size: 22px;
 }
 
-function startGameFeedRefreshLoop() {
-    if (gameFeedRefreshInterval) {
-        clearInterval(gameFeedRefreshInterval);
-    }
-
-    gameFeedRefreshInterval = setInterval(() => {
-        void refreshGameCardFeeds();
-    }, 5 * 60 * 1000);
+.toast-stack {
+    position: fixed;
+    top: 16px;
+    right: 75px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    z-index: 9999;
+    pointer-events: none;
 }
 
-function applyModuleAvailabilityToChoice(button, isAvailable) {
-    if (!button) {
-        return;
-    }
-
-    button.disabled = !isAvailable;
-    button.classList.toggle("is-unavailable", !isAvailable);
+.toast-notification {
+    width: min(320px, calc(100vw - 110px));
+    background:
+        radial-gradient(circle at top right, rgba(var(--accent-rgb), 0.18), transparent 34%),
+        rgba(10, 10, 20, 0.92);
+    color: #fff;
+    padding: 14px 16px;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 18px 34px rgba(0, 0, 0, 0.34);
+    font-size: 14px;
+    cursor: pointer;
+    transition: transform 0.2s ease, opacity 0.3s ease, border-color 0.2s ease;
+    pointer-events: auto;
 }
 
-function updateGameLaunchModal(gameName, availability) {
-    const config = getGameModuleConfig(gameName);
-    const assetFolder = `assets/${getGameAssetFolderName(gameName)}/`;
-    const hasInternal = Boolean(availability?.hasInternal);
-    const hasExternal = Boolean(availability?.hasExternal);
-    const hasAnyModule = hasInternal || hasExternal;
-    const title = document.getElementById("game-launch-title");
-    const kicker = document.getElementById("game-launch-kicker");
-    const status = document.getElementById("game-launch-status");
-    const copy = document.getElementById("game-launch-copy");
-    const update = document.getElementById("game-launch-update");
-    const internalNote = document.getElementById("game-launch-internal-note");
-    const externalNote = document.getElementById("game-launch-external-note");
-    const internalButton = document.getElementById("game-launch-internal");
-    const externalButton = document.getElementById("game-launch-external");
-
-    if (title) title.textContent = `${config.displayName.toUpperCase()} MODULE SELECT`;
-    if (kicker) kicker.textContent = `${config.launcher.toUpperCase()} ROUTE`;
-    if (copy) copy.textContent = config.modalCopy;
-    if (internalNote) internalNote.textContent = config.internalNote;
-    if (externalNote) externalNote.textContent = config.externalNote;
-
-    if (status) {
-        status.classList.toggle("is-pending", !hasAnyModule || !hasInternal || !hasExternal);
-        if (!hasAnyModule) {
-            status.textContent = "AWAITING BINARIES";
-        } else if (hasInternal && hasExternal) {
-            status.textContent = "READY";
-        } else {
-            status.textContent = "PARTIAL";
-        }
-    }
-
-    if (update) {
-        if (!hasAnyModule) {
-            update.textContent = `${config.displayName} does not have module binaries yet. Drop its DLL and EXE into ${assetFolder} and these buttons will enable automatically.`;
-        } else if (!hasInternal || !hasExternal) {
-            update.textContent = `${config.displayName} has only one launch route available right now. Add the missing binary into ${assetFolder} to unlock the full selector.`;
-        } else {
-            update.textContent = `${config.displayName} binaries are present. The loader will use the matching file from ${assetFolder} for the option you pick.`;
-        }
-    }
-
-    applyModuleAvailabilityToChoice(internalButton, hasInternal);
-    applyModuleAvailabilityToChoice(externalButton, hasExternal);
+.toast-notification.is-admin {
+    border-color: rgba(79, 172, 255, 0.32);
+    background:
+        radial-gradient(circle at top right, rgba(79, 172, 255, 0.22), transparent 36%),
+        rgba(8, 12, 22, 0.94);
 }
 
-async function openGameLaunchModal(gameName, availability) {
-    updateGameLaunchModal(gameName, availability);
-    await openModal("game-launch-modal");
-
-    return new Promise((resolve) => {
-        activeGameLaunchResolver = resolve;
-    });
+.toast-notification:hover {
+    transform: translateY(-2px);
+    opacity: 0.97;
 }
 
-function submitGameLaunchChoice(choice) {
-    const internalButton = document.getElementById("game-launch-internal");
-    const externalButton = document.getElementById("game-launch-external");
+.toast-title {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 0.88rem;
+    font-weight: 800;
+    letter-spacing: 0.3px;
+}
 
-    if (choice === "internal" && internalButton?.disabled) {
-        return;
+.toast-message {
+    margin: 0;
+    color: rgba(255, 255, 255, 0.82);
+    font-size: 0.74rem;
+    line-height: 1.5;
+    word-break: break-word;
+}
+
+.toast-meta {
+    display: block;
+    margin-top: 8px;
+    color: rgba(255, 255, 255, 0.52);
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.9px;
+    text-transform: uppercase;
+}
+
+.hidden {
+    display: none !important;
+}
+
+/* Glass Modal Overlay */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.85); /* Deep dim */
+    backdrop-filter: blur(10px); /* Modern frosted glass */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10005; /* Stays above sidebar */
+}
+
+/* Settings Modal Content */
+.modal-content {
+    background: linear-gradient(145deg, #1e1e1e, #121212);
+    border: 1px solid rgba(26, 188, 156, 0.3); /* Subtle teal border */
+    border-radius: 16px;
+    padding: 30px;
+    width: 400px;
+    box-shadow: 0 0 30px rgba(0, 0, 0, 0.5), 0 0 15px rgba(26, 188, 156, 0.1);
+    text-align: center;
+}
+
+/* Close 'X' Button */
+.close-x {
+    float: right;
+    font-size: 24px;
+    color: #555;
+    transition: 0.3s;
+}
+
+    .close-x:hover {
+        color: var(--accent-teal);
+        transform: rotate(90deg);
     }
 
-    if (choice === "external" && externalButton?.disabled) {
-        return;
+/* Mini Button (Change Photo) */
+.mini-btn {
+    background: transparent;
+    border: 1px solid var(--accent-teal);
+    color: var(--accent-teal);
+    padding: 6px 12px;
+    font-size: 0.7rem;
+    font-weight: bold;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: 0.3s;
+}
+
+    .mini-btn:hover {
+        background: var(--accent-teal);
+        color: #000;
     }
 
-    const resolver = activeGameLaunchResolver;
-    activeGameLaunchResolver = null;
-    closeModal("game-launch-modal");
+/* Full-screen Login Overlay — fully transparent, no bg or blur */
+#login-screen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: transparent !important;
+    backdrop-filter: none !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10010;
+    transition: opacity 0.5s ease, visibility 0.5s;
+    -webkit-app-region: no-drag;
+    pointer-events: none; /* clicks pass through except on card */
+    border-radius: 16px;
+}
 
-    if (resolver) {
-        resolver(choice);
+body.login-active #login-screen {
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    padding: 0;
+    align-items: stretch;
+    justify-content: stretch;
+    pointer-events: auto;
+    box-sizing: border-box;
+    border-radius: 16px;
+}
+
+#login-screen .login-card {
+    pointer-events: auto; /* card captures clicks */
+}
+
+/* The Login Card — fully opaque, nothing shows through */
+.login-card {
+    background: #030f2e !important;
+    background-color: #030f2e !important;
+    padding: 40px;
+    border-radius: 12px;
+    border: 1px solid var(--accent);
+    width: 100%;
+    max-width: 420px;
+    box-shadow: 0 0 40px rgba(0, 0, 0, 0.9), 0 0 20px var(--accent-glow);
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    position: relative;
+    -webkit-app-region: no-drag;
+    user-select: none;
+    opacity: 1;
+    isolation: isolate; /* blocks bleed-through from behind */
+    box-sizing: border-box;
+}
+
+body.login-active #login-screen .login-card {
+    width: 100%;
+    max-width: none;
+    min-height: 100%;
+    height: 100%;
+    padding: 28px 24px 22px;
+    border-radius: 16px;
+    box-sizing: border-box;
+}
+
+.login-form {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    width: 100%;
+}
+
+    .login-card input,
+    .login-card button,
+    .login-card a,
+    .login-card .checkbox-container,
+    .login-card label,
+    .login-card .input-relative,
+    .login-card .login-options,
+    .login-card .remember-me,
+    .login-card .remember-me span,
+    .login-card .eye-icon {
+        -webkit-app-region: no-drag;
+        user-select: text; /* Allows text selection for copying keys */
+        cursor: auto; /* Restores the 'I' cursor for typing */
+    }
+
+.card-header {
+    -webkit-app-region: drag;
+    cursor: move;
+}
+
+/* --- AUTH SPINNER --- */
+.spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    margin-right: 8px; 
+    vertical-align: middle;
+    border: 2px solid rgba(0, 149, 255, 0.2); /* Faint track */
+    border-top: 2px solid var(--accent); /* Glowing tip */
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    box-shadow: 0 0 5px var(--accent-glow);
+}
+
+@keyframes spin {
+    0% {
+        transform: rotate(0deg);
+    }
+
+    100% {
+        transform: rotate(360deg);
     }
 }
 
-window.submitGameLaunchChoice = submitGameLaunchChoice;
-
-function showAutoLoginModal() {
-    const modal = document.getElementById('auto-login-modal');
-    if (!modal) return;
-    modal.style.removeProperty('display');
-    modal.classList.remove('hidden');
+/* Ensure the button text stays aligned */
+#login-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
 }
 
-function hideAutoLoginModal() {
-    const modal = document.getElementById('auto-login-modal');
-    if (!modal) return;
-    modal.style.removeProperty('display');
-    modal.classList.add('hidden');
+
+/* Form Styling */
+.input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    text-align: left;
 }
 
-function setLoginNotice(message = "", state = "error") {
-    const loginNotice = document.getElementById("login-notice");
-    if (!loginNotice) return;
+.input-relative {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
 
-    if (message) {
-        loginNotice.innerText = message;
-        loginNotice.dataset.state = state;
-        loginNotice.classList.remove("hidden");
-        return;
+    .input-group label {
+        font-size: 0.75rem;
+        color: var(--accent-teal);
+        font-weight: bold;
+        letter-spacing: 1px;
     }
 
-    loginNotice.innerText = "";
-    loginNotice.classList.add("hidden");
-    loginNotice.removeAttribute("data-state");
-}
-
-function focusLoginField(input) {
-    if (!input) return;
-
-    input.focus();
-
-    if (typeof input.select === "function") {
-        input.select();
-    }
-}
-
-function handleLoginSubmit(event) {
-    if (event) {
-        event.preventDefault();
+    .input-group input {
+        background: #121212;
+        border: 1px solid #333;
+        padding: 12px;
+        color: white;
+        border-radius: 4px;
+        outline: none;
     }
 
-    void handleLogin();
-}
-
-function showManualLoginState(noticeText = null, keepAutoLoginModal = false) {
-    const loginScreen = document.getElementById("login-screen");
-    const dashboard = document.getElementById("dashboard-wrapper");
-    const sidebar = document.getElementById("sidebar");
-
-    if (!keepAutoLoginModal) {
-        hideAutoLoginModal();
-    }
-    document.body.classList.remove("logged-in");
-    document.body.classList.add("login-active");
-
-    if (loginScreen) loginScreen.style.display = "flex";
-    if (dashboard) dashboard.style.display = "none";
-    if (sidebar) {
-        sidebar.classList.add("hidden");
-        sidebar.style.removeProperty("display");
-    }
-
-    if (window.api?.setAuthWindow) {
-        window.api.setAuthWindow();
-    }
-
-    setLoginNotice(noticeText, noticeText ? "info" : "error");
-}
-
-function hoistModalToBody(id) {
-    const modal = document.getElementById(id);
-    if (!modal || modal.parentElement === document.body) {
-        return;
-    }
-
-    document.body.appendChild(modal);
-}
-
-function getThemePreset(name) {
-    return themePresets[name] || themePresets.default;
-}
-
-function normalizeHexColor(value, fallback) {
-    const candidate = String(value || '').trim();
-    if (/^#[0-9a-f]{6}$/i.test(candidate)) {
-        return candidate.toLowerCase();
-    }
-
-    if (/^#[0-9a-f]{3}$/i.test(candidate)) {
-        const hex = candidate.slice(1);
-        return `#${hex[0]}${hex[0]}${hex[1]}${hex[1]}${hex[2]}${hex[2]}`.toLowerCase();
-    }
-
-    return fallback.toLowerCase();
-}
-
-function clampColorChannel(value) {
-    return Math.max(0, Math.min(255, Math.round(value)));
-}
-
-function hexToRgb(hex) {
-    const cleanHex = normalizeHexColor(hex, '#000000').slice(1);
-    return {
-        r: parseInt(cleanHex.slice(0, 2), 16),
-        g: parseInt(cleanHex.slice(2, 4), 16),
-        b: parseInt(cleanHex.slice(4, 6), 16)
-    };
-}
-
-function rgbToHex({ r, g, b }) {
-    return `#${[r, g, b].map((channel) => clampColorChannel(channel).toString(16).padStart(2, '0')).join('')}`;
-}
-
-function mixHex(baseHex, mixHexValue, ratio = 0.5) {
-    const amount = Math.max(0, Math.min(1, ratio));
-    const base = hexToRgb(baseHex);
-    const mix = hexToRgb(mixHexValue);
-
-    return rgbToHex({
-        r: base.r + ((mix.r - base.r) * amount),
-        g: base.g + ((mix.g - base.g) * amount),
-        b: base.b + ((mix.b - base.b) * amount)
-    });
-}
-
-function rgbaFromHex(hex, alpha) {
-    const { r, g, b } = hexToRgb(hex);
-    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
-
-function rgbStringFromHex(hex) {
-    const { r, g, b } = hexToRgb(hex);
-    return `${r}, ${g}, ${b}`;
-}
-
-function buildThemeTokens(config = {}) {
-    const accent = normalizeHexColor(config.accent, themePresets.default.accent);
-    const background = normalizeHexColor(config.background, themePresets.default.background);
-    const sidebar = normalizeHexColor(config.sidebar, themePresets.default.sidebar);
-    const content = normalizeHexColor(config.content || config.panel || themePresets.default.content, themePresets.default.content);
-    const panel = normalizeHexColor(config.panel || content, content);
-
-    return {
-        ...config,
-        accent,
-        panel,
-        sidebar,
-        content,
-        background,
-        accentRgb: rgbStringFromHex(accent),
-        glow: rgbaFromHex(accent, 0.35),
-        panelStart: rgbaFromHex(mixHex(panel, '#ffffff', 0.04), 0.96),
-        panelEnd: rgbaFromHex(mixHex(panel, '#000000', 0.24), 0.94),
-        panelBorder: rgbaFromHex('#ffffff', 0.08),
-        panelBorderSoft: rgbaFromHex('#ffffff', 0.05),
-        panelBorderStrong: rgbaFromHex(accent, 0.22),
-        panelBorderFocus: rgbaFromHex(accent, 0.4),
-        panelShadow: rgbaFromHex('#000000', 0.22),
-        panelShadowStrong: rgbaFromHex('#000000', 0.34),
-        surfaceMuted: rgbaFromHex(mixHex(panel, '#ffffff', 0.1), 0.18),
-        surfaceMutedStrong: rgbaFromHex(mixHex(panel, '#ffffff', 0.12), 0.26),
-        surfaceHover: rgbaFromHex(accent, 0.07),
-        surfaceHoverStrong: rgbaFromHex(accent, 0.14),
-        panelTextStrong: mixHex(accent, '#ffffff', 0.78),
-        sidebarTint: rgbaFromHex(accent, 0.08),
-        terminalSurface: rgbaFromHex(mixHex(background, '#000000', 0.25), 0.52)
-    };
-}
-
-function applyThemeTokens(tokens) {
-    const root = document.documentElement;
-    const tokenMap = {
-        '--accent-teal': tokens.accent,
-        '--accent': tokens.accent,
-        '--accent-rgb': tokens.accentRgb,
-        '--accent-glow': tokens.glow,
-        '--sidebar-bg': tokens.sidebar,
-        '--content-bg': tokens.content,
-        '--bg-dark': tokens.background,
-        '--panel-start': tokens.panelStart,
-        '--panel-end': tokens.panelEnd,
-        '--panel-border': tokens.panelBorder,
-        '--panel-border-soft': tokens.panelBorderSoft,
-        '--panel-border-strong': tokens.panelBorderStrong,
-        '--panel-border-focus': tokens.panelBorderFocus,
-        '--panel-shadow': tokens.panelShadow,
-        '--panel-shadow-strong': tokens.panelShadowStrong,
-        '--surface-muted': tokens.surfaceMuted,
-        '--surface-muted-strong': tokens.surfaceMutedStrong,
-        '--surface-hover': tokens.surfaceHover,
-        '--surface-hover-strong': tokens.surfaceHoverStrong,
-        '--panel-text-strong': tokens.panelTextStrong,
-        '--sidebar-tint': tokens.sidebarTint,
-        '--terminal-surface': tokens.terminalSurface
-    };
-
-    Object.entries(tokenMap).forEach(([key, value]) => {
-        root.style.setProperty(key, value);
-    });
-}
-
-function syncThemeColorInputs(themeConfig = {}) {
-    const accentInput = document.getElementById('theme-accent-picker');
-    const panelInput = document.getElementById('theme-panel-picker');
-    const sidebarInput = document.getElementById('theme-sidebar-picker');
-    const backgroundInput = document.getElementById('theme-background-picker');
-
-    if (accentInput) accentInput.value = normalizeHexColor(themeConfig.accent || themePresets.default.accent, themePresets.default.accent);
-    if (panelInput) panelInput.value = normalizeHexColor(themeConfig.panel || themeConfig.content || themePresets.default.panel, themePresets.default.panel);
-    if (sidebarInput) sidebarInput.value = normalizeHexColor(themeConfig.sidebar || themePresets.default.sidebar, themePresets.default.sidebar);
-    if (backgroundInput) backgroundInput.value = normalizeHexColor(themeConfig.background || themePresets.default.background, themePresets.default.background);
-}
-
-function getCustomThemeFromInputs() {
-    const preset = getThemePreset('default');
-    return {
-        key: 'custom',
-        label: 'Custom',
-        accent: document.getElementById('theme-accent-picker')?.value || preset.accent,
-        panel: document.getElementById('theme-panel-picker')?.value || preset.panel,
-        sidebar: document.getElementById('theme-sidebar-picker')?.value || preset.sidebar,
-        content: document.getElementById('theme-panel-picker')?.value || preset.content,
-        background: document.getElementById('theme-background-picker')?.value || preset.background
-    };
-}
-
-function updateThemeButtonState(activeTheme) {
-    document.querySelectorAll('.theme-chip-btn').forEach((button) => {
-        button.classList.toggle('is-active', button.dataset.theme === activeTheme);
-    });
-}
-
-function applyThemePreset(name = "default", options = {}) {
-    const { persist = true, announce = false } = options;
-    const preset = buildThemeTokens(getThemePreset(name));
-
-    applyThemeTokens(preset);
-    syncThemeColorInputs(preset);
-
-    updateThemeButtonState(preset.key);
-
-    if (persist) {
-        localStorage.setItem('loader-theme', preset.key);
-        localStorage.removeItem('loader-theme-custom');
-    }
-
-    if (announce) {
-        addTerminalLine(`> [THEME] ${preset.label.toUpperCase()} preset applied.`);
-        setSettingsStatus(`${preset.label.toUpperCase()} THEME`);
-    }
-
-    return preset;
-}
-
-function initializeLoaderTheme() {
-    const savedTheme = localStorage.getItem('loader-theme') || 'default';
-
-    if (savedTheme === 'custom') {
-        try {
-            const customTheme = JSON.parse(localStorage.getItem('loader-theme-custom') || '{}');
-            const customTokens = buildThemeTokens({
-                ...getThemePreset('default'),
-                ...customTheme,
-                key: 'custom',
-                label: 'Custom'
-            });
-            applyThemeTokens(customTokens);
-            syncThemeColorInputs(customTokens);
-            updateThemeButtonState('custom');
-            return;
-        } catch (error) {
-            console.error("[THEME] Failed to restore custom theme:", error);
-        }
-    }
-
-    applyThemePreset(savedTheme, { persist: false, announce: false });
-}
-
-function updateVersionLabels() {
-    const safeVersion = currentVersion || "UNKNOWN";
-    const versionLabel = document.getElementById("loader-version");
-    const legacyVersionLabel = document.getElementById("loader-version-legacy");
-    const settingsVersion = document.getElementById("settings-build-version");
-
-    if (versionLabel) versionLabel.innerText = safeVersion;
-    if (legacyVersionLabel) legacyVersionLabel.innerText = safeVersion;
-    if (settingsVersion) settingsVersion.innerText = safeVersion;
-}
-
-async function syncInstalledVersion() {
-    try {
-        const appVersion = await window.api.getAppVersion?.();
-        const normalizedVersion = normalizeVersionString(appVersion);
-        if (normalizedVersion) {
-            currentVersion = normalizedVersion;
-        } else if (typeof appVersion === 'string' && appVersion.trim()) {
-            currentVersion = appVersion.trim();
-        }
-    } catch (error) {
-        console.error("[VERSION] Failed to load installed app version:", error);
-    } finally {
-        updateVersionLabels();
-    }
-}
-
-function setLoaderTheme(name) {
-    applyThemePreset(name, { persist: true, announce: true });
-}
-
-function applyCustomThemeFromInputs() {
-    const customTheme = getCustomThemeFromInputs();
-    const customTokens = buildThemeTokens(customTheme);
-
-    applyThemeTokens(customTokens);
-    syncThemeColorInputs(customTokens);
-    updateThemeButtonState('custom');
-    localStorage.setItem('loader-theme', 'custom');
-    localStorage.setItem('loader-theme-custom', JSON.stringify(customTheme));
-    addTerminalLine("> [THEME] CUSTOM colors applied.");
-    setSettingsStatus("CUSTOM THEME");
-}
-
-function resetCustomTheme() {
-    applyThemePreset('default', { persist: true, announce: true });
-}
-
-function renderAppDialogActions(actions = []) {
-    const actionsHost = document.getElementById('app-dialog-actions');
-    if (!actionsHost) {
-        return;
-    }
-
-    actionsHost.innerHTML = "";
-
-    actions.forEach((action) => {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.textContent = action.label;
-        button.className = action.variant === 'danger'
-            ? 'btn-danger'
-            : action.variant === 'secondary'
-                ? 'btn-secondary'
-                : 'btn-primary';
-
-        button.addEventListener('click', () => {
-            closeModal('app-dialog-modal');
-
-            const resolver = activeAppDialogResolver;
-            activeAppDialogResolver = null;
-
-            if (resolver) {
-                resolver(action.value);
-            }
-        });
-
-        actionsHost.appendChild(button);
-    });
-}
-
-function escapeHtml(value = "") {
-    return String(value)
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#39;");
-}
-
-function formatDiscordMarkup(value = "") {
-    let html = escapeHtml(String(value || "").replace(/\r\n/g, "\n"));
-    const placeholders = [];
-    const stash = (markup) => {
-        const token = `%%DISCORD_MD_${placeholders.length}%%`;
-        placeholders.push(markup);
-        return token;
-    };
-
-    html = html.replace(/`([^`\n]+)`/g, (_, code) => stash(`<code class="discord-md-code">${code}</code>`));
-    html = html.replace(/\*\*\*([\s\S]+?)\*\*\*/g, '<strong><em>$1</em></strong>');
-    html = html.replace(/___([\s\S]+?)___/g, '<span class="discord-md-underline"><em>$1</em></span>');
-    html = html.replace(/\*\*([\s\S]+?)\*\*/g, '<strong>$1</strong>');
-    html = html.replace(/__([\s\S]+?)__/g, '<span class="discord-md-underline">$1</span>');
-    html = html.replace(/~~([\s\S]+?)~~/g, '<s>$1</s>');
-    html = html.replace(/(^|[^*])\*([^*\n][\s\S]*?)\*(?!\*)/g, '$1<em>$2</em>');
-    html = html.replace(/(^|[^_])_([^_\n][\s\S]*?)_(?!_)/g, '$1<em>$2</em>');
-    html = html.replace(/\n/g, '<br>');
-
-    return placeholders.reduce(
-        (output, markup, index) => output.replace(`%%DISCORD_MD_${index}%%`, markup),
-        html
-    );
-}
-
-function setElementContent(element, value = "", { discordMarkup = false } = {}) {
-    if (!element) {
-        return;
-    }
-
-    if (discordMarkup) {
-        element.innerHTML = formatDiscordMarkup(value);
-        return;
-    }
-
-    element.textContent = value;
-}
-
-function showAppDialog(options = {}) {
-    const {
-        title = "Notification",
-        message = "",
-        detail = "",
-        tone = "info",
-        kicker = "SYSTEM NOTICE",
-        renderDiscordMarkup = false,
-        actions = [{ label: "OK", value: true, variant: "primary" }]
-    } = options;
-
-    const card = document.getElementById('app-dialog-card');
-    const kickerEl = document.getElementById('app-dialog-kicker');
-    const titleEl = document.getElementById('app-dialog-title');
-    const messageEl = document.getElementById('app-dialog-message');
-    const detailEl = document.getElementById('app-dialog-detail');
-
-    if (!card || !kickerEl || !titleEl || !messageEl || !detailEl) {
-        return Promise.resolve(false);
-    }
-
-    if (activeAppDialogResolver) {
-        activeAppDialogResolver(false);
-        activeAppDialogResolver = null;
-    }
-
-    card.dataset.tone = tone;
-    kickerEl.textContent = kicker;
-    setElementContent(titleEl, title, { discordMarkup: renderDiscordMarkup });
-    setElementContent(messageEl, message, { discordMarkup: renderDiscordMarkup });
-    detailEl.textContent = detail || "";
-    detailEl.classList.toggle('hidden', !detail);
-    renderAppDialogActions(actions);
-    activeExternalLink = null;
-    closeModal('external-link-modal');
-    openModal('app-dialog-modal');
-
-    return new Promise((resolve) => {
-        activeAppDialogResolver = resolve;
-    });
-}
-
-function showSuccessDialog(title, message, detail = "") {
-    return showAppDialog({
-        title,
-        message,
-        detail,
-        tone: "success",
-        kicker: "SUCCESS",
-        actions: [{ label: "OK", value: true, variant: "primary" }]
-    });
-}
-
-function getToastStack() {
-    let stack = document.getElementById('toast-stack');
-
-    if (!stack) {
-        stack = document.createElement('div');
-        stack.id = 'toast-stack';
-        stack.className = 'toast-stack';
-        document.body.appendChild(stack);
-    }
-
-    return stack;
-}
-
-function formatAnnouncementTimestamp(value) {
-    const date = new Date(value);
-
-    if (Number.isNaN(date.getTime())) {
-        return "LIVE NOW";
-    }
-
-    return date.toLocaleString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit'
-    }).toUpperCase();
-}
-
-function isRecentAnnouncement(value, maxAgeMinutes = 15) {
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) {
-        return false;
-    }
-
-    return (Date.now() - date.getTime()) <= maxAgeMinutes * 60 * 1000;
-}
-
-function showErrorDialog(title, message, detail = "") {
-    return showAppDialog({
-        title,
-        message,
-        detail,
-        tone: "error",
-        kicker: "ERROR",
-        actions: [{ label: "OK", value: true, variant: "danger" }]
-    });
-}
-
-function showConfirmDialog(title, message, options = {}) {
-    return showAppDialog({
-        title,
-        message,
-        detail: options.detail || "",
-        tone: options.tone || "warning",
-        kicker: options.kicker || "CONFIRM ACTION",
-        actions: [
-            { label: options.cancelLabel || "Cancel", value: false, variant: "secondary" },
-            { label: options.confirmLabel || "Continue", value: true, variant: options.confirmVariant || "primary" }
-        ]
-    });
-}
-
-function closeExternalLinkModal() {
-    activeExternalLink = null;
-    closeModal('external-link-modal');
-}
-
-function showExternalActionModal(key) {
-    const modal = document.getElementById('external-link-modal');
-    const config = externalLinkConfigs[key];
-
-    if (!modal || !config) {
-        return;
-    }
-
-    hideUserDropdown();
-    activeExternalLink = config;
-
-    const kickerEl = document.getElementById('external-link-kicker');
-    const titleEl = document.getElementById('external-link-title');
-    const copyEl = document.getElementById('external-link-copy');
-    const urlEl = document.getElementById('external-link-url');
-    const noteEl = document.getElementById('external-link-note');
-    const confirmButton = document.getElementById('external-link-confirm');
-
-    if (kickerEl) kickerEl.textContent = config.kicker;
-    if (titleEl) titleEl.textContent = config.title;
-    if (copyEl) copyEl.textContent = config.body;
-    if (urlEl) urlEl.textContent = config.url;
-    if (noteEl) noteEl.textContent = config.note;
-    if (confirmButton) confirmButton.textContent = config.confirmLabel;
-
-    modal.classList.remove('hidden');
-}
-
-async function confirmExternalLink() {
-    if (!activeExternalLink?.url) {
-        return;
-    }
-
-    try {
-        await window.api.openExternal(activeExternalLink.url);
-        addTerminalLine(`> [LINK] Opening ${activeExternalLink.title.toUpperCase()}...`);
-        setSettingsStatus("OPENING LINK");
-        closeExternalLinkModal();
-    } catch (err) {
-        console.error("[LINK] Failed to open external link:", err);
-        closeExternalLinkModal();
-        await showErrorDialog("Link Launch Failed", "The loader could not open the external destination.", err?.message || "");
-    }
-}
-
-async function copyExternalLink() {
-    if (!activeExternalLink?.url) {
-        return;
-    }
-
-    try {
-        await navigator.clipboard.writeText(activeExternalLink.url);
-        addTerminalLine(`> [LINK] Copied ${activeExternalLink.title.toUpperCase()} URL.`);
-        setSettingsStatus("LINK COPIED");
-    } catch (err) {
-        console.error("[LINK] Failed to copy URL:", err);
-        await showErrorDialog("Copy Failed", "The loader could not copy the external link to your clipboard.", err?.message || "");
-    }
-}
-
-async function loadHardwareSnapshot(forceRefresh = false) {
-    if (forceRefresh) {
-        hardwareSnapshot = null;
-        hardwareSnapshotPromise = null;
-    }
-
-    if (hardwareSnapshot) {
-        return hardwareSnapshot;
-    }
-
-    if (!hardwareSnapshotPromise) {
-        hardwareSnapshotPromise = window.api.getHardwareSnapshot(forceRefresh)
-            .then((snapshot) => {
-                hardwareSnapshot = snapshot;
-                return snapshot;
-            })
-            .catch((err) => {
-                hardwareSnapshotPromise = null;
-                throw err;
-            });
-    }
-
-    return hardwareSnapshotPromise;
-}
-
-function setSettingsStatus(message) {
-    const statusChip = document.getElementById('settings-status-note');
-    if (statusChip) {
-        statusChip.textContent = message;
-    }
-}
-
-function getCurrentLicenseKey() {
-    return (localStorage.getItem('license_key') || '').trim().toUpperCase();
-}
-
-function getCurrentPrefix() {
-    const key = getCurrentLicenseKey();
-    return currentUserPrefix || (key.includes('-') ? key.split('-')[0].toUpperCase() : "NONE");
-}
-
-function getAccessPlanLabel(prefix) {
-    const planMap = {
-        ALLX: "ALL ACCESS",
-        LIFE: "LIFETIME",
-        CS2X: "CS2 ACCESS",
-        FIVM: "FIVEM ACCESS",
-        GTAV: "GTAV ACCESS",
-        WARZ: "WARZONE ACCESS"
-    };
-
-    return planMap[prefix] || "PENDING";
-}
-
-function isSubscriptionExpired(expiryDate = localStorage.getItem('expiry_date')) {
-    if (!expiryDate || expiryDate === "null") {
-        return false;
-    }
-
-    const expiryTime = new Date(expiryDate).getTime();
-    if (Number.isNaN(expiryTime)) {
-        return false;
-    }
-
-    return Date.now() >= expiryTime;
-}
-
-function hasExpiredTabLock() {
-    return Boolean(localStorage.getItem('license_key')) && isSubscriptionExpired();
-}
-
-function updateProtectedTabLocks() {
-    const lockActive = hasExpiredTabLock();
-    const tabButtonMap = {
-        home: 'btn-home',
-        games: 'btn-games',
-        hwid: 'btn-hwid',
-        spoofing: 'btn-spoofing',
-        settings: 'btn-settings'
-    };
-
-    Object.entries(tabButtonMap).forEach(([tabName, elementId]) => {
-        const button = document.getElementById(elementId);
-        if (!button) {
-            return;
+        .input-group input:focus {
+            border-color: var(--accent-teal);
         }
 
-        const isLocked = lockActive && expiryLockedTabs.has(tabName);
-        button.classList.toggle('is-locked', isLocked);
-        button.setAttribute(
-            'title',
-            isLocked
-                ? 'Subscription expired. Redeem a new key to unlock this section.'
-                : ''
-        );
-    });
+.input-relative input {
+    width: 100%;
+    box-sizing: border-box;
+    padding-right: 72px;
 }
 
-function dismissExpiryLockModal() {
-    closeModal('expiry-modal');
-    updateProtectedTabLocks();
-    showTab('home', { bypassExpiryLock: true, silent: true });
+.eye-icon {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: transparent;
+    border: none;
+    color: var(--accent-teal);
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 1px;
+    padding: 0;
+    cursor: pointer !important;
 }
 
-function maskLicenseKey(key) {
-    if (!key) {
-        return "Awaiting redeem";
-    }
-
-    if (key.length <= 10) {
-        return key;
-    }
-
-    return `${key.slice(0, 5)}••••-${key.slice(-4)}`;
+.eye-icon:hover {
+    color: #ffffff;
 }
 
-function getHomeExpirySnapshot(expiry, prefix) {
-    if (prefix === "ALLX" || prefix === "LIFE") {
-        return {
-            label: "LIFETIME",
-            detail: "Permanent access enabled on this account.",
-            color: "var(--gold)",
-            glow: "0 0 14px rgba(255, 208, 79, 0.35)"
-        };
-    }
-
-    if (!expiry || expiry === "null") {
-        return {
-            label: "PENDING",
-            detail: "No active subscription timer detected yet.",
-            color: "var(--text-secondary)",
-            glow: "none"
-        };
-    }
-
-    const expiryDate = new Date(expiry);
-    const expiryTime = expiryDate.getTime();
-
-    if (Number.isNaN(expiryTime)) {
-        return {
-            label: "PENDING",
-            detail: "Subscription timing data is unavailable.",
-            color: "var(--text-secondary)",
-            glow: "none"
-        };
-    }
-
-    const diff = expiryTime - Date.now();
-
-    if (diff <= 0) {
-        return {
-            label: "EXPIRED",
-            detail: `Expired on ${expiryDate.toLocaleString()}`,
-            color: "var(--red)",
-            glow: "0 0 16px rgba(255, 84, 84, 0.32)"
-        };
-    }
-
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-
-    if (days >= 1) {
-        let color = "#63f3b1";
-        let glow = "0 0 16px rgba(99, 243, 177, 0.35)";
-
-        if (days <= 10) {
-            color = "var(--red)";
-            glow = "0 0 16px rgba(255, 84, 84, 0.32)";
-        } else if (days <= 30) {
-            color = "#ffd54f";
-            glow = "0 0 16px rgba(255, 213, 79, 0.30)";
-        }
-
-        return {
-            label: `${days} DAY${days === 1 ? "" : "S"}`,
-            detail: `Expires on ${expiryDate.toLocaleString()}`,
-            color,
-            glow
-        };
-    }
-
-    const color = hours <= 10 ? "var(--red)" : "#ffd54f";
-    const glow = hours <= 10
-        ? "0 0 16px rgba(255, 84, 84, 0.32)"
-        : "0 0 16px rgba(255, 213, 79, 0.30)";
-
-    return {
-        label: `${hours}h ${minutes}m ${seconds}s`,
-        detail: `Less than 24 hours remain. Ends ${expiryDate.toLocaleTimeString()}.`,
-        color,
-        glow
-    };
+.login-options {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
 }
 
-function updateHomeServerStatusUI() {
-    const statusEl = document.getElementById('home-server-status');
-    const copyEl = document.getElementById('home-server-copy');
-
-    if (!statusEl || !copyEl) {
-        return;
-    }
-
-    statusEl.className = 'home-status-pill';
-
-    if (serverHealthState === "ONLINE") {
-        statusEl.classList.add('online');
-        statusEl.textContent = "ONLINE";
-        copyEl.textContent = "Auth API is reachable and responding normally.";
-        return;
-    }
-
-    if (serverHealthState === "OFFLINE") {
-        statusEl.classList.add('offline');
-        statusEl.textContent = "OFFLINE";
-        copyEl.textContent = "The API health check failed. Launch actions may be unavailable.";
-        return;
-    }
-
-    statusEl.classList.add('checking');
-    statusEl.textContent = "CHECKING";
-    copyEl.textContent = "Syncing loader health...";
+.remember-me {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    cursor: pointer !important;
 }
 
-function stopInjectionProgressAnimation() {
-    if (injectionProgressTimer) {
-        clearInterval(injectionProgressTimer);
-        injectionProgressTimer = null;
-    }
+.remember-me input {
+    margin: 0;
+    accent-color: var(--accent-teal);
 }
 
-function setInjectionProgress(percent, message, tone = "active") {
-    const bar = document.getElementById('main-progress-bar');
-    const text = document.getElementById('status-text');
-    const percentText = document.getElementById('status-percent');
-
-    if (bar) {
-        bar.style.width = `${Math.max(0, Math.min(100, percent))}%`;
-        bar.classList.remove('is-success', 'is-error');
-        if (tone === "success") {
-            bar.classList.add('is-success');
-        } else if (tone === "error") {
-            bar.classList.add('is-error');
-        }
-    }
-
-    if (text && message) {
-        text.textContent = message;
-        text.style.color = tone === "error"
-            ? "var(--red)"
-            : tone === "success"
-                ? "#8cffde"
-                : "var(--accent)";
-    }
-
-    if (percentText) {
-        percentText.textContent = `${Math.max(0, Math.min(100, percent))}%`;
-    }
+.login-link-btn {
+    background: transparent;
+    border: none;
+    padding: 0;
+    color: var(--accent-teal);
+    font-size: 11px;
+    font-weight: bold;
+    letter-spacing: 0.8px;
+    text-decoration: none;
+    cursor: pointer !important;
 }
 
-function resetInjectionProgressUI() {
-    stopInjectionProgressAnimation();
-    setInjectionProgress(0, "INITIALIZING...");
+.login-link-btn:hover {
+    color: #ffffff;
+    text-decoration: underline;
 }
 
-function startInjectionProgressAnimation(gameName) {
-    const steps = [
-        { percent: 12, message: `AUTHENTICATING ${gameName.toUpperCase()}...` },
-        { percent: 28, message: "SECURING SESSION..." },
-        { percent: 45, message: `COMMUNICATING WITH ${gameName.toUpperCase()}...` }
-    ];
-
-    let stepIndex = 0;
-    setInjectionProgress(steps[0].percent, steps[0].message);
-    stopInjectionProgressAnimation();
-
-    injectionProgressTimer = setInterval(() => {
-        stepIndex += 1;
-        if (stepIndex >= steps.length) {
-            stopInjectionProgressAnimation();
-            return;
-        }
-
-        const step = steps[stepIndex];
-        setInjectionProgress(step.percent, step.message);
-    }, 420);
+.login-warning {
+    margin: 0;
+    color: var(--red);
+    font-size: 12px;
+    line-height: 1.4;
 }
 
-async function loadNews(forceRefresh = false) {
-    const terminal = document.getElementById('main-terminal');
-    if (!terminal) return;
+.login-warning[data-state="info"] {
+    color: var(--accent-teal);
+}
 
-    if (newsLoaded && !forceRefresh) {
-        return;
+/* Dashboard hidden until valid login — only show when body has .logged-in */
+.sidebar,
+.main-content {
+    display: none !important;
+    border-radius: 16px;
+}
+body.logged-in .sidebar {
+    display: flex !important;
+    flex-direction: column;
+    border-radius: 16px;
+}
+body.logged-in .main-content {
+    display: flex !important;
+    border-radius: 16px;
+    flex-direction: column;
+}
+
+/* AUTO LOGI MODAL */
+.modal-overlay {
+    position: fixed !important; /* Stay fixed to the screen */
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: transparent !important; /* Dim the background */
+    backdrop-filter: blur(8px); /* Modern blur effect */
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 99999;
+    pointer-events: all;
+}
+
+    .modal-overlay.hidden {
+        display: none !important;
     }
 
-    setSettingsStatus("SYNCING FEED");
+/* Modal Box Styling */
+.modal-content.glass-card {
+    /* Change #1a1a1a to transparent rgba */
+    background: rgba(26, 26, 26, 0.6) !important;
+    /* Keep your existing styles */
+    border: 1px solid var(--accent-teal);
+    padding: 30px;
+    border-radius: 12px;
+    /* Optional: Add a second blur here for extra "glass" effect */
+    backdrop-filter: blur(12px);
+    box-shadow: 0 0 40px rgba(0, 0, 0, 0.8), 0 0 15px rgba(26, 188, 156, 0.2);
+    min-width: 350px;
+    max-width: 400px;
+}
 
-    try {
-        const news = await window.api.getNews();
-        const rememberState = localStorage.getItem('remember-me') === 'true' ? "ENABLED" : "DISABLED";
-        const lines = [
-            `> [STATUS] Loader ready on v${currentVersion}.`,
-            `> [CLIENT] Remember Me: ${rememberState}.`,
-            "> [LOCAL] Settings apply instantly and save to this device."
-        ];
+.modal-icon {
+    font-size: 3rem;
+    color: #00f3ff; /* Neon Blue */
+    margin-bottom: 15px;
+    filter: drop-shadow(0 0 10px rgba(0, 243, 255, 0.5));
+}
 
-        if (news) {
-            lines.push(...news.split('\n').filter(Boolean));
-        }
+/* Status Badge */
+.status-badge {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 5px;
+}
 
-        terminal.innerHTML = "";
+    .status-badge p {
+        margin: 0;
+        font-size: 0.75rem;
+        letter-spacing: 1.5px;
+        color: #00f3ff;
+        text-transform: uppercase;
+    }
 
-        lines.forEach((line, index) => {
-            appendTerminalLine(line, {
-                animate: index === lines.length - 1
-            });
-        });
+.pulse-dot {
+    width: 6px;
+    height: 6px;
+    background: #00f3ff;
+    border-radius: 50%;
+    animation: pulse 1.5s infinite;
+}
 
-        newsLoaded = true;
-        setSettingsStatus("FEED READY");
-    } catch (err) {
-        console.error("[NEWS] Failed to load terminal feed:", err);
-        terminal.innerHTML = "";
-        addTerminalLine("> [ERROR] Failed to load terminal feed.");
-        setSettingsStatus("FEED ERROR");
+/* User Info Styling */
+.auth-details {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    color: rgba(255, 255, 255, 0.7);
+    font-family: 'Segoe UI', sans-serif;
+    margin-top: 10px;
+}
+
+.cancel-btn i {
+    margin-right: 5px;
+    font-size: 0.8rem;
+}
+
+@keyframes pulse {
+    0% {
+        transform: scale(1);
+        opacity: 1;
+    }
+
+    50% {
+        transform: scale(1.5);
+        opacity: 0.5;
+    }
+
+    100% {
+        transform: scale(1);
+        opacity: 1;
     }
 }
 
-function normalizeVersionString(version) {
-    return String(version || '')
-        .trim()
-        .replace(/^v/i, '')
-        .replace(/[^0-9.]/g, '');
+/* Sidebar Styling */
+.sidebar {
+    width: 250px;
+    background-color: var(--sidebar-bg);
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid #333;
 }
 
-function compareVersions(leftVersion, rightVersion) {
-    const left = normalizeVersionString(leftVersion).split('.').map((part) => parseInt(part || '0', 10));
-    const right = normalizeVersionString(rightVersion).split('.').map((part) => parseInt(part || '0', 10));
-    const maxLength = Math.max(left.length, right.length);
-
-    for (let index = 0; index < maxLength; index += 1) {
-        const leftPart = Number.isFinite(left[index]) ? left[index] : 0;
-        const rightPart = Number.isFinite(right[index]) ? right[index] : 0;
-
-        if (leftPart > rightPart) return 1;
-        if (leftPart < rightPart) return -1;
-    }
-
-    return 0;
+.sidebar-logo img {
+    max-width: 206px; /* Adjust size to fit sidebar */
+    height: auto;
+    display: block;
+    margin: 0 auto;
+    border-radius: 8px; /* optional rounded corners */
+    box-shadow: 0 0 15px rgb(251, 0, 238); /* optional glow */
+    transition: transform 0.3s ease;
 }
 
-function isRemoteReleaseNewer(release) {
-    if (!release?.version) {
-        return false;
+    .sidebar-logo img:hover {
+        transform: scale(1.05); /* subtle hover effect */
     }
 
-    return compareVersions(release.version, currentVersion) > 0;
+.brand {
+    color: var(--accent-teal);
+    font-weight: bold;
+    font-size: 1.2rem;
+    margin-bottom: 30px;
 }
 
-function canInstallRelease(release) {
-    return Boolean(release?.url && isRemoteReleaseNewer(release));
+.nav-group {
+    flex-grow: 1;
+    padding: 15px;
 }
 
-async function runManualUpdateCheck() {
-    const button = document.getElementById('check-updates-btn');
-    const originalText = button ? button.textContent : "";
-
-    if (button) {
-        button.disabled = true;
-        button.textContent = "CHECKING...";
-    }
-
-    setSettingsStatus("CHECKING UPDATES");
-
-    try {
-        const release = await checkForUpdates({ manual: true });
-
-        if (canInstallRelease(release)) {
-            addTerminalLine(`> [UPDATE] New build detected: ${release.version}`);
-            setSettingsStatus("UPDATE AVAILABLE");
-        } else if (release?.version && compareVersions(release.version, currentVersion) < 0) {
-            addTerminalLine(`> [UPDATE] Remote manifest is older (${release.version}). Staying on ${currentVersion}.`);
-            setSettingsStatus("UP TO DATE");
-        } else if (release?.version && compareVersions(release.version, currentVersion) === 0) {
-            addTerminalLine(`> [UPDATE] Already on the latest build (${currentVersion}).`);
-            setSettingsStatus("UP TO DATE");
-        } else if (release?.version && !release?.url) {
-            addTerminalLine(`> [UPDATE] Manifest found for ${release.version}, but no installer URL is published yet.`);
-            setSettingsStatus("PACKAGE PENDING");
-        } else {
-            addTerminalLine(`> [UPDATE] Already on the latest build (${currentVersion}).`);
-            setSettingsStatus("UP TO DATE");
-        }
-    } catch (err) {
-        addTerminalLine("> [ERROR] Update check failed.");
-        setSettingsStatus("UPDATE ERROR");
-    } finally {
-        if (button) {
-            button.disabled = false;
-            button.textContent = originalText || "CHECK FOR UPDATES";
-        }
-    }
+.nav-item {
+    display: flex;
+    align-items: center;
+    padding: 12px 10px;
+    color: var(--text-secondary);
+    text-decoration: none;
+    border-radius: 5px;
+    transition: background 0.3s, color 0.3s;
+    margin-bottom: 5px;
 }
 
-function openExitModal() {
-    hideUserDropdown();
-    openModal('exit-modal');
+    .nav-item i {
+        margin-right: 15px;
+        width: 20px;
+        text-align: center;
+    }
+
+.nav-item:hover, .nav-item.active {
+        background-color: rgba(26, 188, 156, 0.1);
+        color: var(--accent-teal);
+    }
+
+.nav-item.is-locked {
+    opacity: 0.48;
+    background: rgba(255, 84, 84, 0.04);
+    color: #8d99a8;
 }
 
-function exitApplication() {
-    closeModal('exit-modal');
-    if (window.api?.close) {
-        window.api.close();
-    }
+.nav-item.is-locked:hover {
+    background: rgba(255, 84, 84, 0.08);
+    color: #c3ccd6;
 }
 
-function scheduleDeferredStartupTask(callback, delay = 0) {
-    window.requestAnimationFrame(() => {
-        window.setTimeout(() => {
-            Promise.resolve()
-                .then(callback)
-                .catch((error) => {
-                    console.error("[STARTUP TASK ERROR]", error);
-                });
-        }, delay);
-    });
+.footer-nav {
+    margin-top: auto;
+    border-top: 1px solid #333;
+    padding-top: 20px;
 }
 
-let deferredStartupScheduled = false;
-
-function scheduleDeferredStartupWork() {
-    if (deferredStartupScheduled) {
-        return;
-    }
-
-    deferredStartupScheduled = true;
-
-    scheduleDeferredStartupTask(async () => {
-        await syncInstalledVersion();
-
-        if (localStorage.getItem('auto-update-loader') === 'true') {
-            await checkForUpdates();
-        }
-    }, 80);
-
-    scheduleDeferredStartupTask(() => loadHardwareSnapshot().catch(console.error), 180);
-    scheduleDeferredStartupTask(() => checkServer().catch(console.error), 280);
-    scheduleDeferredStartupTask(() => refreshGameCardsForAvailability(getCurrentPrefix()).catch(console.error), 420);
-    scheduleDeferredStartupTask(async () => {
-        await refreshGameCardFeeds();
-        startGameFeedRefreshLoop();
-    }, 560);
-    scheduleDeferredStartupTask(() => startDiscordAnnouncementPolling(), 720);
+.exit-btn {
+    color: var(--exit-red);
 }
 
-async function initializeLoader() {
-    const el = (id) => document.getElementById(id);
-
-    applyProfileImage(getStoredProfileImage(), { persist: false });
-
-    if (el('update-overlay')) el('update-overlay').classList.add('hidden');
-
-    const savedEmail = localStorage.getItem('remembered_email');
-    const savedPass = localStorage.getItem('remembered_password');
-    const savedExpiry = localStorage.getItem('expiry_date');
-    const rememberMe = localStorage.getItem('remember-me') === 'true';
-
-    const autoLoginModal = el('auto-login-modal');
-
-    if (rememberMe && savedEmail && savedPass) {
-        const now = Date.now();
-        const expTime = savedExpiry ? new Date(savedExpiry).getTime() : now + 1000;
-
-        if (now < expTime || isNaN(expTime)) {
-            console.log("[SECURITY] Valid session found. Auto logging in...");
-
-            if (el('login-email')) el('login-email').value = savedEmail;
-            if (el('login-password')) el('login-password').value = savedPass;
-            if (autoLoginModal) showAutoLoginModal();
-            if (el('auto-login-user')) el('auto-login-user').innerText = savedEmail;
-            showManualLoginState(null, true);
-
-            const requestToken = ++autoLoginRequestToken;
-            handleLogin(true, { email: savedEmail, password: savedPass, requestToken })
-                .then(() => console.log("[SYSTEM] Auto-login complete"))
-                .catch(err => console.error("[AUTOLOGIN ERROR]", err));
-
-            return;
-        } else {
-            console.warn("[SECURITY] Session expired.");
-            localStorage.removeItem('remembered_password');
-            localStorage.removeItem('expiry_date');
-            localStorage.removeItem('remember-me');
-        }
-    }
-
-    console.log("[SYSTEM] No valid session. Showing login screen.");
-
-    showManualLoginState("No valid session found. Please log in manually.");
+/* TAB LOGIC */
+.tab-content {
+    display: none;
+    width: 100%;
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-    if (document.body.classList.contains('login-active') && window.api?.setAuthWindow) {
-        window.api.setAuthWindow();
-    }
-
-    hoistModalToBody('register-modal');
-    hoistModalToBody('auto-login-modal');
-    hoistModalToBody('game-launch-modal');
-    hoistModalToBody('external-link-modal');
-    hoistModalToBody('app-dialog-modal');
-    initializeLoaderTheme();
-    updateVersionLabels();
-    void initializeLoader();
-    scheduleDeferredStartupWork();
-});
-
-function cancelAutoLogin() {
-    autoLoginRequestToken += 1;
-    showManualLoginState("Auto-login cancelled. You can log in manually or create an account.");
-    isAuthProcessActive = false;
-}
-function toggleDropdown() {
-    document.getElementById('user-dropdown').classList.toggle('hidden');
+#home-tab {
+    display: block;
+    width: 100%;
 }
 
-const getSetting = (id) => document.getElementById(id).checked;
-
-async function startCS2() {
-
-    if (!hasAccess('CS2')) return;
-
-    const autoCloseActive = document.getElementById('auto-close-launcher').checked;
-    const key = localStorage.getItem('license_key');
-
-    const result = await window.electron.invoke('launch-game', 'cs2', autoCloseActive, key);
-
-    if (result && result.status === "Success") {
-        if (typeof updateTerminal === 'function') {
-            updateTerminal(`> [SUCCESS] ${result.message}`);
-        } else {
-            addTerminalLine(`> [SUCCESS] ${result.message}`);
-        }
-    } else if (result && result.status === "Error") {
-
-        addTerminalLine(`> [ERROR] ${result.message}`);
-    }
+.home-tab-shell {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-width: 0;
+    box-sizing: border-box;
 }
 
-async function launchGame(gameName) {
-    const gameConfig = getGameModuleConfig(gameName);
-
-    if (!hasAccess(gameName)) return;
-
-    const key = localStorage.getItem('license_key');
-    if (!key) {
-        await showErrorDialog("License Required", "Redeem a license key from your profile before launching a game.");
-        openModal('settings-modal');
-        return;
-    }
-
-    const autoCloseActive = document.getElementById('auto-close-launcher').checked;
-
-    const injectionModal = document.getElementById('injection-modal');
-    const moduleAvailability = await getGameModuleAvailability(gameName);
-    const injectionType = await openGameLaunchModal(gameName, moduleAvailability);
-
-    if (injectionType === 'cancel') {
-        addTerminalLine(`> [SYSTEM] ${gameConfig.displayName.toUpperCase()} launch cancelled.`);
-        return;
-    }
-
-    // --- START INJECTION OVERLAY ---
-    if (injectionModal) {
-        resetInjectionProgressUI();
-        injectionModal.classList.remove('hidden');
-        startInjectionProgressAnimation(gameConfig.displayName);
-    }
-
-    addTerminalLine(`> [MODULE] ${gameConfig.displayName.toUpperCase()} -> ${injectionType.toUpperCase()} selected.`);
-    addTerminalLine(`> [SYSTEM] Initializing ${gameConfig.displayName.toUpperCase()}...`);
-
-    const rawEmail = localStorage.getItem("user_email");
-    const rawExpiry = localStorage.getItem("expiry_date");
-
-    function getDaysRemaining(expiry) {
-        if (!expiry) return "Unknown";
-
-        const now = new Date();
-        const exp = new Date(expiry);
-
-        const diff = exp - now;
-        const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
-
-        if (days <= 0) return "Expired";
-        if (days > 3650) return "Lifetime";
-
-        return `${days} days`;
-    }
-
-    const userData = {
-        username: rawEmail ? rawEmail.split("@")[0] : "Guest",
-        subscription: rawExpiry && new Date(rawExpiry) > new Date() ? "Premium" : "Expired",
-        expiry: rawExpiry
-    };
-
-    // Pass userData as the 5th argument to your launch function
-    const result = await window.api.launchCheat(gameConfig.displayName, autoCloseActive, key, injectionType, userData);
-
-    if (result.status === "Success") {
-        stopInjectionProgressAnimation();
-        setInjectionProgress(100, "INJECTION SUCCESSFUL!", "success");
-
-        setTimeout(() => {
-            injectionModal?.classList.add('hidden');
-            resetInjectionProgressUI();
-        }, 3000);
-    } else {
-        stopInjectionProgressAnimation();
-        setInjectionProgress(100, "INJECTION FAILED", "error");
-        setTimeout(() => {
-            injectionModal?.classList.add('hidden');
-            resetInjectionProgressUI();
-        }, 3000);
-    }
-
-    addTerminalLine(`> ${result.status === "Success" ? "[SUCCESS]" : "[ERROR]"} ${result.message}`);
+.home-hero {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 18px 20px;
+    border-radius: 18px;
+    background:
+        radial-gradient(circle at top right, rgba(var(--accent-rgb), 0.18), transparent 38%),
+        linear-gradient(135deg, var(--panel-start), var(--panel-end));
+    border: 1px solid var(--panel-border);
+    box-shadow: 0 18px 34px var(--panel-shadow);
+    align-items: flex-start;
+    box-sizing: border-box;
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-    const settings = [
-        'auto-launch',
-        'auto-update-loader',
-        'auto-close-launcher',
-        'discord-rpc',
-        'stream-proof'
-    ];
-
-    settings.forEach(id => {
-        const el = document.getElementById(id);
-        if (!el) return;
-
-        const savedState = localStorage.getItem(id);
-        if (savedState !== null) {
-            el.checked = savedState === 'true';
-        }
-
-        el.addEventListener('change', (e) => {
-            applySettingValue(id, e.target.checked);
-        });
-    });
-
-    ['theme-accent-picker', 'theme-panel-picker', 'theme-sidebar-picker', 'theme-background-picker'].forEach((id) => {
-        const input = document.getElementById(id);
-        if (!input) {
-            return;
-        }
-
-        input.addEventListener('input', () => {
-            setSettingsStatus("CUSTOM THEME READY");
-        });
-    });
-});
-
-function toggleShadowWarning() {
-    const isChecked = document.getElementById('deep-clean').checked;
-    const warning = document.getElementById('shadow-warning');
-    if (isChecked) {
-        warning.classList.remove('hidden');
-    } else {
-        warning.classList.add('hidden');
-    }
+.home-hero-copy {
+    flex: 1 1 auto;
+    min-width: 0;
 }
 
-function handleSettingChange(id, value) {
-    addTerminalLine(`> [CONFIG] Executing ${id.toUpperCase()}...`);
-
-    switch (id) {
-        case 'auto-update-loader':
-            setSettingsStatus(value ? "AUTO UPDATE ON" : "AUTO UPDATE OFF");
-            if (value) {
-                void checkForUpdates();
-            }
-            break;
-
-        case 'discord-rpc':
-            const rpcCheckbox = document.getElementById('discord-rpc');
-            if (rpcCheckbox) rpcCheckbox.disabled = true;
-
-            window.api.toggleDiscord(value);
-            addTerminalLine(`> [SYSTEM] Synchronizing Discord RPC...`);
-            setSettingsStatus(value ? "RPC ENABLED" : "RPC DISABLED");
-
-            setTimeout(() => {
-                if (rpcCheckbox) rpcCheckbox.disabled = false;
-            }, 2000);
-            break;
-
-        case 'stream-proof':
-            window.api.toggleStreamProof(value);
-            setSettingsStatus(value ? "STREAM PROOF ON" : "STREAM PROOF OFF");
-            break;
-
-        case 'auto-launch':
-            if (window.api.toggleAutoLaunch) window.api.toggleAutoLaunch(value);
-            setSettingsStatus(value ? "AUTO LAUNCH ON" : "AUTO LAUNCH OFF");
-            break;
-
-        case 'auto-close-launcher':
-            addTerminalLine(`> [SYSTEM] Preference saved: ${value ? 'EXIT_ON_INJECT' : 'STAY_OPEN'}`);
-            setSettingsStatus(value ? "AUTO CLOSE ON" : "AUTO CLOSE OFF");
-            break;
-    }
+.home-hero-copy h2 {
+    margin: 8px 0 10px;
 }
 
-function formatSettingKey(id) {
-    return id.replace(/-/g, '_').toUpperCase();
+.home-hero-badge {
+    min-width: 118px;
+    padding: 12px 14px;
+    border-radius: 16px;
+    background: var(--surface-muted-strong);
+    border: 1px solid var(--panel-border-strong);
+    text-align: right;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    box-sizing: border-box;
 }
 
-function applySettingValue(id, value) {
-    const input = document.getElementById(id);
-    const normalizedValue = Boolean(value);
-
-    if (!input) {
-        return false;
-    }
-
-    input.checked = normalizedValue;
-    localStorage.setItem(id, String(normalizedValue));
-    handleSettingChange(id, normalizedValue);
-    addTerminalLine(`> [CONFIG] ${formatSettingKey(id)} set to ${normalizedValue ? 'ON' : 'OFF'}`);
-    return true;
+.home-hero-badge span,
+.home-stat-card span,
+.home-meta-row span,
+.home-action-kicker {
+    display: block;
+    font-size: 0.72rem;
+    letter-spacing: 1.3px;
+    text-transform: uppercase;
+    color: var(--text-secondary);
 }
 
-function showTerminalCommandHelp() {
-    [
-        "> Available commands:",
-        "> help, clear, status, refresh, check updates",
-        "> home, games, hwid, spoofing, settings",
-        "> auto launch on/off, auto update on/off, auto close on/off",
-        "> discord on/off, stream proof on/off",
-        "> open discord, open support, open github",
-        "> theme default, arctic, ember, emerald, obsidian, rose",
-        "> theme custom, theme reset",
-        "> Natural language works too: turn off rich, keep launcher open, go home"
-    ].forEach(addTerminalLine);
+.home-hero-badge strong {
+    display: block;
+    margin-top: 6px;
+    font-size: 1.15rem;
+    color: var(--panel-text-strong);
 }
 
-function showSystemStatus() {
-    const savedTheme = localStorage.getItem('loader-theme') || 'default';
-    const themeLabel = savedTheme === 'custom'
-        ? 'CUSTOM'
-        : getThemePreset(savedTheme).label.toUpperCase();
-    addTerminalLine(`> [STATUS] API: ${serverHealthState}`);
-    addTerminalLine(`> [STATUS] THEME: ${themeLabel}`);
-    addTerminalLine(`> [STATUS] AUTO_UPDATE: ${document.getElementById('auto-update-loader')?.checked ? 'ON' : 'OFF'}`);
-    addTerminalLine(`> [STATUS] AUTO_CLOSE: ${document.getElementById('auto-close-launcher')?.checked ? 'ON' : 'OFF'}`);
-    addTerminalLine(`> [STATUS] RPC: ${document.getElementById('discord-rpc')?.checked ? 'ON' : 'OFF'} | STREAM_PROOF: ${document.getElementById('stream-proof')?.checked ? 'ON' : 'OFF'}`);
+.home-overview-grid,
+.home-panels-grid {
+    width: 100%;
+    display: grid;
+    gap: 14px;
+    box-sizing: border-box;
 }
 
-function commandIncludesAny(command, phrases = []) {
-    return phrases.some((phrase) => command.includes(phrase));
+.home-overview-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin-top: 0;
 }
 
-function getExplicitToggleIntent(command) {
-    if (commandIncludesAny(command, ['turn on', 'switch on', 'enable', 'start ', 'activate'])) {
-        return true;
-    }
-
-    if (commandIncludesAny(command, ['turn off', 'switch off', 'disable', 'stop ', 'deactivate'])) {
-        return false;
-    }
-
-    return null;
+.home-panels-grid {
+    grid-template-columns: 1.15fr 0.95fr;
+    margin-top: 0;
 }
 
-function getTerminalToggleTarget(command) {
-    const targets = [
-        {
-            id: 'discord-rpc',
-            keywords: ['rich presence', 'discord rich presence', 'discord rich', 'discord rpc', 'rich', 'rpc', 'presence', 'discord status']
-        },
-        {
-            id: 'stream-proof',
-            keywords: ['stream proof', 'streamproof', 'stream mode', 'hide from stream', 'hide on stream', 'streaming protection']
-        },
-        {
-            id: 'auto-close-launcher',
-            keywords: ['auto close', 'close launcher', 'close after inject', 'exit after inject', 'quit after inject', 'stay open', 'keep open', 'leave open', 'launcher open']
-        },
-        {
-            id: 'auto-update-loader',
-            keywords: ['auto update', 'automatic update', 'auto updates', 'update automatically', 'updates', 'launcher updates']
-        },
-        {
-            id: 'auto-launch',
-            keywords: ['auto launch', 'launch on startup', 'start on startup', 'start with windows', 'open on startup', 'startup']
-        }
-    ];
-
-    return targets.find((target) => commandIncludesAny(command, target.keywords)) || null;
+.home-stat-card,
+.home-panel-card {
+    background: linear-gradient(180deg, var(--panel-start), var(--panel-end));
+    border: 1px solid var(--panel-border);
+    border-radius: 16px;
+    box-shadow: 0 16px 32px var(--panel-shadow);
+    box-sizing: border-box;
 }
 
-function parseSettingToggleCommand(command) {
-    const togglePatterns = [
-        { regex: /^(?:set )?auto launch (on|off)$/i, id: 'auto-launch' },
-        { regex: /^(?:set )?auto update(?: loader)? (on|off)$/i, id: 'auto-update-loader' },
-        { regex: /^(?:set )?auto close(?: launcher)? (on|off)$/i, id: 'auto-close-launcher' },
-        { regex: /^(?:set )?discord(?: rpc)? (on|off)$/i, id: 'discord-rpc' },
-        { regex: /^(?:set )?stream proof (on|off)$/i, id: 'stream-proof' }
-    ];
-
-    for (const pattern of togglePatterns) {
-        const match = command.match(pattern.regex);
-        if (match) {
-            return {
-                id: pattern.id,
-                value: match[1].toLowerCase() === 'on'
-            };
-        }
-    }
-
-    const target = getTerminalToggleTarget(command);
-    if (!target) {
-        return null;
-    }
-
-    const explicitValue = getExplicitToggleIntent(command);
-    if (explicitValue !== null) {
-        return {
-            id: target.id,
-            value: explicitValue
-        };
-    }
-
-    if (target.id === 'auto-close-launcher') {
-        if (commandIncludesAny(command, ['stay open', 'keep open', 'leave open', "don't close", 'do not close'])) {
-            return { id: target.id, value: false };
-        }
-
-        if (commandIncludesAny(command, ['close after inject', 'exit after inject', 'quit after inject'])) {
-            return { id: target.id, value: true };
-        }
-    }
-
-    if (target.id === 'stream-proof' && commandIncludesAny(command, ['hide from stream', 'hide on stream', 'stream mode'])) {
-        return { id: target.id, value: true };
-    }
-
-    if (target.id === 'auto-launch' && commandIncludesAny(command, ['start with windows', 'launch on startup', 'start on startup', 'open on startup'])) {
-        return { id: target.id, value: true };
-    }
-
-    if (target.id === 'discord-rpc') {
-        if (commandIncludesAny(command, ['no rich presence', 'without rich presence', 'without rpc'])) {
-            return { id: target.id, value: false };
-        }
-
-        if (commandIncludesAny(command, ['show rich presence', 'use rich presence'])) {
-            return { id: target.id, value: true };
-        }
-    }
-
-    if (commandIncludesAny(command, ['toggle ', 'flip '])) {
-        return {
-            id: target.id,
-            value: !Boolean(document.getElementById(target.id)?.checked)
-        };
-    }
-
-    return null;
+.home-stat-card {
+    padding: 16px 16px 14px;
+    min-height: 116px;
 }
 
-function parseTerminalNavigationCommand(command) {
-    const navigationTargets = [
-        { tab: 'home', keywords: ['home', 'dashboard', 'main screen'] },
-        { tab: 'games', keywords: ['games', 'game tab', 'game menu', 'modules'] },
-        { tab: 'hwid', keywords: ['hwid', 'hardware', 'machine id'] },
-        { tab: 'spoofing', keywords: ['spoofing', 'spoofer', 'spoof'] },
-        { tab: 'settings', keywords: ['settings', 'setting tab', 'config', 'configuration'] }
-    ];
-
-    for (const target of navigationTargets) {
-        if (command === target.tab) {
-            return target.tab;
-        }
-
-        if (
-            commandIncludesAny(command, target.keywords) &&
-            commandIncludesAny(command, ['go ', 'open ', 'show ', 'switch ', 'take me', 'bring me'])
-        ) {
-            return target.tab;
-        }
-    }
-
-    return null;
+.home-stat-card strong {
+    display: block;
+    margin-top: 10px;
+    font-size: 1.38rem;
+    letter-spacing: 0.4px;
+    color: var(--panel-text-strong);
 }
 
-function parseTerminalExternalCommand(command) {
-    const externalTargets = [
-        { key: 'discord', keywords: ['discord', 'server'], exact: ['discord', 'open discord', 'join discord'] },
-        { key: 'support', keywords: ['support', 'shop', 'store'], exact: ['support', 'shop', 'open support', 'open shop', 'shop support'] },
-        { key: 'github', keywords: ['github', 'repo', 'repository'], exact: ['github', 'open github'] }
-    ];
-
-    for (const target of externalTargets) {
-        if (target.exact.includes(command)) {
-            return target.key;
-        }
-
-        if (command === target.key) {
-            return target.key;
-        }
-
-        if (
-            commandIncludesAny(command, target.keywords) &&
-            commandIncludesAny(command, ['open ', 'join ', 'visit ', 'launch ', 'show '])
-        ) {
-            return target.key;
-        }
-    }
-
-    return null;
+.home-stat-card small {
+    display: block;
+    margin-top: 10px;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
 }
 
-function parseThemeCommand(command) {
-    if (command === 'theme custom' || commandIncludesAny(command, ['apply custom theme', 'use custom theme'])) {
-        return { type: 'custom' };
-    }
-
-    if (command === 'theme reset' || commandIncludesAny(command, ['reset theme', 'restore default theme'])) {
-        return { type: 'reset' };
-    }
-
-    for (const preset of Object.keys(themePresets)) {
-        if (
-            command === `theme ${preset}` ||
-            command === `${preset} theme` ||
-            command === `use ${preset}` ||
-            command === `apply ${preset}` ||
-            command.includes(`theme ${preset}`) ||
-            command.includes(`theme to ${preset}`) ||
-            command.includes(`${preset} theme`)
-        ) {
-            return { type: 'preset', preset };
-        }
-    }
-
-    return null;
+.home-status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
 }
 
-function isRefreshCommand(command) {
-    return [
-        'refresh',
-        'refresh feed',
-        'refresh terminal',
-        'reload terminal',
-        'reload feed',
-        'refresh news',
-        'news',
-        'sync terminal'
-    ].includes(command);
+.home-status-pill::before {
+    content: "";
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: currentColor;
+    box-shadow: 0 0 10px currentColor;
 }
 
-function isUpdateCheckCommand(command) {
-    return [
-        'update',
-        'check update',
-        'check updates',
-        'check for updates',
-        'scan for updates',
-        'look for updates',
-        'search for updates'
-    ].includes(command);
+.home-status-pill.online {
+    color: #37d67a;
 }
 
-function isResetCommand(command) {
-    return [
-        'reset',
-        'reset settings',
-        'factory reset',
-        'reset config',
-        'wipe settings'
-    ].includes(command);
+.home-status-pill.offline {
+    color: #ff6464;
 }
 
-function isStatusCommand(command) {
-    return command === 'status' || command === 'show status' || command === 'system status' || command === 'loader status';
+.home-status-pill.checking {
+    color: #f1c40f;
 }
 
-async function runTerminalCommand(rawCommand) {
-    const command = rawCommand.trim().replace(/\s+/g, ' ').toLowerCase();
-    if (!command) {
-        return;
-    }
-
-    addTerminalLine(`VEX-USER:~$ ${rawCommand.trim()}`);
-
-    if (command === 'clear' || command === 'cls') {
-        clearLogs();
-        return;
-    }
-
-    if (command === 'help') {
-        showTerminalCommandHelp();
-        return;
-    }
-
-    if (isStatusCommand(command)) {
-        showSystemStatus();
-        return;
-    }
-
-    if (isRefreshCommand(command)) {
-        newsLoaded = false;
-        await loadNews(true);
-        addTerminalLine("> [FEED] Terminal refreshed.");
-        return;
-    }
-
-    if (isUpdateCheckCommand(command)) {
-        await runManualUpdateCheck();
-        return;
-    }
-
-    if (isResetCommand(command)) {
-        await resetConfig();
-        return;
-    }
-
-    const navigationTarget = parseTerminalNavigationCommand(command);
-    if (navigationTarget) {
-        showTab(navigationTarget);
-        addTerminalLine(`> [NAV] Switched to ${navigationTarget.toUpperCase()}.`);
-        return;
-    }
-
-    const themeCommand = parseThemeCommand(command);
-    if (themeCommand?.type === 'custom') {
-        applyCustomThemeFromInputs();
-        return;
-    }
-
-    if (themeCommand?.type === 'reset') {
-        resetCustomTheme();
-        return;
-    }
-
-    if (themeCommand?.type === 'preset') {
-        setLoaderTheme(themeCommand.preset);
-        return;
-    }
-
-    const toggleCommand = parseSettingToggleCommand(command);
-    if (toggleCommand) {
-        applySettingValue(toggleCommand.id, toggleCommand.value);
-        return;
-    }
-
-    const externalTarget = parseTerminalExternalCommand(command);
-    if (externalTarget) {
-        showExternalActionModal(externalTarget);
-        return;
-    }
-
-    addTerminalLine(`> Unknown command: ${command}`);
-    addTerminalLine("> Type HELP for the available client controls.");
+.home-panel-card {
+    padding: 16px;
 }
 
-function isRealProfileImage(value) {
-    const candidate = String(value || '').trim();
-    if (!candidate) {
-        return false;
-    }
-
-    return !/^\.?\/?imgs\/default-(?:avatar|profile)\.png$/i.test(candidate);
+.home-meta-grid,
+.home-action-grid {
+    display: grid;
+    gap: 12px;
+    width: 100%;
+    box-sizing: border-box;
 }
 
-function getStoredProfileImage() {
-    const savedProfilePic = localStorage.getItem('saved_profile_pic');
-    if (isRealProfileImage(savedProfilePic)) {
-        return savedProfilePic;
-    }
-
-    const legacyProfilePic = localStorage.getItem('profilePic');
-    if (isRealProfileImage(legacyProfilePic)) {
-        return legacyProfilePic;
-    }
-
-    return "imgs/default-profile.png";
+.home-meta-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    background: var(--surface-muted);
+    border: 1px solid var(--panel-border-soft);
+    align-items: center;
+    box-sizing: border-box;
 }
 
-function applyProfileImage(imageValue, options = {}) {
-    const { persist = true } = options;
-    const resolvedImage = isRealProfileImage(imageValue)
-        ? imageValue
-        : getStoredProfileImage();
-
-    if (persist) {
-        localStorage.setItem('saved_profile_pic', resolvedImage);
-        localStorage.setItem('profilePic', resolvedImage);
-    }
-
-    ['user-pic', 'modal-pfp', 'profile-pic'].forEach((id) => {
-        const el = document.getElementById(id);
-        if (el) {
-            el.src = resolvedImage;
-        }
-    });
+.home-meta-row strong {
+    text-align: right;
+    color: var(--panel-text-strong);
+    font-size: 0.9rem;
 }
 
-// Function to force-apply the PFP to all relevant elements
-function syncProfileImage() {
-    applyProfileImage(getStoredProfileImage(), { persist: false });
+.home-action-btn {
+    width: 100%;
+    min-height: 82px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 6px;
+    padding: 16px;
+    text-align: left;
+    background: var(--surface-hover);
+    border: 1px solid var(--panel-border-strong);
+    border-radius: 14px;
+    color: var(--panel-text-strong);
+    box-shadow: none;
+    box-sizing: border-box;
 }
 
-// 1. Initial Load when App Opens
-window.addEventListener('DOMContentLoaded', () => {
-    syncProfileImage();
+.home-action-btn strong {
+    font-size: 1rem;
+}
 
-    const userPic = document.getElementById('user-pic');
-    const profileUpload = document.getElementById('profile-upload');
+.home-action-btn small {
+    color: var(--text-secondary);
+    line-height: 1.45;
+}
 
-    if (userPic && profileUpload) {
-        // Trigger file input when clicking PFP
-        userPic.addEventListener('click', () => profileUpload.click());
+.home-action-btn:hover {
+    background: var(--surface-hover-strong);
+    border-color: var(--panel-border-focus);
+    transform: translateY(-1px);
+}
 
-        profileUpload.addEventListener('change', async (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
+.injection-progress-card {
+    width: min(420px, 92vw);
+    padding: 28px;
+    border-radius: 16px;
+    background:
+        radial-gradient(circle at top right, rgba(var(--accent-rgb), 0.18), transparent 35%),
+        linear-gradient(180deg, var(--panel-start), var(--panel-end));
+    border: 1px solid var(--panel-border-strong);
+    text-align: center;
+    box-shadow: 0 20px 38px var(--panel-shadow-strong);
+}
 
-            const reader = new FileReader();
-            reader.onload = async (event) => {
-                let profilePicData = event.target.result;
+.injection-progress-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 16px;
+}
 
-                if (profilePicData?.startsWith('data:image')) {
-                    profilePicData = await compressImage(profilePicData);
-                }
+.injection-progress-label {
+    font-size: 11px;
+    color: var(--accent);
+    letter-spacing: 1.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+}
 
-                // Save locally first for instant feedback
-                applyProfileImage(profilePicData);
+.injection-progress-percent {
+    font-size: 12px;
+    color: #fff;
+    font-weight: 700;
+}
 
-                try {
-                    const userEmail = localStorage.getItem('user_email');
-                    const cleanAPI = API.endsWith('/') ? API.slice(0, -1) : API;
+.injection-progress-track {
+    width: 100%;
+    height: 10px;
+    background: rgba(0, 0, 0, 0.82);
+    border-radius: 999px;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+}
 
-                    if (!userEmail) {
-                        return;
-                    }
+.injection-progress-bar {
+    width: 0%;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, rgba(26, 188, 156, 0.82), #8cffde);
+    box-shadow: 0 0 18px rgba(26, 188, 156, 0.34);
+    transition: width 0.35s ease, background 0.25s ease, box-shadow 0.25s ease;
+}
 
-                    const res = await fetch(`${cleanAPI}/update-profile`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            user_id_email: userEmail.toLowerCase(),
-                            profile_pic: profilePicData
-                        })
-                    });
+.injection-progress-bar.is-success {
+    background: linear-gradient(90deg, #2ecc71, #9dffca);
+    box-shadow: 0 0 18px rgba(46, 204, 113, 0.34);
+}
 
-                    const data = await res.json();
+.injection-progress-bar.is-error {
+    background: linear-gradient(90deg, #ff4f6a, #ff9a9a);
+    box-shadow: 0 0 18px rgba(255, 79, 106, 0.34);
+}
 
-                    if (res.ok && data.success) {
-                        console.log("✅ Profile pic synced to Render DB");
-                        applyProfileImage(data.profile_pic || profilePicData);
-                    } else {
-                        console.error("❌ Server rejected update:", data.error || res.statusText);
-                    }
-                } catch (err) {
-                    console.error("❌ Network or Server Error:", err);
-                }
-            };
-            reader.readAsDataURL(file);
-        });
+.injection-progress-copy {
+    font-size: 10px;
+    color: #77808d;
+    margin-top: 18px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+
+.dashboard-card {
+    background: linear-gradient(180deg, var(--panel-start), var(--panel-end));
+    border-radius: 12px;
+    padding: 30px;
+    width: 95%;
+    max-width: 1000px;
+    margin: 0 auto;
+    border: 1px solid var(--panel-border);
+    box-shadow: 0 10px 30px var(--panel-shadow-strong);
+    min-height: 500px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    box-sizing: border-box;
+}
+
+/* buttons */
+.btn-primary {
+    padding: 10px 20px;
+    border-radius: 8px;
+    border: none;
+    background: #00f2ff;
+    color: black;
+    font-weight: bold;
+    cursor: pointer;
+    box-shadow: 0 0 10px #00f2ff;
+}
+
+.btn-secondary {
+    padding: 10px 20px;
+    border-radius: 8px;
+    border: 1px solid #444;
+    background: transparent;
+    color: white;
+    cursor: pointer;
+}
+
+#update-version {
+    word-break: break-all;
+}
+
+/* HWID & SPOOFER GRID STYLING */
+.hwid-grid, .spoof-grid {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.hwid-card, .admin-card, .spoof-card {
+    background: rgba(0,0,0,0.2);
+    padding: 15px;
+    border-radius: 8px;
+    border: 1px solid #333;
+}
+
+.accent-text {
+    color: var(--accent-teal);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.hwid-terminal-box {
+    background: #000;
+    padding: 15px;
+    border-radius: 5px;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.75rem;
+    margin: 15px 0;
+    border: 1px solid #222;
+    text-align: left;
+    margin-bottom: 10px;
+    word-break: break-all;
+    overflow-wrap: break-word;
+    white-space: normal;
+}
+
+.code-text {
+    color: var(--accent-teal);
+    display: inline-block;
+    width: 100%;
+}
+
+.reset-btn {
+    width: 100%;
+    padding: 12px;
+    background: transparent;
+    border: 1px solid var(--accent-teal);
+    color: var(--accent-teal);
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: 0.3s;
+}
+
+    .reset-btn:hover {
+        background: var(--accent-teal);
+        color: #000;
+        box-shadow: 0 0 15px rgba(26, 188, 156, 0.4);
     }
-});
 
-// 2. Updated switchScreen to prevent resets during tab changes
-function switchScreen(oldId, newId) {
-    const oldScreen = document.getElementById(oldId);
-    const newScreen = document.getElementById(newId);
+/* Main Content Styling */
+.main-content {
+    flex-grow: 1;
+    padding: 15px;
+    background-color: var(--bg-dark);
+    display: flex;
+    flex-direction: column;
+    height: auto;
+    min-width: 0;
+    overflow-x: hidden;
+}
 
-    if (oldScreen) {
-        oldScreen.classList.remove('active');
-        oldScreen.style.display = 'none';
-        oldScreen.style.zIndex = '-1';
+/* ADMIN TERMINAL SPECIFIC STYLING */
+.admin-card {
+    border-color: #f1c40f44 !important;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    margin-top: 5px;
+}
+
+.gold-text {
+    color: #f1c40f !important;
+    text-shadow: 0 0 10px rgba(241, 196, 15, 0.3);
+}
+
+.admin-terminal-box {
+    background: #000;
+    padding: 15px;
+    border-radius: 5px;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.85rem;
+    height: 120px;
+    overflow-y: auto;
+    margin: 15px 0;
+    border: 1px solid #222;
+    box-shadow: inset 0 0 10px rgba(0,0,0,0.8);
+}
+
+.log-entry {
+    display: block;
+    color: #f1c40f; /* Gold text for admin logs */
+    margin-bottom: 5px;
+    opacity: 0.9;
+}
+
+/* ADMIN REQUEST BUTTON */
+.admin-req-btn {
+    width: 100%;
+    padding: 12px;
+    background: transparent;
+    border: 1px solid #f1c40f;
+    color: #f1c40f;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.3s ease;
+}
+
+    .admin-req-btn:hover {
+        background: #f1c40f;
+        color: #000;
+        box-shadow: 0 0 15px rgba(241, 196, 15, 0.4);
     }
 
-    if (newScreen) {
-        newScreen.classList.add('active');
-        newScreen.style.display = 'flex';
-        newScreen.style.zIndex = '10';
+/* Status Line at Bottom */
+.hwid-status-line {
+    margin-top: 20px;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+/* Scrollbar for Terminal */
+.admin-terminal-box::-webkit-scrollbar {
+    width: 4px;
+}
+
+.admin-terminal-box::-webkit-scrollbar-thumb {
+    background: #444;
+    border-radius: 2px;
+}
+
+
+.header {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+/* Updated User Profile Layout */
+.user-profile {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 15px;
+    cursor: pointer;
+}
+
+.user-info {
+    text-align: right;
+}
+
+    .user-info .name {
+        font-weight: bold;
+        font-size: 1.1rem;
+        color: var(--text-main);
+        display: block;
     }
 
-    if (newId === 'main-dashboard') {
-        const usernameEl = document.getElementById("profile-username");
-        const avatarEl = document.getElementById("profile-pic");
+    /* Status/Expiry Text */
+    .user-info .status {
+        font-size: 0.8rem;
+        color: var(--text-secondary);
+        display: block;
+    }
 
-        if (usernameEl) usernameEl.innerText = localStorage.getItem("username") || "Guest";
-        if (avatarEl) avatarEl.src = getStoredProfileImage();
+#user-pic {
+    width: 45px;
+    height: 45px;
+    border-radius: 50%;
+    border: 2px solid #333;
+    transition: all 0.3s ease;
+    object-fit: cover;
+}
+
+    #user-pic.glow-border:hover {
+        border-color: var(--accent-teal);
+        box-shadow: 0 0 10px rgba(26, 188, 156, 0.4);
+    }
+
+/* Status Dot Positioning */
+.profile-wrapper {
+    position: relative;
+    display: flex;
+}
+
+.status-dot {
+    position: absolute;
+    bottom: 2px;
+    right: 2px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 2px solid var(--bg-dark); /* Creates a "cutout" look */
+}
+
+.dot-online {
+    background-color: var(--online-green);
+}
+
+/* Dashboard Card */
+.dashboard-card {
+    background: linear-gradient(180deg, var(--panel-start), var(--panel-end));
+    border-radius: 12px;
+    padding: 18px 20px 20px;
+    width: 100%;
+    max-width: none;
+    flex: 1 1 auto;
+    min-height: 0;
+    min-width: 0;
+    margin: 0;
+    border: 1px solid var(--panel-border);
+    box-shadow: 0 10px 30px var(--panel-shadow-strong);
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    box-sizing: border-box;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+    .dashboard-card h2 {
+        margin-bottom: 5px;
+    }
+
+    .dashboard-card p.subtitle {
+        color: var(--text-secondary);
+        margin-bottom: 40px;
+    }
+
+.info-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 30px;
+    text-align: left;
+}
+
+.info-item {
+    display: flex;
+    align-items: center;
+}
+
+.info-icon {
+    font-size: 2rem;
+    margin-right: 20px;
+    color: var(--text-secondary);
+}
+
+.info-label {
+    font-weight: bold;
+}
+
+.info-value {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.status-online {
+    color: var(--online-green);
+    font-weight: bold;
+}
+
+/* TAB SHELLS */
+.tab-shell {
+    width: 100%;
+}
+
+.tab-shell-header {
+    width: 100%;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+    margin-bottom: 16px;
+}
+
+.tab-shell-subtitle {
+    margin: 6px 0 0;
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    line-height: 1.5;
+}
+
+.tab-shell-badge {
+    padding: 8px 11px;
+    border-radius: 999px;
+    border: 1px solid var(--panel-border-strong);
+    background: var(--surface-hover);
+    color: var(--panel-text-strong);
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    white-space: nowrap;
+}
+
+.tab-stat-card {
+    padding: 12px;
+    border-radius: 12px;
+    background: var(--surface-muted);
+    border: 1px solid var(--panel-border);
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.tab-stat-card span {
+    color: var(--text-secondary);
+    font-size: 0.66rem;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+.tab-stat-card strong {
+    color: var(--text-main);
+    font-size: 0.84rem;
+    line-height: 1.35;
+}
+
+.tab-stat-card strong.active-status,
+.tab-stat-card strong.status-active {
+    color: #4CAF50;
+}
+
+.tab-stat-card strong.inactive,
+.tab-stat-card strong.status-inactive {
+    color: #ff6464;
+}
+
+.tab-stat-card strong.processing {
+    color: #f1c40f;
+}
+
+.tab-panel {
+    border-radius: 14px;
+    padding: 16px;
+    background: linear-gradient(180deg, var(--panel-start), var(--panel-end));
+    border: 1px solid var(--panel-border);
+    box-shadow: 0 16px 34px var(--panel-shadow);
+}
+
+.tab-panel-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.tab-panel-head h3 {
+    margin: 0;
+}
+
+.hwid-request-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 72px;
+    padding: 7px 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(52, 211, 153, 0.28);
+    background: rgba(16, 185, 129, 0.12);
+    color: #c6ffe4;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.hwid-request-badge.is-empty {
+    border-color: rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-secondary);
+}
+
+.panel-kicker {
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    max-width: 100%;
+    padding: 6px 10px;
+    margin-bottom: 4px;
+    color: var(--text-secondary);
+    font-size: 0.63rem;
+    letter-spacing: 1.3px;
+    text-transform: uppercase;
+    line-height: 1;
+    border-radius: 999px;
+    background: var(--surface-muted);
+    border: 1px solid var(--panel-border-strong);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+@media (max-width: 960px) {
+    .home-hero {
+        flex-direction: column;
+    }
+
+    .home-hero-badge {
+        width: 100%;
+        text-align: left;
+    }
+
+    .home-overview-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .home-panels-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .game-launch-choice-grid {
+        grid-template-columns: 1fr;
     }
 }
 
-function showTab(tabName, options = {}) {
-    const { bypassExpiryLock = false, silent = false } = options;
-
-    if (!bypassExpiryLock && hasExpiredTabLock() && expiryLockedTabs.has(tabName)) {
-        refreshExpiryModal(localStorage.getItem('expiry_date'));
-        openModal('expiry-modal');
-        if (!silent) {
-            addTerminalLine(`> [ACCESS] ${tabName.toUpperCase()} is locked until a fresh key is redeemed.`);
-        }
-        return;
-    }
-
-    // ---------- HIDE ALL TABS ----------
-    document.querySelectorAll('.tab-content').forEach(tab => {
-        tab.classList.remove('active');
-        tab.style.display = 'none';
-    });
-
-    const selectedTab = document.getElementById(tabName + '-tab');
-
-    if (selectedTab) {
-
-        selectedTab.classList.add('active');
-
-        // Handle special layouts
-        if (tabName === "settings") {
-            selectedTab.style.display = "grid";
-        } else {
-            selectedTab.style.display = "block";
-        }
-
-    }
-
-    // ---------- MODULE HOOKS ----------
-
-    // HOME TAB
-    if (tabName === "home") {
-
-        if (typeof updateHomeTabUI === "function") {
-            updateHomeTabUI();
-        }
-
-        const rpcEnabled = localStorage.getItem("discord-rpc") === "true";
-
-        if (rpcEnabled && window.api?.toggleDiscord) {
-            window.api.toggleDiscord(true);
-        }
-    }
-
-    // HWID TAB
-    if (tabName === "hwid") {
-        if (typeof updateHWIDDisplay === "function") {
-            updateHWIDDisplay();
-        }
-        if (typeof syncHwidResetApprovalState === "function") {
-            void syncHwidResetApprovalState(true).catch(console.error);
-        }
-    }
-
-    // SETTINGS TAB
-    if (tabName === "settings") {
-        if (typeof loadNews === "function") {
-            loadNews();
-        }
-    }
-
-    // ---------- CLOSE DROPDOWNS ----------
-    const dropdown = document.getElementById("user-dropdown");
-    if (dropdown) dropdown.classList.add("hidden");
-
-    updateProtectedTabLocks();
-    console.log(`[UI] Switched to ${tabName.toUpperCase()} module.`);
+.panel-subcopy,
+.panel-footnote {
+    color: var(--text-secondary);
+    font-size: 0.72rem;
+    line-height: 1.5;
 }
 
-async function updateHWIDDisplay(forceRefresh = false) {
-    try {
-        console.log("Refreshing Hardware Terminal...");
+.panel-footnote {
+    margin: 12px 0 14px;
+}
 
-        const hwidElem = document.getElementById('hwid-id');
-        const serialElem = document.getElementById('serial-id');
-        const gpuElem = document.getElementById('gpu-id');
+/* GAME TAB */
+.steam-grid,
+.games-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    width: 100%;
+}
 
-        if (hwidElem) hwidElem.innerText = "FETCHING...";
-        if (serialElem) serialElem.innerText = "FETCHING...";
-        if (gpuElem) gpuElem.innerText = "FETCHING...";
+.game-card {
+    position: relative;
+    width: 100%;
+    padding: 0;
+    background: linear-gradient(180deg, rgba(26, 26, 30, 0.98), rgba(13, 13, 16, 0.96));
+    border-radius: 14px;
+    overflow: hidden;
+    cursor: pointer;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    transition: transform 0.24s ease, border-color 0.24s ease, box-shadow 0.24s ease;
+    text-align: left;
+    font: inherit;
+    appearance: none;
+    box-shadow: 0 18px 34px rgba(0, 0, 0, 0.22);
+}
 
-        const { machineId, serial, gpu } = await loadHardwareSnapshot(forceRefresh);
+.game-card:hover {
+    transform: translateY(-3px);
+}
 
-        if (hwidElem) hwidElem.innerText = machineId || "N/A";
-        if (serialElem) serialElem.innerText = serial || "N/A";
-        if (gpuElem) gpuElem.innerText = gpu || "N/A";
+.game-card.locked {
+    filter: saturate(0.86);
+}
 
-        console.log("Terminal Refreshed. New HWID:", machineId);
+.card-green:hover {
+    border-color: rgba(46, 204, 113, 0.7);
+    box-shadow: 0 14px 30px rgba(46, 204, 113, 0.18);
+}
 
-    } catch (err) {
-        console.error("Failed to update terminal:", err);
+.card-gold:hover {
+    border-color: rgba(241, 196, 15, 0.72);
+    box-shadow: 0 14px 30px rgba(241, 196, 15, 0.18);
+}
+
+.card-blue:hover {
+    border-color: rgba(52, 152, 219, 0.72);
+    box-shadow: 0 14px 30px rgba(52, 152, 219, 0.18);
+}
+
+.card-red:hover {
+    border-color: rgba(231, 76, 60, 0.72);
+    box-shadow: 0 14px 30px rgba(231, 76, 60, 0.18);
+}
+
+.game-card-topline {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 12px 0;
+    gap: 10px;
+}
+
+.game-card-chip {
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.07);
+    color: var(--text-secondary);
+    font-size: 0.58rem;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+}
+
+.game-card-tone {
+    color: rgba(255, 255, 255, 0.78);
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+}
+
+.game-card-media {
+    position: relative;
+    height: 170px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px 12px 0;
+}
+
+.card-img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    background-color: transparent;
+}
+
+.game-card-footer {
+    padding: 10px 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.game-card-heading-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.game-card-footer strong {
+    color: var(--text-main);
+    font-size: 0.92rem;
+    line-height: 1.2;
+}
+
+.game-card-footer span {
+    color: var(--text-secondary);
+    font-size: 0.72rem;
+    line-height: 1.45;
+}
+
+.game-card-state {
+    padding: 5px 9px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 92, 92, 0.24);
+    background: rgba(255, 92, 92, 0.12);
+    color: #ffc0c0;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.1px;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.game-card[data-access="ready"] .game-card-state {
+    border-color: rgba(46, 204, 113, 0.28);
+    background: rgba(46, 204, 113, 0.14);
+    color: #cbffd8;
+}
+
+.game-card[data-access="partial"] .game-card-state,
+.game-card[data-access="pending"] .game-card-state {
+    border-color: rgba(241, 196, 15, 0.26);
+    background: rgba(241, 196, 15, 0.13);
+    color: #ffe8a4;
+}
+
+.game-card-modules {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 7px;
+}
+
+.game-card-module-pill {
+    padding: 5px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.06);
+    color: rgba(255, 255, 255, 0.82);
+    font-size: 0.58rem;
+    font-weight: 700;
+    letter-spacing: 0.9px;
+}
+
+.game-card-module-pill.is-ready {
+    border-color: rgba(26, 188, 156, 0.28);
+    background: rgba(26, 188, 156, 0.14);
+    color: #d7fff6;
+}
+
+.game-card-module-pill.is-missing {
+    opacity: 0.62;
+}
+
+.card-overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(0, 0, 0, 0.22), rgba(0, 0, 0, 0.78));
+    display: flex;
+    align-items: flex-end;
+    justify-content: stretch;
+    padding: 14px;
+    opacity: 0;
+    transition: opacity 0.24s ease;
+    pointer-events: none;
+}
+
+.game-card:hover .card-overlay {
+    opacity: 1;
+}
+
+.game-hover-panel {
+    width: 100%;
+    padding: 14px;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background:
+        radial-gradient(circle at top right, rgba(var(--accent-rgb), 0.16), transparent 34%),
+        rgba(8, 10, 14, 0.84);
+    backdrop-filter: blur(10px);
+    box-shadow: 0 18px 34px rgba(0, 0, 0, 0.22);
+    transform: translateY(8px);
+    transition: transform 0.24s ease;
+}
+
+.game-card:hover .game-hover-panel {
+    transform: translateY(0);
+}
+
+.game-hover-kicker {
+    display: inline-block;
+    margin-bottom: 8px;
+    color: var(--accent);
+    font-size: 0.58rem;
+    font-weight: 800;
+    letter-spacing: 1.4px;
+}
+
+.game-hover-panel strong {
+    display: block;
+    margin-bottom: 6px;
+    color: #fff;
+    font-size: 0.88rem;
+    letter-spacing: 0.3px;
+}
+
+.game-hover-panel p {
+    margin: 0;
+    color: rgba(255, 255, 255, 0.74);
+    font-size: 0.68rem;
+    line-height: 1.55;
+}
+
+.game-hover-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.game-hover-meta span {
+    padding: 5px 9px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.06);
+    color: rgba(255, 255, 255, 0.86);
+    font-size: 0.56rem;
+    font-weight: 700;
+    letter-spacing: 0.85px;
+    text-transform: uppercase;
+}
+
+.game-launch-modal-card {
+    width: min(520px, 92vw);
+    padding: 24px;
+    border-radius: 18px;
+    text-align: left;
+}
+
+.game-launch-hero {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.game-launch-kicker {
+    display: inline-block;
+    color: var(--accent);
+    font-size: 0.62rem;
+    font-weight: 800;
+    letter-spacing: 1.6px;
+    margin-bottom: 6px;
+}
+
+.game-launch-title {
+    margin: 0;
+    color: #fff;
+    font-size: 1.24rem;
+    letter-spacing: 0.4px;
+}
+
+.game-launch-status {
+    padding: 7px 11px;
+    border-radius: 999px;
+    border: 1px solid rgba(26, 188, 156, 0.22);
+    background: rgba(26, 188, 156, 0.12);
+    color: var(--panel-text-strong);
+    font-size: 0.58rem;
+    font-weight: 800;
+    letter-spacing: 1.1px;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.game-launch-status.is-pending {
+    border-color: rgba(241, 196, 15, 0.24);
+    background: rgba(241, 196, 15, 0.12);
+    color: #ffe8a4;
+}
+
+.game-launch-copy {
+    margin: 16px 0 6px;
+    color: rgba(255, 255, 255, 0.82);
+    font-size: 0.84rem;
+    line-height: 1.6;
+}
+
+.game-launch-update {
+    margin: 0;
+    color: rgba(255, 255, 255, 0.58);
+    font-size: 0.7rem;
+    line-height: 1.55;
+}
+
+.game-launch-choice-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 18px;
+}
+
+.game-launch-choice {
+    appearance: none;
+    width: 100%;
+    padding: 16px;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background:
+        radial-gradient(circle at top right, rgba(var(--accent-rgb), 0.16), transparent 36%),
+        rgba(8, 11, 16, 0.86);
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    text-align: left;
+    transition: transform 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease, opacity 0.22s ease;
+    cursor: pointer;
+}
+
+.game-launch-choice:hover:not(:disabled) {
+    transform: translateY(-2px);
+    border-color: rgba(26, 188, 156, 0.32);
+    box-shadow: 0 16px 28px rgba(0, 0, 0, 0.22);
+}
+
+.game-launch-choice:disabled,
+.game-launch-choice.is-unavailable {
+    opacity: 0.46;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+.game-launch-choice-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    background: rgba(var(--accent-rgb), 0.16);
+    border: 1px solid rgba(var(--accent-rgb), 0.22);
+    color: var(--panel-text-strong);
+    font-size: 0.72rem;
+    font-weight: 900;
+    letter-spacing: 1px;
+}
+
+.game-launch-choice-title {
+    font-size: 0.98rem;
+    font-weight: 800;
+    letter-spacing: 0.4px;
+}
+
+.game-launch-choice-note {
+    color: rgba(255, 255, 255, 0.78);
+    font-size: 0.72rem;
+    line-height: 1.5;
+}
+
+.game-launch-choice-foot {
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 0.64rem;
+    text-transform: uppercase;
+    letter-spacing: 0.9px;
+}
+
+.game-launch-cancel {
+    width: 100%;
+    margin-top: 16px;
+    padding: 12px 16px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.04);
+    color: rgba(255, 255, 255, 0.8);
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    cursor: pointer;
+    transition: border-color 0.22s ease, background 0.22s ease, color 0.22s ease;
+}
+
+.game-launch-cancel:hover {
+    border-color: rgba(var(--accent-rgb), 0.24);
+    background: rgba(var(--accent-rgb), 0.08);
+    color: #fff;
+}
+
+/* HWID TAB */
+.hwid-summary-row {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    width: 100%;
+    margin-bottom: 14px;
+}
+
+.hwid-grid,
+.hwid-grid-modern {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 14px;
+    width: 100%;
+}
+
+.hwid-card,
+.admin-card,
+.spoof-card {
+    background: linear-gradient(180deg, rgba(20, 22, 28, 0.96), rgba(12, 14, 18, 0.94));
+    padding: 16px;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 16px 34px rgba(0, 0, 0, 0.22);
+}
+
+.hwid-terminal-box {
+    background: linear-gradient(180deg, rgba(4, 6, 8, 0.98), rgba(0, 0, 0, 0.96));
+    padding: 15px;
+    border-radius: 12px;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.75rem;
+    margin: 0;
+    border: 1px solid rgba(26, 188, 156, 0.18);
+    text-align: left;
+    word-break: break-all;
+    overflow-wrap: break-word;
+    white-space: normal;
+    box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.4);
+}
+
+.hwid-terminal-box p {
+    margin: 0 0 10px;
+}
+
+.hwid-terminal-box p:last-child {
+    margin-bottom: 0;
+}
+
+.code-text {
+    color: var(--accent-teal);
+    display: inline-block;
+    width: 100%;
+    margin-top: 4px;
+}
+
+.reset-btn,
+.admin-req-btn {
+    width: 100%;
+    min-height: 44px;
+    padding: 12px;
+    background: rgba(26, 188, 156, 0.08);
+    border: 1px solid rgba(26, 188, 156, 0.35);
+    color: #c9fff4;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    cursor: pointer;
+    border-radius: 10px;
+    transition: background 0.24s ease, box-shadow 0.24s ease, transform 0.24s ease;
+}
+
+.reset-btn:hover,
+.admin-req-btn:hover {
+    background: rgba(26, 188, 156, 0.16);
+    box-shadow: 0 0 16px rgba(26, 188, 156, 0.14);
+    transform: translateY(-1px);
+}
+
+.reset-btn:disabled,
+.admin-req-btn:disabled {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.08);
+    color: var(--text-secondary);
+    box-shadow: none;
+    transform: none;
+    cursor: not-allowed !important;
+    opacity: 0.72;
+}
+
+.admin-card {
+    border-color: rgba(241, 196, 15, 0.14);
+}
+
+.gold-text {
+    color: #f1c40f !important;
+    text-shadow: 0 0 10px rgba(241, 196, 15, 0.22);
+}
+
+.admin-terminal-box {
+    background: linear-gradient(180deg, rgba(7, 7, 7, 0.98), rgba(0, 0, 0, 0.96));
+    padding: 14px;
+    border-radius: 12px;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.8rem;
+    height: 150px;
+    overflow-y: auto;
+    margin: 0 0 14px;
+    border: 1px solid rgba(241, 196, 15, 0.14);
+    box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.45);
+}
+
+.log-entry {
+    display: block;
+    color: #f1c40f;
+    margin-bottom: 7px;
+    opacity: 0.92;
+}
+
+.hwid-status-line {
+    margin-top: 14px;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    font-style: italic;
+    align-self: flex-start;
+}
+
+.admin-terminal-box::-webkit-scrollbar {
+    width: 4px;
+}
+
+.admin-terminal-box::-webkit-scrollbar-thumb {
+    background: #444;
+    border-radius: 2px;
+}
+
+/* SPOOF TAB */
+.spoofer-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    width: 100%;
+    text-align: left;
+}
+
+.accent-text {
+    color: var(--accent-teal);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    text-shadow: 0 0 10px var(--accent-glow);
+}
+
+.spoof-hero-panel {
+    padding: 16px;
+    border-radius: 14px;
+    background: linear-gradient(180deg, var(--panel-start), var(--panel-end));
+    border: 1px solid var(--panel-border);
+    box-shadow: 0 16px 34px var(--panel-shadow);
+}
+
+.spoof-header-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    justify-content: space-between;
+}
+
+.shield-icon {
+    width: 52px;
+    height: 52px;
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 14px;
+    background: var(--surface-hover);
+    border: 1px solid var(--panel-border-strong);
+}
+
+.shield-img {
+    width: 30px;
+    filter: drop-shadow(0 0 8px var(--accent-glow));
+}
+
+.status-text-group {
+    flex: 1;
+    min-width: 0;
+}
+
+.status-text-group h2 {
+    margin: 0;
+}
+
+.status-text-group p {
+    margin: 6px 0 0;
+    color: var(--text-secondary);
+    font-size: 0.78rem;
+    line-height: 1.5;
+}
+
+.spoof-progress-shell {
+    min-width: 36px;
+    display: flex;
+    justify-content: flex-end;
+}
+
+.status-inactive {
+    color: #ff6464;
+    font-weight: 700;
+    letter-spacing: 1px;
+}
+
+.status-active,
+.status-perm {
+    color: #4CAF50;
+}
+
+.active-status {
+    color: #4CAF50;
+}
+
+.status-temp {
+    color: #f1c40f;
+}
+
+.processing {
+    color: #f1c40f;
+}
+
+.inactive {
+    color: #ff6464;
+}
+
+.spoof-mode-container {
+    display: inline-flex;
+    background: var(--terminal-surface);
+    border-radius: 12px;
+    padding: 4px;
+    border: 1px solid var(--panel-border);
+    width: fit-content;
+    margin-top: 14px;
+}
+
+.mode-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    padding: 9px 14px;
+    font-size: 0.78rem;
+    cursor: pointer;
+    transition: all 0.24s ease;
+    border-radius: 8px;
+    white-space: nowrap;
+}
+
+.mode-btn:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.mode-btn.active {
+    background: var(--accent);
+    color: #000;
+    font-weight: 700;
+}
+
+.spoof-grid,
+.spoof-grid-modern {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 14px;
+    width: 100%;
+}
+
+.spoof-card {
+    position: relative;
+    overflow: hidden;
+}
+
+.spoof-card::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(rgba(26, 188, 156, 0.03) 1px, transparent 1px);
+    background-size: 18px 18px;
+    pointer-events: none;
+}
+
+.spoof-card > * {
+    position: relative;
+    z-index: 1;
+}
+
+.spoof-action-card {
+    border-color: rgba(26, 188, 156, 0.14);
+}
+
+.card-label {
+    color: var(--text-secondary);
+    font-size: 0.66rem;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+}
+
+.motherboard-select-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+
+.mb-icon {
+    width: 36px;
+    height: 36px;
+    object-fit: contain;
+    opacity: 0.95;
+    flex: none;
+}
+
+.styled-select {
+    flex: 1;
+    min-height: 38px;
+    background: rgba(0, 0, 0, 0.7);
+    color: white;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    padding: 8px 10px;
+    border-radius: 10px;
+    outline: none;
+}
+
+.toggle-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.toggle-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.toggle-row input[type="checkbox"] {
+    margin-top: 3px;
+    flex: none;
+}
+
+.toggle-copy {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.toggle-title {
+    color: var(--text-main);
+    font-size: 0.84rem;
+    font-weight: 700;
+}
+
+.toggle-meta {
+    color: var(--text-secondary);
+    font-size: 0.72rem;
+    line-height: 1.45;
+    margin-top: 3px;
+}
+
+.deep-clean-row {
+    flex-direction: column;
+}
+
+.deepclean-warning {
+    width: 100%;
+    margin-top: 10px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    line-height: 1.4;
+    border: 1px solid rgba(255, 60, 60, 0.35);
+    background: rgba(255, 60, 60, 0.06);
+    color: #ff6b6b;
+}
+
+.deepclean-warning i {
+    font-size: 14px;
+    color: #ff4444;
+}
+
+.recommended-tag {
+    display: inline-flex;
+    margin-bottom: 10px;
+    padding: 5px 8px;
+    border-radius: 999px;
+    background: rgba(26, 188, 156, 0.1);
+    border: 1px solid rgba(26, 188, 156, 0.18);
+    color: #bdfef0;
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+}
+
+.warning-box,
+.bios-warning-box {
+    margin-top: 14px;
+    padding: 12px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 80, 80, 0.3);
+    background: rgba(40, 0, 0, 0.28);
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.warning-box p,
+.bios-warning-box p {
+    margin: 4px 0;
+}
+
+.action-btn.spoof-btn {
+    width: 100%;
+    min-height: 46px;
+    margin-top: 14px;
+    border-radius: 10px;
+    border: 1px solid rgba(26, 188, 156, 0.28);
+    background: rgba(26, 188, 156, 0.12);
+    color: #d7fff5;
+    font-weight: 700;
+    letter-spacing: 1px;
+}
+
+.action-btn.spoof-btn:hover {
+    background: rgba(26, 188, 156, 0.18);
+    box-shadow: 0 0 18px rgba(26, 188, 156, 0.14);
+}
+
+.success-icon {
+    color: #4CAF50;
+    font-size: 28px;
+    animation: popIn 0.4s ease;
+}
+
+@keyframes popIn {
+    0% {
+        transform: scale(0.5);
+        opacity: 0;
+    }
+
+    100% {
+        transform: scale(1);
+        opacity: 1;
     }
 }
 
-async function handleLogin(isAutoLogin = false, creds = {}) {
-    if (isAuthProcessActive && !isAutoLogin) return;
+.deepclean-modal {
+    width: 420px;
+}
 
-    const emailInput = document.getElementById('login-email');
-    const passwordInput = document.getElementById('login-password');
-    const email = (isAutoLogin ? creds.email : emailInput?.value || '').trim();
-    const password = isAutoLogin ? (creds.password || '') : (passwordInput?.value || '');
-    const requestToken = isAutoLogin ? creds.requestToken : null;
-    const rememberMe = document.getElementById('remember-me')?.checked;
-    const btn = document.getElementById('login-btn');
-    const autoLoginModal = document.getElementById("auto-login-modal");
+.game-clean-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 15px;
+}
 
-    // ---------- NO CREDENTIALS FOUND ----------
-    if (!email || !password) {
-        if (isAutoLogin) {
-            if (autoLoginModal) hideAutoLoginModal();
-            setLoginNotice("No valid session found. Please login manually.", "info");
-        } else {
-            setLoginNotice("Enter your email and password.");
-            focusLoginField(!email ? emailInput : passwordInput);
-        }
-        return;
+.game-clean-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+.game-clean-item:hover {
+    background: rgba(255,255,255,0.05);
+}
+
+.game-icon {
+    width: 28px;
+    height: 28px;
+    object-fit: contain;
+}
+
+.game-icon img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.game-clean-item span {
+    flex: 1;
+    font-size: 14px;
+}
+
+.modal-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+    justify-content: flex-end;
+}
+
+.exit-modal-card {
+    max-width: 420px;
+}
+
+.exit-modal-copy {
+    margin-top: 12px;
+    color: var(--text-secondary);
+    font-size: 0.88rem;
+    line-height: 1.55;
+}
+
+.exit-choice-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 24px;
+}
+
+.exit-choice-grid .btn-primary,
+.exit-choice-grid .btn-secondary {
+    width: 100%;
+    min-height: 44px;
+}
+
+.exit-modal-actions {
+    justify-content: center;
+}
+
+.external-link-modal-card,
+.app-dialog-card {
+    max-width: 440px;
+}
+
+.external-link-kicker,
+.app-dialog-kicker {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 14px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.04);
+    color: #9ffcff;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 1.1px;
+    text-transform: uppercase;
+}
+
+.external-link-copy,
+.app-dialog-copy {
+    margin-top: 12px;
+    color: var(--text-secondary);
+    font-size: 0.88rem;
+    line-height: 1.55;
+    word-break: break-word;
+}
+
+.external-link-url,
+.app-dialog-detail {
+    margin-top: 14px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(0, 0, 0, 0.38);
+    color: #d9feff;
+    font-family: Consolas, Monaco, monospace;
+    font-size: 0.72rem;
+    line-height: 1.5;
+    word-break: break-word;
+}
+
+.discord-md-underline {
+    text-decoration: underline;
+    text-decoration-thickness: 1.5px;
+    text-underline-offset: 2px;
+}
+
+.discord-md-code {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: #dffaff;
+    font-size: 0.92em;
+    font-family: "Consolas", "Cascadia Mono", monospace;
+}
+
+.external-link-note {
+    margin-top: 14px;
+    color: var(--text-secondary);
+    font-size: 0.76rem;
+    line-height: 1.5;
+}
+
+.external-link-actions,
+.app-dialog-actions {
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.external-link-actions .btn-primary,
+.external-link-actions .btn-secondary,
+.app-dialog-actions .btn-primary,
+.app-dialog-actions .btn-secondary,
+.app-dialog-actions .btn-danger {
+    min-width: 120px;
+}
+
+.app-dialog-card[data-tone="error"] {
+    border-color: rgba(255, 92, 92, 0.4);
+    box-shadow: 0 0 30px rgba(255, 92, 92, 0.12);
+}
+
+.app-dialog-card[data-tone="error"] .app-dialog-kicker {
+    color: #ffb1b1;
+    border-color: rgba(255, 92, 92, 0.22);
+}
+
+.app-dialog-card[data-tone="success"] {
+    border-color: rgba(68, 214, 127, 0.4);
+    box-shadow: 0 0 30px rgba(68, 214, 127, 0.12);
+}
+
+.app-dialog-card[data-tone="success"] .app-dialog-kicker {
+    color: #b7ffd1;
+    border-color: rgba(68, 214, 127, 0.22);
+}
+
+.app-dialog-card[data-tone="warning"] .app-dialog-kicker {
+    color: #ffe7a3;
+    border-color: rgba(241, 196, 15, 0.22);
+}
+
+.btn-danger {
+    background: #ff3e3e;
+    border: none;
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+@media (max-width: 640px) {
+    .tab-shell-header,
+    .spoof-header-row {
+        flex-direction: column;
+        align-items: flex-start;
     }
 
-    isAuthProcessActive = true;
-    if (!isAutoLogin) {
-        setLoginNotice("");
+    .steam-grid,
+    .games-grid,
+    .hwid-summary-row,
+    .home-overview-grid,
+    .home-panels-grid,
+    .exit-choice-grid,
+    .theme-picker-grid {
+        grid-template-columns: 1fr;
     }
 
-    // Spinner for manual login
-    if (btn && !isAutoLogin) {
-        btn.innerHTML = `<div class="spinner"></div>`;
-        btn.disabled = true;
+    .home-hero {
+        flex-direction: column;
     }
 
-    try {
-        const { machineId: hwid } = await loadHardwareSnapshot();
+    .home-hero-badge {
+        width: 100%;
+        text-align: left;
+    }
 
-        const res = await fetch(`${API}/login`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email, password, hwid })
-        });
+    .home-meta-row {
+        flex-direction: column;
+        align-items: flex-start;
+    }
 
-        const data = await res.json();
-
-        if (isAutoLogin && requestToken !== autoLoginRequestToken) {
-            return;
-        }
-
-        if (data.token === "VALID") {
-            console.log("[AUTH] LOGIN SUCCESS");
-
-            const username = email.split("@")[0];
-
-            window.currentUser = {
-                username: username,
-                subscription: data.subscription || "Premium",
-                expiry: data.expiry
-            };
-
-            // Hide auto-login modal
-            if (autoLoginModal) hideAutoLoginModal();
-            setLoginNotice("");
-
-            // ---------- SAVE SESSION ----------
-            localStorage.setItem("user_email", email);
-            localStorage.setItem("expiry_date", data.expiry);
-
-            if (rememberMe || isAutoLogin) {
-                localStorage.setItem("remember-me", "true");
-                localStorage.setItem("remembered_email", email);
-                localStorage.setItem("remembered_password", password);
-            }
-
-            setSessionAccess(data.license_key || '');
-
-            // ---------- PROFILE ----------
-            const profilePic = isRealProfileImage(data.profile_pic)
-                ? data.profile_pic
-                : getStoredProfileImage();
-            applyProfileImage(profilePic);
-
-            // ---------- USER INFO ----------
-            //const username = email.split("@")[0];
-            const userDisplay = document.getElementById("user-display-name");
-            if (userDisplay) userDisplay.innerText = username;
-
-            const navName = document.getElementById("nav-username");
-            if (navName) navName.innerText = username;
-
-            const expiryDisplay = document.getElementById("user-expiry");
-            if (expiryDisplay) expiryDisplay.innerText = "EXP: " + new Date(data.expiry).toLocaleDateString();
-
-            const homeExpiry = document.getElementById("home-exp");
-            if (homeExpiry) homeExpiry.innerText = new Date(data.expiry).toLocaleDateString();
-
-            // ---------- SWITCH UI ----------
-            document.body.classList.remove("login-active");
-            document.body.classList.add("logged-in");
-            document.getElementById("login-screen")?.style.setProperty("display", "none");
-            document.getElementById("dashboard-wrapper")?.style.setProperty("display", "flex");
-
-            const sidebar = document.getElementById("sidebar");
-            if (sidebar) {
-                sidebar.style.display = "flex";
-                sidebar.classList.remove("hidden");
-            }
-
-            if (window.api?.setAppWindow) {
-                window.api.setAppWindow();
-            }
-
-            expirySequenceTriggered = false;
-            updateSubscriptionStatus(data.expiry);
-            startExpiryHeartbeat(data.expiry);
-            updateUIForAccess();
-
-            if (typeof showTab === "function") showTab("home");
-            console.log("[SYSTEM] Dashboard loaded successfully.");
-        } else {
-            // Failed login
-            if (autoLoginModal) hideAutoLoginModal();
-
-            if (isAutoLogin) {
-                setLoginNotice("No valid session found. Please login manually.", "info");
-            } else {
-                const errorMessage = data.error || "Invalid credentials.";
-                const shouldEditEmail = /user not found|invalid email|email/i.test(errorMessage);
-
-                setLoginNotice(errorMessage);
-                focusLoginField(shouldEditEmail ? emailInput : passwordInput);
-            }
-        }
-    } catch (err) {
-        console.error("[AUTH ERROR]", err);
-        if (!isAutoLogin) {
-            setLoginNotice("API connection error. Check the server and try again.");
-            focusLoginField(passwordInput || emailInput);
-        }
-    } finally {
-        isAuthProcessActive = false;
-
-        if (btn && !isAutoLogin) {
-            btn.innerHTML = "LOGIN";
-            btn.disabled = false;
-        }
+    .home-meta-row strong {
+        text-align: left;
     }
 }
 
-async function updateUserInfoDisplay(email, status = "Online") {
-    // 1. Get the actual hardware ID from the computer
-    const { machineId: realHWID } = await loadHardwareSnapshot();
+/* --- SETTINGS TAB CORE LAYOUT --- */
+.settings-tab {
+    width: 100%;
+    box-sizing: border-box;
+    min-width: 0;
+}
+
+.settings-header {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+    margin-bottom: 16px;
+    box-sizing: border-box;
+}
+
+.settings-header-copy {
+    min-width: 0;
+}
+
+.settings-subtitle {
+    margin: 6px 0 0;
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+    line-height: 1.5;
+}
+
+.settings-badges {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    min-width: 170px;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.settings-badge {
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    text-align: left;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    box-sizing: border-box;
+}
+
+.settings-badge span {
+    display: block;
+    color: var(--text-secondary);
+    font-size: 0.65rem;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    margin-bottom: 5px;
+}
+
+.settings-badge strong {
+    color: var(--text-main);
+    font-size: 0.82rem;
+    letter-spacing: 0.5px;
+}
+
+.settings-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+.settings-card {
+    width: 100%;
+    border-radius: 12px;
+    padding: 16px;
+    box-sizing: border-box;
+    border: 1px solid var(--panel-border);
+    background: linear-gradient(180deg, var(--panel-start), var(--panel-end));
+    box-shadow: 0 14px 30px var(--panel-shadow);
+}
+
+.settings-card-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.settings-card-head h3 {
+    margin: 0;
+}
+
+.settings-card-head .desc {
+    margin: 6px 0 0;
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    line-height: 1.45;
+}
+
+#settings-tab h2 {
+    margin: 0;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+/* --- TERMINAL / NEWS SECTION --- */
+.news-section {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.terminal-box {
+    height: 208px;
+    min-height: 208px;
+    width: 100%;
+    overflow-y: auto;
+    background: radial-gradient(circle at top, rgba(var(--accent-rgb), 0.18), var(--terminal-surface) 58%);
+    padding: 12px;
+    border-radius: 10px;
+    font-size: 12px;
+    line-height: 1.55;
+    color: #00ff41;
+    border: 1px solid var(--panel-border-strong);
+    box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.45);
+    box-sizing: border-box;
+}
+
+.terminal-input-area {
+    display: flex;
+    align-items: center;
+    margin-top: 10px;
+    background: var(--terminal-surface);
+    padding: 10px 12px;
+    border: 1px solid var(--panel-border);
+    border-radius: 10px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.prompt {
+    color: var(--accent);
+    margin-right: 8px;
+    font-weight: bold;
+}
+
+#terminal-cmd {
+    background: transparent;
+    border: none;
+    color: #fff;
+    outline: none;
+    width: 100%;
+    font-size: 0.78rem;
+}
+
+/* --- SETTINGS PANEL & SWITCHES --- */
+.settings-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+.settings-chip {
+    padding: 7px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--panel-border-strong);
+    background: var(--surface-hover);
+    color: var(--panel-text-strong);
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    white-space: nowrap;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.settings-group {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 0;
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+.settings-theme-block {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 14px;
+    border-radius: 14px;
+    border: 1px solid var(--panel-border);
+    background: var(--surface-muted);
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+.settings-theme-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.theme-picker-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    width: 100%;
+}
+
+.theme-chip-btn {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 12px;
+    border-radius: 12px;
+    border: 1px solid var(--panel-border);
+    background: rgba(0, 0, 0, 0.28);
+    color: #e4fbff;
+    text-align: left;
+    transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+    box-sizing: border-box;
+}
+
+.theme-chip-btn:hover,
+.theme-chip-btn.is-active {
+    transform: translateY(-1px);
+    border-color: var(--panel-border-focus);
+    box-shadow: 0 0 14px rgba(var(--accent-rgb), 0.12);
+    background: var(--surface-hover);
+}
+
+.theme-chip-swatches {
+    display: inline-flex;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.theme-chip-swatches span {
+    width: 16px;
+    height: 16px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18);
+}
+
+.theme-chip-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+}
+
+.theme-chip-copy strong {
+    color: #fff;
+    font-size: 0.78rem;
+    letter-spacing: 0.4px;
+}
+
+.theme-chip-copy small {
+    color: var(--text-secondary);
+    font-size: 0.68rem;
+}
+
+.theme-custom-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    width: 100%;
+}
+
+.theme-picker-field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
+    border-radius: 12px;
+    border: 1px solid var(--panel-border);
+    background: var(--surface-muted);
+    box-sizing: border-box;
+}
+
+.theme-picker-field span {
+    color: var(--text-secondary);
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+.theme-picker-field input[type="color"] {
+    width: 100%;
+    height: 40px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+}
+
+.theme-custom-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    width: 100%;
+}
+
+/* CUSTOM TOGGLE SLIDER */
+.switch-container {
+    display: flex;
+    align-items: flex-start;
+    width: 100%;
+    gap: 12px;
+    justify-content: flex-start;
+    overflow: visible;
+    padding: 12px 13px;
+    border-radius: 12px;
+    border: 1px solid var(--panel-border);
+    background: var(--surface-muted);
+    transition: border-color 0.2s ease, transform 0.2s ease, background 0.2s ease;
+    box-sizing: border-box;
+}
+
+.switch-container:hover {
+    color: var(--accent);
+    border-color: var(--panel-border-strong);
+    transform: translateY(-1px);
+    background: var(--surface-hover);
+}
+
+.switch-container input {
+    display: none;
+}
+
+.slider {
+    width: 38px;
+    height: 22px;
+    background-color: #333;
+    display: inline-block;
+    flex: none;
+    border-radius: 20px;
+    position: relative;
+    transition: 0.25s ease;
+    border: 1px solid #444;
+    margin-top: 1px;
+}
+
+.slider:before {
+    content: "";
+    position: absolute;
+    height: 14px;
+    width: 14px;
+    left: 3px;
+    bottom: 3px;
+    background-color: #888;
+    border-radius: 50%;
+    transition: 0.25s ease;
+}
+
+input:checked + .slider {
+    background-color: rgba(var(--accent-rgb), 0.2);
+    border-color: var(--accent);
+}
+
+input:checked + .slider:before {
+    transform: translateX(16px);
+    background-color: var(--accent);
+    box-shadow: 0 0 8px var(--accent);
+}
+
+.setting-copy {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.setting-title {
+    color: var(--text-main);
+    font-size: 0.84rem;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+}
+
+.setting-meta {
+    color: var(--text-secondary);
+    font-size: 0.72rem;
+    line-height: 1.45;
+    margin-top: 3px;
+}
+
+/* --- ACTION BUTTONS --- */
+.settings-quick-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+.settings-action {
+    width: 100%;
+    max-width: 100%;
+    min-height: 42px;
+    padding: 10px 11px;
+    border-radius: 10px;
+    border: 1px solid var(--panel-border-strong);
+    background: var(--surface-hover);
+    color: var(--panel-text-strong);
+    cursor: pointer;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.7px;
+    text-transform: uppercase;
+    transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+    text-align: center;
+    line-height: 1.3;
+    box-sizing: border-box;
+}
+
+.settings-action:hover {
+    background: var(--surface-hover-strong);
+    color: #fff;
+    transform: translateY(-1px);
+    box-shadow: 0 0 14px rgba(var(--accent-rgb), 0.12);
+}
+
+.settings-action.secondary,
+.settings-action.ghost {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.12);
+    color: #d1d7dc;
+}
+
+.settings-action.ghost {
+    min-height: 36px;
+    padding: 8px 10px;
+}
+
+.settings-action.secondary:hover,
+.settings-action.ghost:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: var(--panel-border-strong);
+    color: #fff;
+}
+
+.settings-action.danger {
+    background: rgba(255, 68, 68, 0.08);
+    border-color: rgba(255, 68, 68, 0.22);
+    color: #ffb0b0;
+}
+
+.settings-action.danger:hover {
+    background: rgba(255, 68, 68, 0.18);
+    border-color: rgba(255, 68, 68, 0.4);
+    color: #fff;
+    box-shadow: 0 0 14px rgba(255, 68, 68, 0.14);
+}
+
+.settings-action:disabled {
+    opacity: 0.6;
+    cursor: wait;
+    transform: none;
+    box-shadow: none;
+}
+
+.settings-footer-copy {
+    color: var(--text-secondary);
+    font-size: 0.72rem;
+    line-height: 1.45;
+    padding-top: 2px;
+}
+
+@media (max-width: 640px) {
+    .settings-header,
+    .settings-card-head {
+        flex-direction: column;
+    }
+
+    .settings-badges,
+    .settings-quick-grid,
+    .theme-custom-grid,
+    .theme-custom-actions {
+        grid-template-columns: 1fr;
+        width: 100%;
+    }
+}
+
+/* TYPING ANIMATION */
+.terminal-line {
+    display: block;
+    width: fit-content;
+    max-width: 100%;
+}
+
+.typewriter {
+    display: inline-block;
+    overflow: hidden;
+    white-space: nowrap;
+    border-right: 2px solid var(--accent);
+    width: fit-content;
+    max-width: 100%;
+    vertical-align: top;
+    animation: typing 3.5s steps(40, end), blink-caret .75s step-end infinite;
+}
+
+@keyframes typing {
+    from {
+        clip-path: inset(0 100% 0 0);
+    }
+
+    to {
+        clip-path: inset(0 0 0 0);
+    }
+}
+
+@keyframes blink-caret {
+    from, to {
+        border-color: transparent
+    }
+
+    50% {
+        border-color: var(--accent);
+    }
+}
+
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #1a1a1a;
+}
+
+/* The draggable handle (the thumb) */
+::-webkit-scrollbar-thumb {
+    background: #444; /* Medium grey for the handle */
+    border-radius: 10px; /* Rounded edges for a modern look */
+    border: 2px solid #1a1a1a; /* Creates a small gap around the thumb */
+}
+
     
-    // 2. Select the elements from your HTML
-    const emailEl = document.getElementById('info-email');
-    const hwidEl = document.getElementById('info-hwid');
-    const statusEl = document.getElementById('manage-status');
-
-    // 3. Apply the Updates
-    if (emailEl) emailEl.innerText = email;
-
-    if (hwidEl) {
-        hwidEl.innerText = realHWID; // Replace PENDING_HWID
-        hwidEl.style.color = "var(--accent)"; // Change color to #0095ff
-        hwidEl.style.textShadow = "0 0 8px var(--accent-glow)"; // Add a subtle glow
+    ::-webkit-scrollbar-thumb:hover {
+        background: var(--accent-teal); /* Glows teal on hover */
     }
-
-    if (statusEl) {
-        statusEl.innerText = status;
-        statusEl.style.color = "var(--accent)"; // Change from Red to Blue
-    }
-}
-
-function updateHomeTabUI() {
-    const email = localStorage.getItem("user_email") || "";
-    const expiry = localStorage.getItem("expiry_date");
-    const key = getCurrentLicenseKey();
-    const prefix = getCurrentPrefix();
-    const username = email ? email.split("@")[0].toUpperCase() : "USER";
-    const expirySnapshot = getHomeExpirySnapshot(expiry, prefix);
-
-    const welcomeText = document.getElementById("home-welcome");
-    const homeUsername = document.getElementById("home-username");
-    const homeExp = document.getElementById("home-exp");
-    const homePlan = document.getElementById("home-plan");
-    const homeLicense = document.getElementById("home-license");
-    const homeExpiryNote = document.getElementById("home-expiry-note");
-    const homeEmail = document.getElementById("home-email");
-    const homeSessionKey = document.getElementById("home-session-key");
-    const homeFocusNote = document.getElementById("home-focus-note");
-    const sidebarName = document.getElementById("user-display-name");
-    const sidebarExpiry = document.getElementById("user-expiry");
-
-    if (sidebarName && email) {
-        sidebarName.innerText = email.split("@")[0];
-    }
-
-    if (homeUsername) {
-        homeUsername.textContent = username;
-    }
-
-    if (welcomeText) {
-        welcomeText.textContent = email
-            ? `${getAccessPlanLabel(prefix)} synced and standing by for your next launch.`
-            : "Sign in to sync your loader session and module access.";
-    }
-
-    if (homeExp) {
-        homeExp.textContent = expirySnapshot.label;
-        homeExp.style.color = expirySnapshot.color;
-        homeExp.style.textShadow = expirySnapshot.glow || "none";
-    }
-
-    if (homeExpiryNote) {
-        homeExpiryNote.textContent = expirySnapshot.detail;
-    }
-
-    if (window.homeTileInterval) {
-        clearInterval(window.homeTileInterval);
-    }
-
-    window.homeTileInterval = setInterval(() => {
-        const liveSnapshot = getHomeExpirySnapshot(localStorage.getItem('expiry_date'), getCurrentPrefix());
-        const liveExp = document.getElementById("home-exp");
-        const liveNote = document.getElementById("home-expiry-note");
-
-        if (liveExp) {
-            liveExp.textContent = liveSnapshot.label;
-            liveExp.style.color = liveSnapshot.color;
-            liveExp.style.textShadow = liveSnapshot.glow || "none";
-        }
-
-        if (liveNote) {
-            liveNote.textContent = liveSnapshot.detail;
-        }
-    }, 1000);
-
-    if (homePlan) {
-        homePlan.textContent = getAccessPlanLabel(prefix);
-    }
-
-    if (homeLicense) {
-        homeLicense.textContent = key ? `Key: ${maskLicenseKey(key)}` : "No license linked yet";
-    }
-
-    if (homeEmail) {
-        homeEmail.textContent = email || "Not signed in";
-    }
-
-    if (homeSessionKey) {
-        homeSessionKey.textContent = maskLicenseKey(key);
-    }
-
-    if (homeFocusNote) {
-        homeFocusNote.textContent = key
-            ? "Games and HWID panels are ready for review before launch."
-            : "Link or redeem a license before trying to inject a module.";
-    }
-
-    if (sidebarExpiry) {
-        if (prefix === "ALLX" || prefix === "LIFE") {
-            sidebarExpiry.innerText = "EXP: LIFETIME";
-        } else if (expiry) {
-            sidebarExpiry.innerText = "EXP: " + new Date(expiry).toLocaleDateString();
-        } else {
-            sidebarExpiry.innerText = "EXP: PENDING";
-        }
-    }
-
-    updateHomeServerStatusUI();
-
-    console.log("[HOME] UI Synced:", {
-        email,
-        expiry,
-        prefix
-    });
-}
-
-
-async function handleRegister() {
-    const email = document.getElementById('reg-email').value.trim();
-    const pass = document.getElementById('reg-password').value;
-    const confirm = document.getElementById('reg-confirm').value;
-    const btn = document.getElementById('register-btn');
-
-    // ---------- BASIC FIELD CHECKS ----------
-    if (!email || !pass || !confirm) {
-        await showErrorDialog("Registration Incomplete", "All registration fields are required.");
-        return;
-    }
-
-    if (pass !== confirm) {
-        await showErrorDialog("Passwords Do Not Match", "Re-enter the same password in both registration fields.");
-        return;
-    }
-
-    // ---------- EMAIL FORMAT VALIDATION ----------
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-        await showErrorDialog("Invalid Email", "Enter a valid email address before creating the account.");
-        return;
-    }
-
-    btn.innerHTML = `<div class="spinner"></div> CREATING...`;
-    btn.disabled = true;
-
-    try {
-        const { machineId: hwid } = await loadHardwareSnapshot();
-
-        // ---------- SEND TO BACKEND ----------
-        const response = await fetch(`${API}/register`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                email: email,
-                password: pass,
-                hwid: hwid
-            })
-        });
-
-        const data = await response.json();
-
-        if (data.status === "Success") {
-            await showSuccessDialog("Account Ready", data.message || "Account created successfully. You can now log in.");
-            closeModal('register-modal');
-        } else if (data.error === "invalid_email") {
-            await showErrorDialog("Registration Failed", data.message || "Email is invalid or disposable.");
-        } else {
-            await showErrorDialog("Registration Failed", data.message || data.error || "Unknown error");
-        }
-
-    } catch (err) {
-        console.error("Register Error:", err);
-        await showErrorDialog("Registration Server Unreachable", "Failed to connect to the registration server.", err?.message || "");
-    } finally {
-        btn.innerHTML = "REGISTER NOW";
-        btn.disabled = false;
-    }
-}
-
-// Function to handle the visual status dot and expiry colors
-function updateSubscriptionStatus(expiryDate) {
-    const dot = document.getElementById('status-dot');
-    const expiryText = document.getElementById('user-expiry');
-    if (!dot || !expiryText) return;
-
-    const now = new Date();
-    const expire = new Date(expiryDate);
-    const diffMs = expire - now;
-    const diffDays = diffMs / (1000 * 60 * 60 * 24);
-
-    // Reset classes
-    dot.classList.remove('dot-online', 'dot-warning', 'dot-offline');
-    document.querySelectorAll('.launch-btn').forEach((btn) => {
-        btn.disabled = false;
-    });
-
-    if (diffMs <= 0) {
-        // RED - Expired
-        dot.classList.add('dot-offline');
-        expiryText.style.color = "#ff4444";
-        expiryText.innerText = "EXP: EXPIRED";
-        document.querySelectorAll('.launch-btn').forEach(btn => btn.disabled = true);
-    }
-    else if (diffDays <= 3) {
-        // YELLOW - Expiring Soon (3 Days or less)
-        dot.classList.add('dot-warning');
-        expiryText.style.color = "#ffcc00";
-    }
-    else {
-        // GREEN - Active
-        dot.classList.add('dot-online');
-        expiryText.style.color = "#00ff88";
-    }
-}
-function hasAccess(gameName) {
-    const config = getGameModuleConfig(gameName);
-    const prefix = currentUserPrefix || localStorage.getItem('user_prefix');
-
-    if (prefix === "ALLX") return true;
-
-    if (prefix === config.prefix) {
-        return true;
-    }
-
-    void showErrorDialog("Access Denied", `Your current key (${prefix}) is not valid for ${config.displayName}.`);
-    return false;
-}
-
-function setSessionAccess(key) {
-    // If no key exists yet (User just logged in with email/pass)
-    if (!key || !key.includes('-')) {
-        console.log("[AUTH] No active license. Access restricted until redemption.");
-
-        currentUserPrefix = "";
-        localStorage.setItem('user_prefix', "NULL");
-        localStorage.removeItem('license_key');
-        return;
-    }
-
-    // If they have redeemed a key: "CS2X-C567" -> "CS2X"
-    currentUserPrefix = key.split('-')[0].toUpperCase();
-    localStorage.setItem('user_prefix', currentUserPrefix);
-    localStorage.setItem('license_key', key.toUpperCase());
-
-    console.log(`[AUTH] License Active. Session Prefix: ${currentUserPrefix}`);
-}
-
-
-function hasAccessQuietly(gameName) {
-    const config = getGameModuleConfig(gameName);
-    const prefix = currentUserPrefix || localStorage.getItem('user_prefix');
-    if (prefix === "ALLX") return true;
-
-    return config.prefix === prefix;
-}
-
-async function refreshGameCardsForAvailability(currentPrefix = getCurrentPrefix()) {
-    const cards = Array.from(document.querySelectorAll('.game-card[data-game]'));
-    const subscriptionExpired = isSubscriptionExpired();
-
-    await Promise.all(cards.map(async (card) => {
-        const gameName = card.dataset.game || "";
-        const config = getGameModuleConfig(gameName);
-        const hasModuleAccess = !subscriptionExpired && ((currentPrefix === "ALLX") || hasAccessQuietly(gameName));
-        const availability = await getGameModuleAvailability(gameName);
-        const hasInternal = Boolean(availability?.hasInternal);
-        const hasExternal = Boolean(availability?.hasExternal);
-        let accessState = "locked";
-
-        if (hasModuleAccess && hasInternal && hasExternal) {
-            accessState = "ready";
-        } else if (hasModuleAccess && (hasInternal || hasExternal)) {
-            accessState = "partial";
-        } else if (hasModuleAccess) {
-            accessState = "pending";
-        }
-
-        card.dataset.access = accessState;
-        card.classList.toggle('locked', !hasModuleAccess);
-
-        const stateLabel = card.querySelector('[data-game-state]');
-        if (stateLabel) {
-            stateLabel.textContent = accessState === "ready"
-                ? "READY"
-                : accessState === "partial"
-                    ? "PARTIAL"
-                    : accessState === "pending"
-                        ? "PENDING"
-                        : "LOCKED";
-        }
-
-        const accessPill = card.querySelector('[data-game-access-pill]');
-        if (accessPill) {
-            accessPill.textContent = hasModuleAccess
-                ? accessState === "ready"
-                    ? "Modules Ready"
-                    : accessState === "partial"
-                        ? "Partial Build"
-                        : "Awaiting Assets"
-                : `Requires ${config.prefix}`;
-        }
-
-        card.querySelectorAll('[data-module-type]').forEach((pill) => {
-            const isInternal = pill.dataset.moduleType === "internal";
-            const isReady = isInternal ? hasInternal : hasExternal;
-            pill.classList.toggle('is-ready', isReady);
-            pill.classList.toggle('is-missing', !isReady);
-        });
-
-        if (currentPrefix === "ALLX") {
-            card.style.boxShadow = "0 0 10px rgba(255, 215, 0, 0.2)";
-            card.style.borderColor = "var(--gold)";
-        } else {
-            card.style.removeProperty("box-shadow");
-            card.style.removeProperty("border-color");
-        }
-    }));
-}
-
-function updateUIForAccess() {
-
-    const currentPrefix = getCurrentPrefix();
-    const expiry = localStorage.getItem('expiry_date');
-    const email = localStorage.getItem('user_email') || "User";
-
-    const navExp = document.getElementById('user-expiry');
-
-    if (navExp) {
-        if (currentPrefix === "ALLX" || currentPrefix === "LIFE") {
-            navExp.innerText = "EXP: LIFETIME";
-        } else if (expiry && expiry !== "null") {
-            const d = new Date(expiry);
-            navExp.innerText = "EXP: " + d.toLocaleDateString();
-        } else {
-            navExp.innerText = "EXP: PENDING";
-        }
-    }
-
-    if (expiry) {
-        updateSubscriptionStatus(expiry);
-    }
-
-    void refreshGameCardsForAvailability(currentPrefix);
-    updateProtectedTabLocks();
-
-    if (typeof updateHomeTabUI === "function") {
-        updateHomeTabUI();
-    }
-
-    console.log(`[UI] Sync Complete for: ${email}`);
-}
-
-
-function togglePasswordVisibility(inputId = 'login-password') {
-    const passwordInput = document.getElementById(inputId);
-    const toggle = document.getElementById('toggle-password');
-
-    if (!passwordInput || !toggle) {
-        return;
-    }
-
-    const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
-    passwordInput.setAttribute('type', type);
-    toggle.textContent = type === 'password' ? 'SHOW' : 'HIDE';
-}
-
-window.addEventListener('DOMContentLoaded', async () => {
-
-    const emailInput = document.getElementById('login-email');
-    const passInput = document.getElementById('login-password');
-    const licenseInput = document.getElementById('license-key');
-    const userPic = document.getElementById('user-pic');
-    const rememberCheckbox = document.getElementById('remember-me');
-
-    // Pull everything from LocalStorage
-    const savedEmail = localStorage.getItem('remembered_email');
-    const savedPass = localStorage.getItem('remembered_password');
-    const savedKey = localStorage.getItem('license_key');
-    const savedPic = localStorage.getItem('saved_profile_pic');
-    const savedPrefix = localStorage.getItem('user_prefix');
-    const rememberEnabled = localStorage.getItem('remember-me') === 'true';
-
-    if (savedEmail && emailInput) emailInput.value = savedEmail;
-    if (savedPass && passInput) passInput.value = savedPass;
-    if (savedKey && licenseInput) licenseInput.value = savedKey;
-
-    [emailInput, passInput].forEach((input) => {
-        input?.addEventListener('input', () => {
-            setLoginNotice("");
-        });
-    });
-
-    // Check the box if they have saved credentials
-    if (rememberCheckbox) rememberCheckbox.checked = rememberEnabled;
-
-    if (savedKey) {
-        setSessionAccess(savedKey); // Sets currentUserPrefix in memory
-        updateUIForAccess();       // Grays out locked games
-    }
-
-    if (userPic) {
-        if (savedPic && savedPic !== "null" && savedPic !== "undefined") {
-            userPic.src = savedPic;
-        } else {
-            // Default image if no PFP is found in DB or LocalStorage
-            userPic.src = 'imgs/default-profile.png';
-        }
-    }
-
-    syncHwidRequestBadge();
-    console.log(`[LOADER] Session Restored: ${savedEmail || 'Guest'} | Prefix: ${savedPrefix}`);
-});
-
-// --- MODAL CONTROLS ---
-async function openModal(id) {
-    const modal = document.getElementById(id);
-    const dropdown = document.getElementById('user-dropdown');
-
-    if (modal) {
-        modal.classList.remove('hidden');
-        if (dropdown) dropdown.classList.add('hidden');
-
-        // --- NEW: Sync Data for Settings Modal ---
-        if (id === 'settings-modal') {
-            const currentPfp = document.getElementById('user-pic').src;
-            const modalPfp = document.getElementById('modal-pfp');
-            if (modalPfp) modalPfp.src = currentPfp;
-
-            const hwidDisplay = document.getElementById('settings-hwid-display');
-            if (hwidDisplay) {
-                try {
-                    const { machineId: realHWID } = await loadHardwareSnapshot();
-                    hwidDisplay.innerText = realHWID;
-                } catch (err) {
-                    hwidDisplay.innerText = "ERROR FETCHING HWID";
-                }
-            }
-        }
-
-        console.log("✅ Modal Opened:", id);
-    } else {
-        console.error("❌ Modal ID not found:", id);
-    }
-}
-
-async function redeemNewKey() {
-    const newKey = document.getElementById('edit-license-key')?.value;
-    const email = localStorage.getItem('user_email');
-    const redeemBtn = document.getElementById('redeem-key-btn');
-    const hwidDisplay = document.getElementById('settings-hwid-display');
-
-    if (!newKey) {
-        await showErrorDialog("License Key Missing", "Enter a valid license key before redeeming.");
-        return;
-    }
-
-    if (redeemBtn) {
-        redeemBtn.innerText = "REDEEMING...";
-        redeemBtn.disabled = true;
-    }
-
-    try {
-        const { machineId: hwid } = await loadHardwareSnapshot();
-        if (hwidDisplay) hwidDisplay.innerText = hwid;
-
-        const response = await fetch('https://my-auth-api-1ykc.onrender.com/redeem', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, license_key: newKey, hwid })
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error("Server Error Response:", errorText);
-            throw new Error(`Server error (${response.status}).`);
-        }
-
-        const data = await response.json();
-
-        if (data.status === "Success") {
-            await showSuccessDialog("Subscription Updated", data.message || "The new license key was redeemed successfully.");
-
-            // 1. Update the stored license key string
-            localStorage.setItem('license_key', newKey);
-            localStorage.setItem('expiry_date', data.new_expiry);
-
-            // 2. CRITICAL: Update the prefix (e.g., change from CS2X to ALLX)
-            setSessionAccess(newKey);
-
-            // 3. Refresh UI & Heartbeat
-            expirySequenceTriggered = false;
-            closeModal('expiry-modal');
-            updateSubscriptionStatus(data.new_expiry);
-            if (typeof startExpiryHeartbeat === 'function') startExpiryHeartbeat(data.new_expiry);
-            if (typeof updateUIForAccess === 'function') updateUIForAccess();
-            updateProtectedTabLocks();
-
-            closeModal('settings-modal');
-            showTab('home', { bypassExpiryLock: true, silent: true });
-            console.log(`[AUTH] Key Upgraded to: ${newKey}`);
-        } else {
-            // Handle logical errors (Invalid Key, Already Used, etc.)
-            await showErrorDialog("Redeem Failed", data.error || "Unknown error");
-        }
-    } catch (err) {
-        console.error("Redeem Error:", err);
-        await showErrorDialog("Connection Error", "The loader could not reach the redemption server.", err?.message || "");
-    } finally {
-        // ALWAYS reset the button so the user can try again if it fails
-        if (redeemBtn) {
-            redeemBtn.innerText = "REDEEM KEY";
-            redeemBtn.disabled = false;
-        }
-    }
-}
-
-// Close the Modal
-function closeModal(id) {
-    const modal = document.getElementById(id);
-    if (modal) {
-        modal.classList.add('hidden');
-    }
-
-    if (id === 'external-link-modal') {
-        activeExternalLink = null;
-    } else if (id === 'game-launch-modal') {
-        activeGameLaunchResolver = null;
-    }
-}
-
-// --- IMAGE PREVIEW ---
-function previewImage(input) {
-    if (input.files && input.files[0]) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            document.getElementById('modal-pfp').src = e.target.result;
-            // Temporarily store the base64 string
-            window.tempPfp = e.target.result;
-        };
-        reader.readAsDataURL(input.files[0]);
-    }
-}
-
-// --- SAVE TO RENDER & LOCAL ---
-async function saveProfileChanges() {
-    const emailInput = document.getElementById('edit-email');
-    const passwordInput = document.getElementById('edit-password');
-    const licenseInput = document.getElementById('edit-license');
-    const btn = document.getElementById('save-profile-btn');
-
-    if (!btn) return;
-
-    const userEmail = localStorage.getItem('user_email');
-    if (!userEmail) {
-        await showErrorDialog("Session Error", "No user email was found for this session. Log in again and retry.");
-        return;
-    }
-
-    btn.innerText = "SAVING...";
-    btn.disabled = true;
-
-    try {
-        const cleanAPI = API.endsWith('/') ? API.slice(0, -1) : API;
-        const url = `${cleanAPI}/update-profile`;
-
-        // COMPRESSION STEP: Only compress if a new image was picked
-        let profilePicData = window.tempPfp;
-        if (profilePicData && profilePicData.startsWith('data:image')) {
-            console.log("[SYSTEM] Compressing image to bypass server limits...");
-            profilePicData = await compressImage(window.tempPfp);
-        }
-
-        const payload = {
-            user_id_email: userEmail.toLowerCase(),
-            new_license_key: licenseInput?.value?.trim().toUpperCase() || null,
-            email: emailInput?.value || null,
-            password: passwordInput?.value || null,
-            profile_pic: profilePicData // Use the (potentially) compressed version
-        };
-
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
-
-        // Check if the response is actually JSON to avoid the "<!DOCTYPE" error
-        const contentType = response.headers.get("content-type");
-        if (!response.ok || !contentType.includes("application/json")) {
-            const errorText = await response.text();
-            throw new Error(`Server returned error ${response.status}: ${errorText.substring(0, 50)}`);
-        }
-
-        const data = await response.json();
-
-        if (data.success) {
-            if (emailInput?.value) localStorage.setItem('user_email', emailInput.value);
-            if (payload.new_license_key) localStorage.setItem('license_key', payload.new_license_key);
-
-            if (profilePicData) {
-                applyProfileImage(profilePicData);
-            }
-
-            await showSuccessDialog("Profile Updated", "Profile changes were saved successfully.");
-            if (typeof closeModal === "function") closeModal('settings-modal');
-        } else {
-            await showErrorDialog("Profile Update Failed", data.error || "Unknown error");
-        }
-    } catch (e) {
-        console.error("[SAVE PROFILE ERROR]", e);
-        await showErrorDialog("Save Failed", "Profile changes could not be saved. The image may still be too large or the server may be unavailable.", e?.message || "");
-    } finally {
-        btn.innerText = "SAVE CHANGES";
-        btn.disabled = false;
-    }
-}
-
-// ---------------- GLOBAL STATE ----------------
-
-let selectedSpoofMode = "hwid";
-let spoofState = "idle";
-
-
-// ---------------- MODE TOGGLE ----------------
-
-function setSpoofMode(mode) {
-
-    selectedSpoofMode = mode;
-
-    document.querySelectorAll(".mode-btn")
-        .forEach(btn => btn.classList.remove("active"));
-
-    document.getElementById(`mode-${mode}`)?.classList.add("active");
-
-    updateModeDescription();
-}
-
-window.setSpoofMode = setSpoofMode;
-
-
-// ---------------- STATUS UI ----------------
-
-function updateSpoofStatus(state) {
-
-    spoofState = state;
-
-    const status = document.getElementById("spoof-main-status");
-    const subtext = document.getElementById("spoof-subtext");
-
-    if (!status || !subtext) return;
-
-    status.classList.remove("status-inactive", "status-temp", "status-perm");
-
-    if (state === "inactive") {
-        status.textContent = "NOT SPOOFED";
-        subtext.textContent = "Your hardware identifiers are currently exposed.";
-        status.classList.add("status-inactive");
-    }
-
-    if (state === "temp") {
-        status.textContent = "TEMPORARY SPOOF ACTIVE";
-        subtext.textContent = "Session-based masking is enabled.";
-        status.classList.add("status-temp");
-    }
-
-    if (state === "perm") {
-        status.textContent = "PERMANENT SPOOF ACTIVE";
-        subtext.textContent = "Firmware-level spoof successfully applied.";
-        status.classList.add("status-perm");
-    }
-}
-
-
-// ---------------- MODE DESCRIPTION ----------------
-
-function updateModeDescription() {
-
-    const title = document.getElementById("spoof-action-title");
-    const desc = document.getElementById("spoof-action-desc");
-
-    if (!title || !desc) return;
-
-    if (selectedSpoofMode === "hwid") {
-        title.textContent = "Natural Spoof (Permanent)";
-        desc.textContent = "Firmware-level hardware masking.";
-    }
-
-    if (selectedSpoofMode === "traces") {
-        title.textContent = "Trace Cleaner (Temporary)";
-        desc.textContent = "Removes local tracking artifacts.";
-    }
-}
-
-
-// ---------------- DOM READY ----------------
-
-document.addEventListener("DOMContentLoaded", () => {
-
-    updateSpoofStatus("inactive");
-    updateModeDescription();
-    setHwidResetControls("idle");
-
-    // ---------- CHECKBOX MODALS ----------
-
-    const modalMap = {
-        "bios-flash": "biosflash-modal",
-        "clean-reg": "registryclean-modal",
-        "clean-disk": "diskclean-modal",
-        "deep-clean": "deepclean-modal"
-    };
-
-    Object.entries(modalMap).forEach(([checkboxId, modalId]) => {
-
-        const checkbox = document.getElementById(checkboxId);
-        const modal = document.getElementById(modalId);
-
-        if (!checkbox || !modal) return;
-
-        checkbox.addEventListener("click", (e) => {
-
-            if (!checkbox.checked) return;
-
-            e.preventDefault();
-            modal.classList.remove("hidden");
-
-        });
-
-        const confirmBtn =
-            modal.querySelector("[id$='confirm']") ||
-            modal.querySelector("[id$='save']");
-
-        const cancelBtn = modal.querySelector("[id$='cancel']");
-
-        confirmBtn?.addEventListener("click", () => {
-            checkbox.checked = true;
-            modal.classList.add("hidden");
-        });
-
-        cancelBtn?.addEventListener("click", () => {
-            checkbox.checked = false;
-            modal.classList.add("hidden");
-        });
-
-    });
-
-
-    // ---------- MOTHERBOARD ICON ----------
-
-    const motherboardSelect = document.getElementById("motherboard-select");
-    const mbIcon = document.getElementById("mb-icon");
-
-    const motherboardIcons = {
-        asus: "imgs/asus.png",
-        msi: "imgs/msi.png",
-        gigabyte: "imgs/gigabyte.png",
-        asrock: "imgs/asrock.png",
-        other: "imgs/motherboard.png"
-    };
-
-    motherboardSelect?.addEventListener("change", () => {
-
-        const brand = motherboardSelect.value;
-        mbIcon.src = motherboardIcons[brand] || motherboardIcons.other;
-
-    });
-
-});
-
-
-// ---------------- SPOOF EXECUTION ----------------
-
-async function startSpoofing() {
-    const loader = document.getElementById("spoof-progress");
-    const spinner = document.getElementById("spoof-spinner");
-    const success = document.getElementById("spoof-success");
-    const el = (id) => document.getElementById(id); // Move helper to top
-
-    if (spoofState === "running") return;
-
-    const isDeepClean = el("deep-clean")?.checked;
-
-    if (isDeepClean) {
-        const confirmClean = await showConfirmDialog(
-            "Deep Clean Warning",
-            "Deep Clean will wipe game logs and traces from this system.",
-            {
-                detail: "To escape a shadow ban, you must use a new game account after this. Logging into a flagged account can immediately re-ban the hardware.",
-                confirmLabel: "Run Deep Clean",
-                confirmVariant: "danger",
-                kicker: "HIGH RISK ACTION"
-            }
-        );
-        if (!confirmClean) return;
-    }
-
-    spoofState = "running";
-    loader?.classList.remove("hidden");
-    spinner?.classList.remove("hidden");
-    success?.classList.add("hidden");
-
-    try {
-        // 1. GATHER DATA (No nested function needed)
-        const cs2 = el("clean-cs2")?.checked || false;
-        const gtav = el("clean-gtav")?.checked || false;
-        const fivem = el("clean-fivem")?.checked || false;
-        const cod = el("clean-cod")?.checked || false;
-
-        const options = {
-            motherboard: el("motherboard-select")?.value || "asus",
-            biosFlash: el("bios-flash")?.checked || false,
-            cleanReg: el("clean-reg")?.checked || false,
-            cleanDisk: el("clean-disk")?.checked || false,
-            deepClean: isDeepClean || false,
-            user: typeof selectedSpoofMode !== 'undefined' && selectedSpoofMode === "hwid",
-            disk: typeof selectedSpoofMode !== 'undefined' && selectedSpoofMode === "traces",
-            cleanCS2: cs2,
-            cleanGTAV: gtav,
-            cleanFiveM: fivem,
-            cleanCOD: cod,
-            newMachineGuid: crypto.randomUUID()
-        };
-
-        console.log("[SYSTEM] Starting Spoof with Options:", options);
-
-        // 2. EXECUTE
-        const result = await window.api.startSpoof(options);
-
-        // 3. HANDLE RESULT
-        if (result) { // If C++ returns the object {User: true, Kernel: true...}
-            const state = (typeof selectedSpoofMode !== 'undefined' && selectedSpoofMode === "hwid") ? "perm" : "temp";
-
-            updateSpoofStatus(state);
-            localStorage.setItem("spoofState", state);
-            await updateHWIDDisplay(true);
-
-            spinner?.classList.add("hidden");
-            success?.classList.remove("hidden");
-            document.querySelector(".shield-img").src = "imgs/green-check.svg";
-
-            const statusText = document.getElementById("spoof-main-status");
-            if (statusText) {
-                statusText.textContent = "SPOOFED";
-                statusText.classList.remove("status-inactive");
-                statusText.classList.add("status-active");
-            }
-
-            await showSuccessDialog("Spoof Complete", "Please restart your PC before launching the game.");
-        } else {
-            await showErrorDialog("Spoof Failed", "The spoofing flow did not finish successfully. Check the logs and try again.");
-            updateSpoofStatus("inactive");
-            loader?.classList.add("hidden");
-        }
-
-    } catch (err) {
-        console.error("[UI SPOOF ERROR]", err);
-        updateSpoofStatus("inactive");
-        loader?.classList.add("hidden");
-    } finally {
-        spoofState = "idle";
-    }
-}
-
-function getHwidResetConsumedStorageKey() {
-    const key = getCurrentLicenseKey() || "GLOBAL";
-    return `hwid-reset-consumed:${key}`;
-}
-
-function getConsumedHwidResetRequestId() {
-    return localStorage.getItem(getHwidResetConsumedStorageKey()) || "";
-}
-
-function markHwidResetConsumed(requestId) {
-    if (!requestId) {
-        return;
-    }
-
-    localStorage.setItem(getHwidResetConsumedStorageKey(), requestId);
-}
-
-function clearConsumedHwidResetRequest() {
-    localStorage.removeItem(getHwidResetConsumedStorageKey());
-}
-
-function deriveHwidTicketNumber(requestId) {
-    const cleanId = String(requestId || '').replace(/[^a-fA-F0-9]/g, '');
-    if (!cleanId) {
-        return null;
-    }
-
-    const tail = cleanId.slice(-6);
-    const numeric = Number.parseInt(tail, 16);
-
-    if (!Number.isFinite(numeric)) {
-        return null;
-    }
-
-    return (numeric % 9000) + 1000;
-}
-
-function formatHwidRequestBadge(ticketNumber, requestId = "") {
-    const normalized = Number(ticketNumber);
-    if (Number.isFinite(normalized) && normalized > 0) {
-        return `#${String(normalized).padStart(4, '0')}`;
-    }
-
-    const derived = deriveHwidTicketNumber(requestId);
-    return derived ? `#${String(derived).padStart(4, '0')}` : '#----';
-}
-
-function syncHwidRequestBadge() {
-    const badge = document.getElementById('hwid-request-badge');
-    if (!badge) {
-        return;
-    }
-
-    const label = formatHwidRequestBadge(latestHwidResetTicketNumber, latestHwidResetRequestId);
-    badge.textContent = label;
-    badge.classList.toggle('is-empty', label === '#----');
-}
-
-function stopHwidResetPolling() {
-    if (hwidResetPollInterval) {
-        clearInterval(hwidResetPollInterval);
-        hwidResetPollInterval = null;
-    }
-}
-
-function appendAdminRequestLog(message) {
-    const terminal = document.getElementById('admin-terminal');
-    if (!terminal) {
-        return;
-    }
-
-    const entry = document.createElement('div');
-    entry.className = 'log-entry';
-
-    if (message.includes("PENDING")) entry.style.color = "var(--gold)";
-    if (message.includes("APPROVED")) entry.style.color = "var(--accent)";
-    if (message.includes("DENIED") || message.includes("FAILED")) entry.style.color = "var(--red)";
-
-    entry.innerHTML = `<span class="prompt">></span> ${message}`;
-    terminal.appendChild(entry);
-    terminal.scrollTop = terminal.scrollHeight;
-}
-
-function resetAdminRequestLog(message = "SYSTEM_IDLE: WAITING FOR REQUEST...") {
-    const terminal = document.getElementById('admin-terminal');
-    if (!terminal) {
-        return;
-    }
-
-    terminal.innerHTML = "";
-    appendAdminRequestLog(message);
-}
-
-function setHwidResetControls(state, detail = "") {
-    const resetBtn = document.getElementById('reset-btn');
-    const requestBtn = document.getElementById('admin-request-btn');
-    const statusEl = document.getElementById('hwid-main-status');
-    const requestStateEl = document.getElementById('hwid-request-state');
-    const statusLine = document.getElementById('hwid-status');
-
-    hwidResetApprovalStatus = state;
-
-    const applyState = (statusText, statusClass, requestState, requestStateClass, resetText, resetDisabled, requestText, requestDisabled, note) => {
-        if (statusEl) {
-            statusEl.textContent = statusText;
-            statusEl.className = statusClass;
-        }
-
-        if (requestStateEl) {
-            requestStateEl.textContent = requestState;
-            requestStateEl.className = requestStateClass || "";
-        }
-
-        if (resetBtn) {
-            resetBtn.textContent = resetText;
-            resetBtn.disabled = resetDisabled;
-        }
-
-        if (requestBtn) {
-            requestBtn.textContent = requestText;
-            requestBtn.disabled = requestDisabled;
-        }
-
-        if (statusLine) {
-            statusLine.textContent = detail || note;
-        }
-    };
-
-    switch (state) {
-        case "pending":
-            applyState(
-                "REQUEST PENDING",
-                "processing",
-                "PENDING REVIEW",
-                "processing",
-                "WAITING FOR APPROVAL",
-                true,
-                "REQUEST PENDING",
-                true,
-                "Admin request submitted. The reset button unlocks only after approval."
-            );
-            break;
-        case "approved":
-            applyState(
-                "ADMIN APPROVED",
-                "active-status",
-                "APPROVED",
-                "active-status",
-                "HWID RESET",
-                false,
-                "APPROVED",
-                true,
-                "Approval received. You can now run the HWID reset once."
-            );
-            break;
-        case "running":
-            applyState(
-                "APPLYING RESET",
-                "processing",
-                "CONSUMING APPROVAL",
-                "processing",
-                "RESETTING...",
-                true,
-                "APPROVED",
-                true,
-                "Applying the approved reset locally on this machine."
-            );
-            break;
-        case "completed":
-            applyState(
-                "RESET APPLIED",
-                "active-status",
-                "APPROVAL USED",
-                "active-status",
-                "REQUEST NEW APPROVAL",
-                true,
-                "REQUEST AGAIN",
-                false,
-                "Latest approval has been used. Request a new approval before resetting again."
-            );
-            break;
-        case "denied":
-            applyState(
-                "REQUEST DENIED",
-                "inactive",
-                "DENIED",
-                "inactive",
-                "WAITING FOR APPROVAL",
-                true,
-                "REQUEST AGAIN",
-                false,
-                "Admin denied the last request. Submit a new request if you still need a reset."
-            );
-            break;
-        case "error":
-            applyState(
-                "STATUS UNAVAILABLE",
-                "inactive",
-                "SYNC ERROR",
-                "inactive",
-                "WAITING FOR APPROVAL",
-                true,
-                "TRY AGAIN",
-                false,
-                "Unable to sync approval state right now. Try again in a moment."
-            );
-            break;
-        default:
-            applyState(
-                "APPROVAL REQUIRED",
-                "processing",
-                "AWAITING APPROVAL",
-                "",
-                "WAITING FOR APPROVAL",
-                true,
-                "REQUEST HWID RESET",
-                false,
-                "Request approval from admin before the HWID reset can run."
-            );
-            break;
-    }
-
-    syncHwidRequestBadge();
-}
-
-async function fetchHwidResetStatus(savedKey) {
-    const statusCheck = await fetch(`${API}/check-reset-status?key=${savedKey}`);
-    return statusCheck.json();
-}
-
-function applyHwidResetStatus(statusData, logTransition = true) {
-    const normalizedStatus = (statusData?.status || "NONE").toUpperCase();
-    const requestId = statusData?.requestId || null;
-    const ticketNumber = Number(statusData?.ticketNumber);
-    const consumedRequestId = getConsumedHwidResetRequestId();
-    const previousStatus = hwidResetApprovalStatus;
-
-    if (requestId) {
-        latestHwidResetRequestId = requestId;
-    }
-
-    if (Number.isFinite(ticketNumber) && ticketNumber > 0) {
-        latestHwidResetTicketNumber = ticketNumber;
-    }
-
-    if (normalizedStatus === "PENDING") {
-        setHwidResetControls("pending");
-        if (logTransition && previousStatus !== "pending") {
-            appendAdminRequestLog("STATUS: PENDING APPROVAL.");
-        }
-        return;
-    }
-
-    if (normalizedStatus === "APPROVED") {
-        stopHwidResetPolling();
-
-        if (requestId && requestId === consumedRequestId) {
-            setHwidResetControls("completed");
-            return;
-        }
-
-        setHwidResetControls("approved");
-        if (logTransition && previousStatus !== "approved") {
-            appendAdminRequestLog("STATUS: APPROVED. RESET UNLOCKED.");
-        }
-        return;
-    }
-
-    if (normalizedStatus === "DENIED") {
-        stopHwidResetPolling();
-        setHwidResetControls("denied");
-        if (logTransition && previousStatus !== "denied") {
-            appendAdminRequestLog("STATUS: DENIED BY ADMIN.");
-        }
-        return;
-    }
-
-    if (normalizedStatus === "ERROR") {
-        setHwidResetControls("error");
-        return;
-    }
-
-    stopHwidResetPolling();
-
-    if (!requestId) {
-        latestHwidResetRequestId = null;
-        latestHwidResetTicketNumber = null;
-    }
-
-    if (requestId && requestId === consumedRequestId) {
-        setHwidResetControls("completed");
-        return;
-    }
-
-    setHwidResetControls("idle");
-}
-
-function beginHwidResetPolling(savedKey) {
-    stopHwidResetPolling();
-
-    hwidResetPollInterval = setInterval(async () => {
-        try {
-            const statusData = await fetchHwidResetStatus(savedKey);
-            applyHwidResetStatus(statusData);
-        } catch (error) {
-            console.error("[HWID] Polling error:", error);
-        }
-    }, 5000);
-}
-
-async function syncHwidResetApprovalState(logTransition = false) {
-    const savedKey = getCurrentLicenseKey();
-
-    if (!savedKey) {
-        stopHwidResetPolling();
-        setHwidResetControls("idle", "Sign in with an active license before requesting a reset.");
-        return;
-    }
-
-    try {
-        const statusData = await fetchHwidResetStatus(savedKey);
-        applyHwidResetStatus(statusData, logTransition);
-
-        if ((statusData?.status || "").toUpperCase() === "PENDING") {
-            beginHwidResetPolling(savedKey);
-        }
-    } catch (error) {
-        console.error("[HWID] Failed to sync approval state:", error);
-        setHwidResetControls("error");
-    }
-}
-
-async function requestHWIDReset() {
-    if (hwidResetApprovalStatus !== "approved") {
-        appendAdminRequestLog("RESET LOCKED: WAIT FOR ADMIN APPROVAL.");
-        setHwidResetControls("idle", "Reset is locked until the admin request panel shows approval.");
-        return;
-    }
-
-    const requestId = latestHwidResetRequestId;
-    setHwidResetControls("running");
-    appendAdminRequestLog("APPROVAL VERIFIED. APPLYING LOCAL RESET...");
-
-    try {
-        const results = await window.api.startSpoof({
-            disk: true,
-            guid: true,
-            kernel: true,
-            user: true,
-            cleanReg: true,
-            cleanDisk: true,
-            deepClean: true
-        });
-
-        if (!results) {
-            throw new Error("Reset process returned no result");
-        }
-
-        appendAdminRequestLog("LOCAL RESET COMPLETE. REFRESHING HARDWARE READOUT...");
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-        await updateHWIDDisplay(true);
-
-        if (requestId) {
-            markHwidResetConsumed(requestId);
-        }
-
-        setHwidResetControls("completed", "Reset applied locally. Restart or re-login before the next session if needed.");
-        appendAdminRequestLog("APPROVAL CONSUMED. REQUEST A NEW APPROVAL FOR ANOTHER RESET.");
-    } catch (err) {
-        console.error("❌ Reset Error:", err);
-        setHwidResetControls("approved", "Reset failed locally. Approval is still available, so you can retry.");
-        appendAdminRequestLog("LOCAL RESET FAILED. APPROVAL REMAINS AVAILABLE.");
-    }
-}
-
-    const deepCleanToggle = document.getElementById("deep-clean");
-    const deepCleanModal = document.getElementById("deepclean-modal");
-
-    deepCleanToggle?.addEventListener("change", () => {
-
-        if (deepCleanToggle.checked) {
-
-            document.getElementById("deepclean-warning")?.classList.remove("hidden");
-
-            if (deepCleanModal) {
-                deepCleanModal.classList.remove("hidden");
-            }
-
-        } else {
-
-            document.getElementById("deepclean-warning")?.classList.add("hidden");
-
-        }
-
-    });
-
-    document.getElementById("deepclean-save")?.addEventListener("click", () => {
-
-        const selections = {
-            cs2: document.getElementById("clean-cs2")?.checked || false,
-            gtav: document.getElementById("clean-gtav")?.checked || false,
-            fivem: document.getElementById("clean-fivem")?.checked || false,
-            cod: document.getElementById("clean-cod")?.checked || false
-        };
-
-        localStorage.setItem("deepclean_games", JSON.stringify(selections));
-
-        document.getElementById("deepclean-modal").classList.add("hidden");
-
-    });
-
-    document.getElementById("deepclean-cancel")?.addEventListener("click", () => {
-
-        document.getElementById("deepclean-modal").classList.add("hidden");
-
-    });
-
-    async function sendAdminRequest() {
-        const hwidEl = document.getElementById('hwid-id');
-        const hwid = hwidEl ? hwidEl.innerText : "UNKNOWN";
-        const savedKey = getCurrentLicenseKey();
-
-        if (!savedKey) {
-            resetAdminRequestLog("ERROR: LICENSE DATA NOT FOUND. PLEASE RE-LOGIN.");
-            setHwidResetControls("idle", "A valid license is required before a reset request can be sent.");
-            return;
-        }
-
-        resetAdminRequestLog("CONNECTING TO AUTH SERVER...");
-        setHwidResetControls("pending", "Submitting your reset request to the admin panel.");
-
-        try {
-            const response = await fetch(`${API}/request-hwid-reset`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ hwid, license_key: savedKey, type: "ADMIN-PANEL_RESET" })
-            });
-
-            const data = await response.json();
-
-            if (!data.success) {
-                throw new Error(data.error || "Request rejected");
-            }
-
-            latestHwidResetRequestId = data.requestId || latestHwidResetRequestId;
-            latestHwidResetTicketNumber = Number(data.ticketNumber) || latestHwidResetTicketNumber;
-            clearConsumedHwidResetRequest();
-            syncHwidRequestBadge();
-            appendAdminRequestLog(data.message === "Request already pending." ? "REQUEST ALREADY PENDING." : "REQUEST SENT TO ADMIN.");
-            appendAdminRequestLog(`REQUEST ID: ${formatHwidRequestBadge(latestHwidResetTicketNumber, latestHwidResetRequestId)}`);
-            appendAdminRequestLog("STATUS: PENDING APPROVAL.");
-            beginHwidResetPolling(savedKey);
-        } catch (err) {
-            console.error("[HWID] Request failed:", err);
-            setHwidResetControls("error", "Request failed to send. Check your connection and try again.");
-            appendAdminRequestLog("CRITICAL: API CONNECTION FAILED.");
-        }
-    }
-
-    async function checkServer() {
-        const statusDot = document.getElementById('status-dot');
-        const API = "https://my-auth-api-1ykc.onrender.com";
-
-    try {
-        const response = await fetch(`${API}/health`);
-        if (response.ok) {
-            serverHealthState = "ONLINE";
-            if (statusDot) {
-                statusDot.className = "status-dot dot-online";
-                console.log("✅ Render API: Online");
-            }
-        } else {
-            throw new Error();
-        }
-    } catch (err) {
-        serverHealthState = "OFFLINE";
-        if (statusDot) {
-            statusDot.className = "status-dot dot-offline";
-            console.log("❌ Render API: Offline");
-        }
-    }
-
-    updateHomeServerStatusUI();
-}
-
-    document.addEventListener("DOMContentLoaded", () => {
-        const cards = document.querySelectorAll(".game-card");
-
-        cards.forEach(card => {
-            const imgElement = card.querySelector(".card-img");
-            const images = card.dataset.images.split(",");
-            let index = 0;
-
-            // Set initial image
-            imgElement.src = images[index];
-
-            // Rotate every 3 seconds
-            setInterval(() => {
-                index = (index + 1) % images.length;
-
-                imgElement.style.opacity = 0;
-
-                setTimeout(() => {
-                    imgElement.src = images[index];
-                    imgElement.style.opacity = 1;
-                }, 200);
-
-            }, 3000);
-        });
-    });
-
-    // Terminal Input Handler
-    const terminalInput = document.getElementById('terminal-cmd');
-    if (terminalInput) {
-        terminalInput.addEventListener('keydown', async function (e) {
-            if (e.key !== 'Enter') {
-                return;
-            }
-
-            e.preventDefault();
-            const rawCommand = e.target.value.trim();
-            if (!rawCommand) {
-                return;
-            }
-
-            e.target.value = "";
-            await runTerminalCommand(rawCommand);
-
-            const box = document.getElementById('main-terminal');
-            if (box) {
-                box.scrollTop = box.scrollHeight;
-            }
-        });
-    }
-
-    function setActiveTerminalLine(entry) {
-        const box = document.getElementById('main-terminal');
-        if (!box) return;
-
-        box.querySelectorAll('.typewriter').forEach((line) => {
-            line.classList.remove('typewriter');
-        });
-
-        if (entry) {
-            entry.classList.add('typewriter');
-        }
-    }
-
-    function appendTerminalLine(text, options = {}) {
-        const box = document.getElementById('main-terminal');
-        if (!box) return null;
-
-        const { animate = true, reset = false } = options;
-
-        if (reset) {
-            box.innerHTML = "";
-        }
-
-        const line = document.createElement('div');
-        line.className = 'terminal-line';
-        line.innerText = text;
-        box.appendChild(line);
-        if (animate) {
-            setActiveTerminalLine(line);
-        }
-        box.scrollTop = box.scrollHeight;
-        return line;
-    }
-
-    function addTerminalLine(text) {
-        appendTerminalLine(text, { animate: true });
-    }
-
-    // --- SETTINGS ACTIONS ---
-    function clearLogs() {
-        const terminal = document.getElementById('main-terminal');
-        if (terminal) {
-            appendTerminalLine("> [SYSTEM] Logs cleared. Awaiting fresh terminal feed...", {
-                reset: true,
-                animate: true
-            });
-            newsLoaded = false;
-            setSettingsStatus("TERMINAL CLEARED");
-            console.log("[UI] Terminal logs cleared by user.");
-        }
-    }
-    async function resetConfig() {
-        const confirmed = await showConfirmDialog(
-            "Reset Client Settings",
-            "This will clear saved loader preferences for this device and restart the UI.",
-            {
-                detail: "This does not delete your account. It only resets local loader preferences.",
-                confirmLabel: "Reset Now",
-                confirmVariant: "danger"
-            }
-        );
-
-        if (confirmed) {
-            localStorage.clear();
-
-            const checkboxes = document.querySelectorAll('.switch-container input[type="checkbox"]');
-            checkboxes.forEach(cb => {
-                if (cb.id === 'auto-close-launcher') {
-                    cb.checked = true;
-                } else {
-                    cb.checked = false;
-                }
-            });
-
-            initializeLoaderTheme();
-
-            addTerminalLine("> [SYSTEM] Configuration reset. Reloading UI...");
-            setSettingsStatus("RESETTING");
-            setTimeout(() => {
-                window.location.reload();
-            }, 1500);
-        }
-    }
-
-    window.api.onApplyStreamProof((enabled) => {
-        // Select the specific elements you want to "hide" from the stream
-        const sensitiveUI = document.querySelectorAll('.accent-text, .terminal-box, .glow-text-cyan');
-
-        sensitiveUI.forEach(el => {
-            if (enabled) {
-                el.style.filter = "blur(15px)"; // Blurs the text
-                el.style.opacity = "0.05";     // Makes it almost invisible
-                el.style.pointerEvents = "none"; // Prevents clicking while hidden
-            } else {
-                el.style.filter = "none";
-                el.style.opacity = "1";
-                el.style.pointerEvents = "auto";
-            }
-        });
-
-        console.log(`[UI] Stream Proof Visibles: ${enabled ? 'HIDDEN' : 'VISIBLE'}`);
-    });
-
-    // --- UI CONTROLS ---
-    function toggleUserDropdown() {
-        const dropdown = document.getElementById('user-dropdown');
-        if (dropdown) dropdown.classList.toggle('hidden');
-
-    }
-
-    function openShop() {
-        showExternalActionModal('support');
-    }
-
-    function openSocial(platform) {
-        const target = platform === 'discord' ? 'discord' : platform === 'github' ? 'github' : 'support';
-        showExternalActionModal(target);
-    }
-
-    function hideUserDropdown() {
-        const dropdown = document.getElementById('user-dropdown');
-        if (dropdown) {
-            dropdown.classList.add('hidden');
-
-            console.log("[UI] Dropdown Hidden");
-        }
-    }
-
-    // --- SESSION CONTROL ---
-    function logout() {
-        closeModal('exit-modal');
-        hideUserDropdown();
-        stopHwidResetPolling();
-        localStorage.removeItem('user_prefix');
-        localStorage.removeItem('user_email');
-        localStorage.removeItem('license_key');
-        localStorage.removeItem('expiry_date');
-        localStorage.removeItem('remembered_password');
-        localStorage.setItem('remember-me', 'false');
-
-        if (window.api && window.api.toggleDiscord) {
-            window.api.toggleDiscord(false);
-        }
-
-        if (window.api?.setAuthWindow) {
-            window.api.setAuthWindow();
-        }
-
-        setTimeout(() => {
-            location.reload();
-        }, 40);
-    }
-
-    function refreshExpiryModal(expiryDate) {
-        const badge = document.getElementById('expiry-modal-badge');
-        const title = document.getElementById('expiry-modal-title');
-        const detail = document.getElementById('expiry-modal-detail');
-        const countdown = document.getElementById('expiry-modal-countdown');
-        const accessCopy = document.getElementById('expiry-modal-access');
-
-        const expiryTime = new Date(expiryDate).getTime();
-        const remainingMs = Number.isNaN(expiryTime) ? 0 : Math.max(0, expiryTime - Date.now());
-        const totalSeconds = Math.floor(remainingMs / 1000);
-        const hours = Math.floor(totalSeconds / 3600);
-        const minutes = Math.floor((totalSeconds % 3600) / 60);
-        const seconds = totalSeconds % 60;
-        const countdownLabel = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-
-        if (badge) {
-            badge.textContent = remainingMs > 0 ? "RENEWAL WARNING" : "SUBSCRIPTION EXPIRED";
-        }
-
-        if (title) {
-            title.textContent = remainingMs > 0 ? "VEXION ACCESS ENDING" : "VEXION ACCESS EXPIRED";
-        }
-
-        if (detail) {
-            detail.textContent = remainingMs > 0
-                ? `Your current session ends on ${new Date(expiryDate).toLocaleString()}. Redeem a fresh key or renew before the timer reaches zero.`
-                : "Your VEXION session has ended. Renew your plan or redeem a fresh key to restore module access.";
-        }
-
-        if (countdown) {
-            countdown.textContent = countdownLabel;
-        }
-
-        if (accessCopy) {
-            accessCopy.innerHTML = remainingMs > 0
-                ? `Modules stay active until the timer reaches <span style="color: #ffd54f;">00:00:00</span>.`
-                : `All module actions are now <span style="color: var(--red);">locked</span> until you renew.`;
-        }
-    }
-
-    async function notifyExpiryExpiration() {
-        if (!window.api?.showSystemNotification) {
-            return;
-        }
-
-        try {
-            await window.api.showSystemNotification(
-                "VEXION Subscription Expired",
-                "Your access has ended. Redeem a new key or renew your plan to restore module access."
-            );
-        } catch (error) {
-            console.warn("[EXPIRY NOTIFICATION ERROR]", error);
-        }
-    }
-
-    function startExpiryHeartbeat(expiryDate) {
-        if (expiryCheckInterval) clearInterval(expiryCheckInterval);
-
-        const expiryTime = new Date(expiryDate).getTime();
-
-        if (!expiryDate || Number.isNaN(expiryTime)) {
-            return;
-        }
-
-        expirySequenceTriggered = false;
-        refreshExpiryModal(expiryDate);
-
-        const tick = () => {
-            refreshExpiryModal(expiryDate);
-            updateSubscriptionStatus(expiryDate);
-
-            if (Date.now() >= expiryTime) {
-                console.log("[SECURITY] License Expired during runtime.");
-                clearInterval(expiryCheckInterval);
-                triggerExpirySequence(expiryDate);
-            }
-        };
-
-        tick();
-        expiryCheckInterval = setInterval(tick, 1000);
-    }
-
-function triggerExpirySequence(expiryDate = localStorage.getItem('expiry_date')) {
-    if (expirySequenceTriggered) {
-        refreshExpiryModal(expiryDate);
-        openModal('expiry-modal');
-        return;
-        }
-
-        expirySequenceTriggered = true;
-    refreshExpiryModal(expiryDate);
-    updateSubscriptionStatus(expiryDate);
-    updateUIForAccess();
-    updateProtectedTabLocks();
-    closeModal('settings-modal');
-    closeModal('game-launch-modal');
-    closeModal('external-link-modal');
-    showTab('home', { bypassExpiryLock: true, silent: true });
-    openModal('expiry-modal');
-    void notifyExpiryExpiration();
-}
-
-    function openExpiryRenewalSupport() {
-        closeModal('expiry-modal');
-        openShop();
-    }
-
-    function openExpiryRedeemFlow() {
-        closeModal('expiry-modal');
-        openModal('settings-modal');
-    }
-
-function forceLogout() {
-        stopHwidResetPolling();
-        closeModal('expiry-modal');
-        expirySequenceTriggered = false;
-        localStorage.removeItem('user_email');
-        localStorage.removeItem('license_key');
-        localStorage.removeItem('expiry_date');
-        localStorage.removeItem('remembered_password');
-        localStorage.removeItem('remembered-password');
-        localStorage.setItem('remember-me', 'false');
-
-        const infoEmail = document.getElementById('info-email');
-        const infoHwid = document.getElementById('info-hwid');
-        const manageStatus = document.getElementById('manage-status');
-
-        if (infoEmail) infoEmail.innerText = "---";
-        if (infoHwid) {
-            infoHwid.innerText = "PENDING_HWID";
-            infoHwid.style.color = "#607d8b";
-            infoHwid.style.textShadow = "none";
-        }
-        if (manageStatus) {
-            manageStatus.innerText = "Offline";
-            manageStatus.style.color = "var(--red)";
-        }
-
-        if (typeof expiryCheckInterval !== 'undefined' && expiryCheckInterval) {
-            clearInterval(expiryCheckInterval);
-            expiryCheckInterval = null;
-        }
-
-    if (window.api && window.api.toggleDiscord) {
-        window.api.toggleDiscord(false);
-    }
-
-    showManualLoginState("Your VEXION session ended. Renew or redeem a new key to continue.");
-    updateUIForAccess();
-    updateProtectedTabLocks();
-    console.log("> [AUTH] Session terminated. Returning to login...");
-}
-
-    // ==== AUTO-UPDATE FUNCTION ====
-async function checkForUpdates(options = {}) {
-    const { manual = false } = options;
-
-    if (updateCheckPromise) {
-        return updateCheckPromise;
-    }
-
-    updateCheckPromise = (async () => {
-        try {
-            const release = await window.api.getLatestRelease();
-            cachedRemoteRelease = release || null;
-            const updateModal = document.getElementById("update-modal");
-
-            if (canInstallRelease(release)) {
-                document.getElementById("update-version").innerText = release.version;
-                updateModal?.classList.remove("hidden");
-                if (manual) {
-                    setSettingsStatus("UPDATE AVAILABLE");
-                }
-            } else {
-                updateModal?.classList.add("hidden");
-
-                if (manual && release?.version && compareVersions(release.version, currentVersion) < 0) {
-                    setSettingsStatus("UP TO DATE");
-                } else if (manual && release?.version && compareVersions(release.version, currentVersion) === 0) {
-                    setSettingsStatus("UP TO DATE");
-                } else if (manual && release?.version && !release?.url) {
-                    setSettingsStatus("PACKAGE PENDING");
-                } else if (manual) {
-                    setSettingsStatus("UP TO DATE");
-                }
-            }
-            return release;
-        } catch (err) {
-            console.error("Check failed:", err);
-            if (manual) {
-                setSettingsStatus("UPDATE ERROR");
-            }
-            throw err;
-        } finally {
-            updateCheckPromise = null;
-        }
-    })();
-
-    return updateCheckPromise;
-}
-
-    // ==== UPDATE MODAL FUNCTIONS ====
-    async function updateNow() {
-
-        try {
-            const release = cachedRemoteRelease || await window.api.getLatestRelease();
-            cachedRemoteRelease = release || null;
-
-            if (!canInstallRelease(release)) {
-                throw new Error("No newer published installer is available yet.");
-            }
-
-            const filePath = await window.api.downloadUpdate(
-                release.url,
-                release.name
-            );
-
-            await window.api.runUpdate(filePath);
-
-            await showSuccessDialog("Update Ready", "The update finished downloading. The installer is launching now.");
-
-            setTimeout(() => {
-                closeModal('update-modal');
-            }, 2000);
-
-            window.close();
-
-        } catch (err) {
-
-            console.error("Update failed:", err);
-            await showErrorDialog("Update Failed", "The loader could not finish the update. Try again.", err?.message || "");
-
-        }
-    }
-
-    function updateLater() {
-        const autoUpdateEnabled = localStorage.getItem('auto-update-loader') === 'true';
-
-        // Hide the modal immediately
-        document.getElementById("update-modal").classList.add("hidden");
-        setSettingsStatus(autoUpdateEnabled ? "AUTO UPDATE ON" : "REMINDER SNOOZED");
-
-        if (autoUpdateEnabled) return;
-
-        // Otherwise, schedule reminder toast every 5 minutes
-        if (!updateReminderInterval) {
-            updateReminderInterval = setInterval(() => {
-                showUpdateReminder();
-            }, 5 * 60 * 1000); // 5 minutes
-        }
-    }
-
-
-function showUpdateReminder() {
-        createToast(
-            "Update Available!",
-            "Click here to open the update modal.",
-            () => document.getElementById("update-modal").classList.toggle("hidden")
-        );
-    }
-
-function createToast(title, message, onClick, options = {}) {
-    const stack = getToastStack();
-    const toast = document.createElement("div");
-    const titleEl = document.createElement("strong");
-    const messageEl = document.createElement("p");
-    const metaEl = options.meta ? document.createElement("span") : null;
-
-    toast.classList.add("toast-notification");
-    titleEl.className = "toast-title";
-    messageEl.className = "toast-message";
-
-    if (options.variant) {
-        toast.classList.add(`is-${options.variant}`);
-    }
-
-    setElementContent(titleEl, title, { discordMarkup: Boolean(options.renderDiscordMarkup) });
-    setElementContent(messageEl, message, { discordMarkup: Boolean(options.renderDiscordMarkup) });
-    toast.appendChild(titleEl);
-    toast.appendChild(messageEl);
-
-    if (metaEl) {
-        metaEl.className = "toast-meta";
-        metaEl.textContent = options.meta;
-        toast.appendChild(metaEl);
-    }
-
-    toast.addEventListener("click", () => {
-        if (onClick) onClick();
-        toast.remove();
-    });
-
-    stack.appendChild(toast);
-    setTimeout(() => toast.remove(), options.duration || 7000);
-}
-
-function showDiscordAnnouncementToast(announcement) {
-    if (!announcement?.id) {
-        return;
-    }
-
-    createToast(
-        announcement.title || "New Admin Notice",
-        announcement.detail || "A new admin notice was posted in Discord.",
-        () => {
-            void showAppDialog({
-                title: announcement.title || "New Admin Notice",
-                message: announcement.detail || "A new admin notice was posted in Discord.",
-                detail: `${announcement.author || "Admin"} · ${formatAnnouncementTimestamp(announcement.timestamp)}`,
-                tone: "info",
-                kicker: "ADMIN ANNOUNCEMENT",
-                renderDiscordMarkup: true,
-                actions: [{ label: "OK", value: true, variant: "primary" }]
-            });
-        },
-        {
-            variant: "admin",
-            duration: 10000,
-            renderDiscordMarkup: true,
-            meta: `${announcement.author || "ADMIN"} · ${formatAnnouncementTimestamp(announcement.timestamp)}`
-        }
-    );
-}
-
-async function pollDiscordAnnouncements({ silentBaseline = false } = {}) {
-    try {
-        const response = await fetch(`${API}/loader-notification/latest`, {
-            cache: 'no-store'
-        });
-
-        if (!response.ok) {
-            return;
-        }
-
-        const data = await response.json();
-        const announcement = data?.announcement;
-
-        if (!data?.enabled || !announcement?.id) {
-            return;
-        }
-
-        if (!latestDiscordAnnouncementId) {
-            latestDiscordAnnouncementId = announcement.id;
-            localStorage.setItem('last_seen_discord_loader_notification_id', announcement.id);
-
-            if (!silentBaseline || isRecentAnnouncement(announcement.timestamp)) {
-                showDiscordAnnouncementToast(announcement);
-            }
-            return;
-        }
-
-        if (latestDiscordAnnouncementId !== announcement.id) {
-            latestDiscordAnnouncementId = announcement.id;
-            localStorage.setItem('last_seen_discord_loader_notification_id', announcement.id);
-            showDiscordAnnouncementToast(announcement);
-        }
-    } catch (error) {
-        console.warn("[DISCORD ANNOUNCEMENT POLL ERROR]", error);
-    }
-}
-
-function startDiscordAnnouncementPolling() {
-    if (discordAnnouncementPollInterval) {
-        clearInterval(discordAnnouncementPollInterval);
-    }
-
-    void pollDiscordAnnouncements({ silentBaseline: true });
-    discordAnnouncementPollInterval = setInterval(() => {
-        void pollDiscordAnnouncements();
-    }, 30000);
-}
-
-document.addEventListener("DOMContentLoaded", () => {
-
-    const savedState = localStorage.getItem("spoofState");
-
-    if (savedState === "perm" || savedState === "temp") {
-
-        const status = document.getElementById("spoof-main-status");
-
-        status.textContent = "SPOOFED";
-        status.classList.remove("status-inactive");
-        status.classList.add("status-active");
-
-        // change shield → green check
-        document.querySelector(".shield-img").src = "imgs/green-check.svg";
-
-    }
-
-});
-
-function resetSpoofUI() {
-
-    localStorage.removeItem("spoofState");
-
-    const status = document.getElementById("spoof-main-status");
-
-    status.textContent = "NOT SPOOFED";
-    status.classList.remove("status-active");
-    status.classList.add("status-inactive");
-
-    document.querySelector(".shield-img").src = "imgs/shield.svg";
-}
-
-async function compressImage(base64Str, maxWidth = 400, maxHeight = 400) {
-    return new Promise((resolve) => {
-        const img = new Image();
-        img.src = base64Str;
-        img.onload = () => {
-            const canvas = document.createElement('canvas');
-            let width = img.width;
-            let height = img.height;
-
-            if (width > height) {
-                if (width > maxWidth) {
-                    height *= maxWidth / width;
-                    width = maxWidth;
-                }
-            } else {
-                if (height > maxHeight) {
-                    width *= maxHeight / height;
-                    height = maxHeight;
-                }
-            }
-
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0, width, height);
-            // 0.7 = 70% quality, significantly reducing byte size
-            resolve(canvas.toDataURL('image/jpeg', 0.7));
-        };
-    });
-}
