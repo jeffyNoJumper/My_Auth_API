@@ -1168,10 +1168,9 @@ async function loadNews(forceRefresh = false) {
         terminal.innerHTML = "";
 
         lines.forEach((line, index) => {
-            const entry = document.createElement('div');
-            entry.className = index === 0 ? 'typewriter terminal-line' : 'terminal-line';
-            entry.innerText = line;
-            terminal.appendChild(entry);
+            appendTerminalLine(line, {
+                animate: index === lines.length - 1
+            });
         });
 
         newsLoaded = true;
@@ -1272,6 +1271,45 @@ function exitApplication() {
     }
 }
 
+function scheduleDeferredStartupTask(callback, delay = 0) {
+    window.requestAnimationFrame(() => {
+        window.setTimeout(() => {
+            Promise.resolve()
+                .then(callback)
+                .catch((error) => {
+                    console.error("[STARTUP TASK ERROR]", error);
+                });
+        }, delay);
+    });
+}
+
+let deferredStartupScheduled = false;
+
+function scheduleDeferredStartupWork() {
+    if (deferredStartupScheduled) {
+        return;
+    }
+
+    deferredStartupScheduled = true;
+
+    scheduleDeferredStartupTask(async () => {
+        await syncInstalledVersion();
+
+        if (localStorage.getItem('auto-update-loader') === 'true') {
+            await checkForUpdates();
+        }
+    }, 80);
+
+    scheduleDeferredStartupTask(() => loadHardwareSnapshot().catch(console.error), 180);
+    scheduleDeferredStartupTask(() => checkServer().catch(console.error), 280);
+    scheduleDeferredStartupTask(() => refreshGameCardsForAvailability(getCurrentPrefix()).catch(console.error), 420);
+    scheduleDeferredStartupTask(async () => {
+        await refreshGameCardFeeds();
+        startGameFeedRefreshLoop();
+    }, 560);
+    scheduleDeferredStartupTask(() => startDiscordAnnouncementPolling(), 720);
+}
+
 async function initializeLoader() {
     const el = (id) => document.getElementById(id);
 
@@ -1279,15 +1317,6 @@ async function initializeLoader() {
     if (savedPfp) {
         if (el('user-pic')) el('user-pic').src = savedPfp;
         if (el('modal-pfp')) el('modal-pfp').src = savedPfp;
-    }
-
-    void updateHWIDDisplay().catch(console.error);
-    void checkServer().catch(console.error);
-
-    if (typeof checkForUpdates === "function") {
-        void checkForUpdates().catch((err) => {
-            console.error("[UPDATE] Version check failed:", err);
-        });
     }
 
     if (el('update-overlay')) el('update-overlay').classList.add('hidden');
@@ -1339,8 +1368,8 @@ document.addEventListener('DOMContentLoaded', () => {
     hoistModalToBody('app-dialog-modal');
     initializeLoaderTheme();
     updateVersionLabels();
-    void syncInstalledVersion();
     void initializeLoader();
+    scheduleDeferredStartupWork();
 });
 
 function cancelAutoLogin() {
@@ -1488,11 +1517,6 @@ document.addEventListener('DOMContentLoaded', () => {
             setSettingsStatus("CUSTOM THEME READY");
         });
     });
-
-    void refreshGameCardsForAvailability(getCurrentPrefix());
-    void refreshGameCardFeeds();
-    startGameFeedRefreshLoop();
-    startDiscordAnnouncementPolling();
 });
 
 function toggleShadowWarning() {
@@ -1574,7 +1598,8 @@ function showTerminalCommandHelp() {
         "> discord on/off, stream proof on/off",
         "> open discord, open support, open github",
         "> theme default, arctic, ember, emerald, obsidian, rose",
-        "> theme custom, theme reset"
+        "> theme custom, theme reset",
+        "> Natural language works too: turn off rich, keep launcher open, go home"
     ].forEach(addTerminalLine);
 }
 
@@ -1588,6 +1613,49 @@ function showSystemStatus() {
     addTerminalLine(`> [STATUS] AUTO_UPDATE: ${document.getElementById('auto-update-loader')?.checked ? 'ON' : 'OFF'}`);
     addTerminalLine(`> [STATUS] AUTO_CLOSE: ${document.getElementById('auto-close-launcher')?.checked ? 'ON' : 'OFF'}`);
     addTerminalLine(`> [STATUS] RPC: ${document.getElementById('discord-rpc')?.checked ? 'ON' : 'OFF'} | STREAM_PROOF: ${document.getElementById('stream-proof')?.checked ? 'ON' : 'OFF'}`);
+}
+
+function commandIncludesAny(command, phrases = []) {
+    return phrases.some((phrase) => command.includes(phrase));
+}
+
+function getExplicitToggleIntent(command) {
+    if (commandIncludesAny(command, ['turn on', 'switch on', 'enable', 'start ', 'activate'])) {
+        return true;
+    }
+
+    if (commandIncludesAny(command, ['turn off', 'switch off', 'disable', 'stop ', 'deactivate'])) {
+        return false;
+    }
+
+    return null;
+}
+
+function getTerminalToggleTarget(command) {
+    const targets = [
+        {
+            id: 'discord-rpc',
+            keywords: ['rich presence', 'discord rich presence', 'discord rich', 'discord rpc', 'rich', 'rpc', 'presence']
+        },
+        {
+            id: 'stream-proof',
+            keywords: ['stream proof', 'streamproof', 'stream mode', 'hide from stream', 'hide on stream']
+        },
+        {
+            id: 'auto-close-launcher',
+            keywords: ['auto close', 'close launcher', 'close after inject', 'exit after inject', 'quit after inject', 'stay open', 'keep open', 'leave open']
+        },
+        {
+            id: 'auto-update-loader',
+            keywords: ['auto update', 'automatic update', 'auto updates', 'update automatically']
+        },
+        {
+            id: 'auto-launch',
+            keywords: ['auto launch', 'launch on startup', 'start on startup', 'start with windows', 'open on startup']
+        }
+    ];
+
+    return targets.find((target) => commandIncludesAny(command, target.keywords)) || null;
 }
 
 function parseSettingToggleCommand(command) {
@@ -1609,7 +1677,168 @@ function parseSettingToggleCommand(command) {
         }
     }
 
+    const target = getTerminalToggleTarget(command);
+    if (!target) {
+        return null;
+    }
+
+    const explicitValue = getExplicitToggleIntent(command);
+    if (explicitValue !== null) {
+        return {
+            id: target.id,
+            value: explicitValue
+        };
+    }
+
+    if (target.id === 'auto-close-launcher') {
+        if (commandIncludesAny(command, ['stay open', 'keep open', 'leave open', "don't close", 'do not close'])) {
+            return { id: target.id, value: false };
+        }
+
+        if (commandIncludesAny(command, ['close after inject', 'exit after inject', 'quit after inject'])) {
+            return { id: target.id, value: true };
+        }
+    }
+
+    if (target.id === 'stream-proof' && commandIncludesAny(command, ['hide from stream', 'hide on stream', 'stream mode'])) {
+        return { id: target.id, value: true };
+    }
+
+    if (target.id === 'auto-launch' && commandIncludesAny(command, ['start with windows', 'launch on startup', 'start on startup', 'open on startup'])) {
+        return { id: target.id, value: true };
+    }
+
+    if (target.id === 'discord-rpc') {
+        if (commandIncludesAny(command, ['no rich presence', 'without rich presence', 'without rpc'])) {
+            return { id: target.id, value: false };
+        }
+
+        if (commandIncludesAny(command, ['show rich presence', 'use rich presence'])) {
+            return { id: target.id, value: true };
+        }
+    }
+
+    if (commandIncludesAny(command, ['toggle ', 'flip '])) {
+        return {
+            id: target.id,
+            value: !Boolean(document.getElementById(target.id)?.checked)
+        };
+    }
+
     return null;
+}
+
+function parseTerminalNavigationCommand(command) {
+    const navigationTargets = [
+        { tab: 'home', keywords: ['home', 'dashboard', 'main screen'] },
+        { tab: 'games', keywords: ['games', 'game tab', 'game menu', 'modules'] },
+        { tab: 'hwid', keywords: ['hwid', 'hardware', 'machine id'] },
+        { tab: 'spoofing', keywords: ['spoofing', 'spoofer', 'spoof'] },
+        { tab: 'settings', keywords: ['settings', 'setting tab', 'config', 'configuration'] }
+    ];
+
+    for (const target of navigationTargets) {
+        if (command === target.tab) {
+            return target.tab;
+        }
+
+        if (
+            commandIncludesAny(command, target.keywords) &&
+            commandIncludesAny(command, ['go ', 'open ', 'show ', 'switch ', 'take me', 'bring me'])
+        ) {
+            return target.tab;
+        }
+    }
+
+    return null;
+}
+
+function parseTerminalExternalCommand(command) {
+    const externalTargets = [
+        { key: 'discord', keywords: ['discord', 'server'] },
+        { key: 'support', keywords: ['support', 'shop', 'store'] },
+        { key: 'github', keywords: ['github', 'repo', 'repository'] }
+    ];
+
+    for (const target of externalTargets) {
+        if (command === target.key) {
+            return target.key;
+        }
+
+        if (
+            commandIncludesAny(command, target.keywords) &&
+            commandIncludesAny(command, ['open ', 'join ', 'visit ', 'launch ', 'show '])
+        ) {
+            return target.key;
+        }
+    }
+
+    return null;
+}
+
+function parseThemeCommand(command) {
+    if (command === 'theme custom' || commandIncludesAny(command, ['apply custom theme', 'use custom theme'])) {
+        return { type: 'custom' };
+    }
+
+    if (command === 'theme reset' || commandIncludesAny(command, ['reset theme', 'restore default theme'])) {
+        return { type: 'reset' };
+    }
+
+    for (const preset of Object.keys(themePresets)) {
+        if (
+            command === `theme ${preset}` ||
+            command === `${preset} theme` ||
+            command === `use ${preset}` ||
+            command === `apply ${preset}` ||
+            command.includes(`theme ${preset}`) ||
+            command.includes(`theme to ${preset}`) ||
+            command.includes(`${preset} theme`)
+        ) {
+            return { type: 'preset', preset };
+        }
+    }
+
+    return null;
+}
+
+function isRefreshCommand(command) {
+    return [
+        'refresh',
+        'refresh feed',
+        'refresh terminal',
+        'reload terminal',
+        'reload feed',
+        'refresh news',
+        'news',
+        'sync terminal'
+    ].includes(command);
+}
+
+function isUpdateCheckCommand(command) {
+    return [
+        'update',
+        'check update',
+        'check updates',
+        'check for updates',
+        'scan for updates',
+        'look for updates',
+        'search for updates'
+    ].includes(command);
+}
+
+function isResetCommand(command) {
+    return [
+        'reset',
+        'reset settings',
+        'factory reset',
+        'reset config',
+        'wipe settings'
+    ].includes(command);
+}
+
+function isStatusCommand(command) {
+    return command === 'status' || command === 'show status' || command === 'system status' || command === 'loader status';
 }
 
 async function runTerminalCommand(rawCommand) {
@@ -1618,7 +1847,7 @@ async function runTerminalCommand(rawCommand) {
         return;
     }
 
-    addTerminalLine(`SK-USER:~$ ${rawCommand.trim()}`);
+    addTerminalLine(`VEX-USER:~$ ${rawCommand.trim()}`);
 
     if (command === 'clear' || command === 'cls') {
         clearLogs();
@@ -1630,74 +1859,60 @@ async function runTerminalCommand(rawCommand) {
         return;
     }
 
-    if (command === 'status') {
+    if (isStatusCommand(command)) {
         showSystemStatus();
         return;
     }
 
-    if (command === 'refresh' || command === 'refresh feed' || command === 'news') {
+    if (isRefreshCommand(command)) {
         newsLoaded = false;
         await loadNews(true);
         addTerminalLine("> [FEED] Terminal refreshed.");
         return;
     }
 
-    if (command === 'update' || command === 'check update' || command === 'check updates' || command === 'check for updates') {
+    if (isUpdateCheckCommand(command)) {
         await runManualUpdateCheck();
         return;
     }
 
-    if (command === 'reset' || command === 'reset settings' || command === 'factory reset') {
+    if (isResetCommand(command)) {
         await resetConfig();
         return;
     }
 
-    if (command === 'home' || command === 'games' || command === 'hwid' || command === 'spoofing' || command === 'settings') {
-        showTab(command);
-        addTerminalLine(`> [NAV] Switched to ${command.toUpperCase()}.`);
+    const navigationTarget = parseTerminalNavigationCommand(command);
+    if (navigationTarget) {
+        showTab(navigationTarget);
+        addTerminalLine(`> [NAV] Switched to ${navigationTarget.toUpperCase()}.`);
         return;
     }
 
-    if (command === 'discord' || command === 'open discord') {
-        showExternalActionModal('discord');
-        return;
-    }
-
-    if (command === 'shop' || command === 'support' || command === 'shop support' || command === 'open shop' || command === 'open support') {
-        showExternalActionModal('support');
-        return;
-    }
-
-    if (command === 'github' || command === 'open github') {
-        showExternalActionModal('github');
-        return;
-    }
-
-    if (command === 'theme custom') {
+    const themeCommand = parseThemeCommand(command);
+    if (themeCommand?.type === 'custom') {
         applyCustomThemeFromInputs();
         return;
     }
 
-    if (command === 'theme reset') {
+    if (themeCommand?.type === 'reset') {
         resetCustomTheme();
         return;
     }
 
-    if (
-        command === 'theme default' ||
-        command === 'theme arctic' ||
-        command === 'theme ember' ||
-        command === 'theme emerald' ||
-        command === 'theme obsidian' ||
-        command === 'theme rose'
-    ) {
-        setLoaderTheme(command.split(' ')[1]);
+    if (themeCommand?.type === 'preset') {
+        setLoaderTheme(themeCommand.preset);
         return;
     }
 
     const toggleCommand = parseSettingToggleCommand(command);
     if (toggleCommand) {
         applySettingValue(toggleCommand.id, toggleCommand.value);
+        return;
+    }
+
+    const externalTarget = parseTerminalExternalCommand(command);
+    if (externalTarget) {
+        showExternalActionModal(externalTarget);
         return;
     }
 
@@ -3450,20 +3665,52 @@ async function requestHWIDReset() {
         });
     }
 
-    function addTerminalLine(text) {
+    function setActiveTerminalLine(entry) {
         const box = document.getElementById('main-terminal');
         if (!box) return;
+
+        box.querySelectorAll('.typewriter').forEach((line) => {
+            line.classList.remove('typewriter');
+        });
+
+        if (entry) {
+            entry.classList.add('typewriter');
+        }
+    }
+
+    function appendTerminalLine(text, options = {}) {
+        const box = document.getElementById('main-terminal');
+        if (!box) return null;
+
+        const { animate = true, reset = false } = options;
+
+        if (reset) {
+            box.innerHTML = "";
+        }
+
         const line = document.createElement('div');
         line.className = 'terminal-line';
         line.innerText = text;
         box.appendChild(line);
+        if (animate) {
+            setActiveTerminalLine(line);
+        }
+        box.scrollTop = box.scrollHeight;
+        return line;
+    }
+
+    function addTerminalLine(text) {
+        appendTerminalLine(text, { animate: true });
     }
 
     // --- SETTINGS ACTIONS ---
     function clearLogs() {
         const terminal = document.getElementById('main-terminal');
         if (terminal) {
-            terminal.innerHTML = '<div id="news-feed-text" class="typewriter">> [SYSTEM] Logs cleared. Awaiting fresh terminal feed...</div>';
+            appendTerminalLine("> [SYSTEM] Logs cleared. Awaiting fresh terminal feed...", {
+                reset: true,
+                animate: true
+            });
             newsLoaded = false;
             setSettingsStatus("TERMINAL CLEARED");
             console.log("[UI] Terminal logs cleared by user.");
@@ -3635,15 +3882,6 @@ async function requestHWIDReset() {
 
         console.log("> [AUTH] Session terminated. Returning to login...");
     }
-
-    document.addEventListener("DOMContentLoaded", () => {
-        updateVersionLabels();
-        void syncInstalledVersion();
-
-        if (localStorage.getItem('auto-update-loader') === 'true') {
-            void checkForUpdates();
-        }
-    });
 
     // ==== AUTO-UPDATE FUNCTION ====
 async function checkForUpdates(options = {}) {
