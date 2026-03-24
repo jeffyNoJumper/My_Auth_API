@@ -1172,33 +1172,42 @@
 
         <!-- EXPIRY MODAL -->
         <div id="expiry-modal" class="modal-overlay hidden">
-            <div class="modal-content glass-card" style="width: 350px; text-align: center; border: 1px solid var(--red);">
+            <div class="modal-content glass-card" style="width: 390px; text-align: center; border: 1px solid var(--red);">
                 <div class="modal-header">
-                    <h3 style="color:var(--red); letter-spacing: 2px;">SESSION EXPIRED</h3>
+                    <h3 id="expiry-modal-title" style="color:var(--red); letter-spacing: 2px;">VEXION ACCESS EXPIRED</h3>
                 </div>
                 <div class="modal-body" style="padding: 20px; text-align: center;">
-                    <!-- Alert Icon -->
                     <div class="expiry-icon-container" style="margin-bottom: 20px;">
                         <i class="fas fa-user-shield" style="font-size: 45px; color: var(--red); filter: drop-shadow(0 0 10px var(--red));"></i>
                     </div>
 
-                    <!-- Status Labels -->
                     <div style="background: rgba(255, 68, 68, 0.05); border: 1px solid rgba(255, 68, 68, 0.2); padding: 15px; border-radius: 8px; margin-bottom: 20px;">
-                        <h4 style="color: var(--red); margin: 0 0 5px 0; font-size: 14px; letter-spacing: 1px;">SUBSCRIPTION EXPIRED</h4>
-                        <p style="font-size: 11px; color: #888; margin: 0; line-height: 1.5;">
-                            Your session has been terminated by the <br>
-                            <span style="color: #ccc;">SK Security Authentication Server.</span>
+                        <h4 id="expiry-modal-badge" style="color: var(--red); margin: 0 0 5px 0; font-size: 14px; letter-spacing: 1px;">SUBSCRIPTION EXPIRED</h4>
+                        <p id="expiry-modal-detail" style="font-size: 11px; color: #888; margin: 0; line-height: 1.5;">
+                            Your VEXION access has ended. Redeem a fresh key or renew your current plan to unlock modules again.
                         </p>
                     </div>
 
-                    <p style="font-size: 10px; color: #555; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 15px;">
-                        Access to all modules has been <span style="color:var(--red)">Revoked</span>.
+                    <div style="margin-bottom: 16px;">
+                        <div style="font-size: 10px; color: #777; letter-spacing: 1.6px; text-transform: uppercase; margin-bottom: 8px;">Subscription Clock</div>
+                        <div id="expiry-modal-countdown" style="font-size: 28px; font-weight: 900; letter-spacing: 2px; color: var(--red); text-shadow: 0 0 14px rgba(255, 84, 84, 0.28);">00:00:00</div>
+                    </div>
+
+                    <p id="expiry-modal-access" style="font-size: 10px; color: #555; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 15px;">
+                        All module actions are now <span style="color:var(--red)">locked</span> until you renew.
                     </p>
 
-                    <!-- REVOKE Button -->
-                    <button onclick="forceLogout()" class="btn-primary" style="width: 100%; background: var(--red); color: white; border: none; padding: 12px; font-weight: 900; letter-spacing: 1px; border-radius: 4px; box-shadow: 0 4px 15px rgba(255, 68, 68, 0.3); cursor: pointer; transition: 0.3s;">
-                        RETURN TO AUTHENTICATION
-                    </button>
+                    <div class="modal-actions" style="display: grid; grid-template-columns: 1fr; gap: 10px;">
+                        <button onclick="openExpiryRenewalSupport()" class="btn-primary" style="width: 100%; background: var(--accent); color: #071015; border: none; padding: 12px; font-weight: 900; letter-spacing: 1px; border-radius: 4px; box-shadow: 0 4px 15px rgba(0, 207, 168, 0.25); cursor: pointer; transition: 0.3s;">
+                            OPEN SUPPORT / RENEW
+                        </button>
+                        <button onclick="openExpiryRedeemFlow()" class="btn-secondary" style="width: 100%; padding: 12px; font-weight: 900; letter-spacing: 1px;">
+                            REDEEM NEW KEY
+                        </button>
+                        <button onclick="forceLogout()" class="btn-primary" style="width: 100%; background: var(--red); color: white; border: none; padding: 12px; font-weight: 900; letter-spacing: 1px; border-radius: 4px; box-shadow: 0 4px 15px rgba(255, 68, 68, 0.3); cursor: pointer; transition: 0.3s;">
+                            RETURN TO LOGIN
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
