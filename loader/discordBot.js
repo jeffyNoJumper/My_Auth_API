@@ -363,6 +363,38 @@ function buildCommandDefinitions() {
     ];
 }
 
+function commandSignature(command) {
+    const options = Array.isArray(command?.options)
+        ? command.options.map(option => `${option.type}:${option.name}`).sort().join('|')
+        : '';
+    return `${command.name}:${options}`;
+}
+
+async function commandsNeedSync(token) {
+    const existing = await requestDiscordApi(
+        'GET',
+        `/applications/${APPLICATION_ID}/guilds/${GUILD_ID}/commands`,
+        token
+    );
+
+    const existingCommands = Array.isArray(existing) ? existing : [];
+    const desiredCommands = buildCommandDefinitions();
+
+    const existingSignatures = existingCommands.map(commandSignature).sort();
+    const desiredSignatures = desiredCommands.map(commandSignature).sort();
+
+    if (
+        existingSignatures.length === desiredSignatures.length &&
+        existingSignatures.every((value, index) => value === desiredSignatures[index])
+    ) {
+        discordBotState.commandsSyncedAt = new Date().toISOString();
+        discordBotState.lastDebug = 'commands_already_synced';
+        return false;
+    }
+
+    return true;
+}
+
 function hasAdminAccess(interaction) {
     const userId = String(interaction?.member?.user?.id || interaction?.user?.id || '');
     if (userId === String(ADMIN_USER_ID)) return true;
@@ -449,6 +481,12 @@ async function sendLoaderAnnouncement(token, interaction, title, message) {
 }
 
 async function syncCommands(token) {
+    const shouldSync = await commandsNeedSync(token);
+    if (!shouldSync) {
+        console.log('[DISCORD INTERACTIONS] Slash commands already up to date.');
+        return;
+    }
+
     await requestDiscordApi(
         'PUT',
         `/applications/${APPLICATION_ID}/guilds/${GUILD_ID}/commands`,
