@@ -102,6 +102,10 @@ async function ensureBootstrapAdmin() {
                 updates.quick_login_enabled = true;
             }
 
+            if (existingOwner.pin_hash && !existingOwner.quick_login_enabled) {
+                updates.quick_login_enabled = true;
+            }
+
             if (Object.keys(updates).length) {
                 await AdminUser.updateOne({ _id: existingOwner._id }, { $set: updates });
             }
