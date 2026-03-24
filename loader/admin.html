@@ -757,6 +757,7 @@
         const ADMIN_SESSION_TOKEN_STORAGE_KEY = 'vexion_admin_session_token';
         const ADMIN_LABEL_STORAGE_KEY = 'vexion_admin_session_label';
         const ADMIN_REMEMBER_STORAGE_KEY = 'vexion_admin_remember_session';
+        const ADMIN_AUTH_NOTICE_STORAGE_KEY = 'vexion_admin_auth_notice';
 
         function closeWin() {
             ipcRenderer.send('admin-close');
@@ -791,6 +792,31 @@
 
             if (overlayRemember) overlayRemember.checked = remember;
             if (inlineRemember) inlineRemember.checked = remember;
+        }
+
+        function queueAdminAuthNotice(message, tone = 'info') {
+            try {
+                sessionStorage.setItem(
+                    ADMIN_AUTH_NOTICE_STORAGE_KEY,
+                    JSON.stringify({ message: String(message || ''), tone: String(tone || 'info') })
+                );
+            } catch (error) {
+                console.warn('[ADMIN] Failed to queue auth notice:', error);
+            }
+        }
+
+        function consumeAdminAuthNotice() {
+            try {
+                const raw = sessionStorage.getItem(ADMIN_AUTH_NOTICE_STORAGE_KEY);
+                if (!raw) {
+                    return null;
+                }
+
+                sessionStorage.removeItem(ADMIN_AUTH_NOTICE_STORAGE_KEY);
+                return JSON.parse(raw);
+            } catch (error) {
+                return null;
+            }
         }
 
         function syncAdminEmailInput(value = '') {
@@ -951,9 +977,7 @@
                 return;
             }
 
-            setTimeout(() => {
-                ipcRenderer.send('admin-reset-auth-shell');
-            }, 60);
+            ipcRenderer.send('admin-reset-auth-shell');
         }
 
         async function forgetRememberedAdmin() {
@@ -979,15 +1003,15 @@
             syncAdminEmailInput('');
             syncAdminUsernameInput('');
             syncAdminPinInput('');
-            setAdminAuthState(false);
-            setAdminAuthStatus('Saved admin session removed from this machine.', 'info');
+            queueAdminAuthNotice('Saved admin session removed from this machine.', 'info');
             resetAdminWindowToStartup();
         }
 
         async function logoutAdminSession() {
             const savedToken = getAdminSessionToken();
             if (!savedToken) {
-                setAdminAuthState(false);
+                queueAdminAuthNotice('Admin session signed out.', 'info');
+                resetAdminWindowToStartup();
                 return;
             }
 
@@ -1005,9 +1029,7 @@
             localStorage.removeItem(ADMIN_LABEL_STORAGE_KEY);
             syncAdminPasswordInputs('');
             syncAdminPinInput('');
-            setAdminAuthState(false);
-            setAdminAuthStatus('Admin session signed out.', 'info');
-            document.getElementById('admin-auth-email')?.focus();
+            queueAdminAuthNotice('Admin session signed out.', 'info');
             resetAdminWindowToStartup();
         }
 
@@ -1867,16 +1889,19 @@
             const rememberEnabled = localStorage.getItem(ADMIN_REMEMBER_STORAGE_KEY) === 'true';
             const rememberedSession = rememberEnabled ? (localStorage.getItem(ADMIN_SESSION_TOKEN_STORAGE_KEY) || '') : '';
             const rememberedLabel = localStorage.getItem(ADMIN_LABEL_STORAGE_KEY) || getDefaultAdminLabel();
+            const queuedAuthNotice = consumeAdminAuthNotice();
 
             syncAdminRememberInputs(rememberEnabled);
             syncAdminEmailInput('');
             syncAdminUsernameInput('');
             syncAdminPinInput('');
             setAdminAuthStatus(
-                rememberEnabled && rememberedSession
+                queuedAuthNotice?.message
+                    ? queuedAuthNotice.message
+                    : rememberEnabled && rememberedSession
                     ? 'Saved admin session found. Restoring automatically...'
                     : 'Use email + password the first time, then username + PIN can be used later.',
-                'info'
+                queuedAuthNotice?.tone || 'info'
             );
             activeAdminLabel = rememberedLabel;
             if (rememberEnabled && rememberedSession) {
