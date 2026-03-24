@@ -1350,13 +1350,12 @@ app.post('/login', async (req, res) => {
             await User.findOneAndUpdate({ _id: userData._id }, { $set: updates });
         }
 
-        // 5. Expiry Check
-        if (new Date() > new Date(userData.expiry_date)) {
-            return res.json({ error: "Subscription Expired" });
-        }
+        const subscriptionExpired = Boolean(userData.expiry_date) && (new Date() > new Date(userData.expiry_date));
 
         res.json({
             token: "VALID",
+            expired: subscriptionExpired,
+            subscription: subscriptionExpired ? "Expired" : "Premium",
             expiry: userData.expiry_date,
             profile_pic: userData.profile_pic || '',
             games: userData.games || [],
