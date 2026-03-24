@@ -5,6 +5,7 @@ let countdownInterval;
 let progress = 0;
 let newsLoaded = false;
 let expiryCheckInterval = null;
+let expirySequenceTriggered = false;
 let isAuthProcessActive = false;
 let updateReminderInterval = null;
 let currentVersion = "1.1.3";
@@ -996,7 +997,8 @@ function getHomeExpirySnapshot(expiry, prefix) {
         return {
             label: "LIFETIME",
             detail: "Permanent access enabled on this account.",
-            color: "var(--gold)"
+            color: "var(--gold)",
+            glow: "0 0 14px rgba(255, 208, 79, 0.35)"
         };
     }
 
@@ -1004,7 +1006,8 @@ function getHomeExpirySnapshot(expiry, prefix) {
         return {
             label: "PENDING",
             detail: "No active subscription timer detected yet.",
-            color: "var(--text-secondary)"
+            color: "var(--text-secondary)",
+            glow: "none"
         };
     }
 
@@ -1015,7 +1018,8 @@ function getHomeExpirySnapshot(expiry, prefix) {
         return {
             label: "PENDING",
             detail: "Subscription timing data is unavailable.",
-            color: "var(--text-secondary)"
+            color: "var(--text-secondary)",
+            glow: "none"
         };
     }
 
@@ -1025,7 +1029,8 @@ function getHomeExpirySnapshot(expiry, prefix) {
         return {
             label: "EXPIRED",
             detail: `Expired on ${expiryDate.toLocaleString()}`,
-            color: "var(--red)"
+            color: "var(--red)",
+            glow: "0 0 16px rgba(255, 84, 84, 0.32)"
         };
     }
 
@@ -1035,17 +1040,35 @@ function getHomeExpirySnapshot(expiry, prefix) {
     const seconds = Math.floor((diff % (1000 * 60)) / 1000);
 
     if (days >= 1) {
+        let color = "#63f3b1";
+        let glow = "0 0 16px rgba(99, 243, 177, 0.35)";
+
+        if (days <= 10) {
+            color = "var(--red)";
+            glow = "0 0 16px rgba(255, 84, 84, 0.32)";
+        } else if (days <= 30) {
+            color = "#ffd54f";
+            glow = "0 0 16px rgba(255, 213, 79, 0.30)";
+        }
+
         return {
             label: `${days} DAY${days === 1 ? "" : "S"}`,
             detail: `Expires on ${expiryDate.toLocaleString()}`,
-            color: "#d7fff6"
+            color,
+            glow
         };
     }
+
+    const color = hours <= 10 ? "var(--red)" : "#ffd54f";
+    const glow = hours <= 10
+        ? "0 0 16px rgba(255, 84, 84, 0.32)"
+        : "0 0 16px rgba(255, 213, 79, 0.30)";
 
     return {
         label: `${hours}h ${minutes}m ${seconds}s`,
         detail: `Less than 24 hours remain. Ends ${expiryDate.toLocaleTimeString()}.`,
-        color: "var(--accent)"
+        color,
+        glow
     };
 }
 
@@ -2252,6 +2275,11 @@ async function handleLogin(isAutoLogin = false, creds = {}) {
                 sidebar.classList.remove("hidden");
             }
 
+            expirySequenceTriggered = false;
+            updateSubscriptionStatus(data.expiry);
+            startExpiryHeartbeat(data.expiry);
+            updateUIForAccess();
+
             if (typeof showTab === "function") showTab("home");
             console.log("[SYSTEM] Dashboard loaded successfully.");
         } else {
@@ -2345,6 +2373,7 @@ function updateHomeTabUI() {
     if (homeExp) {
         homeExp.textContent = expirySnapshot.label;
         homeExp.style.color = expirySnapshot.color;
+        homeExp.style.textShadow = expirySnapshot.glow || "none";
     }
 
     if (homeExpiryNote) {
@@ -2363,6 +2392,7 @@ function updateHomeTabUI() {
         if (liveExp) {
             liveExp.textContent = liveSnapshot.label;
             liveExp.style.color = liveSnapshot.color;
+            liveExp.style.textShadow = liveSnapshot.glow || "none";
         }
 
         if (liveNote) {
@@ -2501,6 +2531,9 @@ function updateSubscriptionStatus(expiryDate) {
 
     // Reset classes
     dot.classList.remove('dot-online', 'dot-warning', 'dot-offline');
+    document.querySelectorAll('.launch-btn').forEach((btn) => {
+        btn.disabled = false;
+    });
 
     if (diffMs <= 0) {
         // RED - Expired
@@ -2641,6 +2674,10 @@ function updateUIForAccess() {
         } else {
             navExp.innerText = "EXP: PENDING";
         }
+    }
+
+    if (expiry) {
+        updateSubscriptionStatus(expiry);
     }
 
     void refreshGameCardsForAvailability(currentPrefix);
@@ -2790,6 +2827,9 @@ async function redeemNewKey() {
             setSessionAccess(newKey);
 
             // 3. Refresh UI & Heartbeat
+            expirySequenceTriggered = false;
+            closeModal('expiry-modal');
+            updateSubscriptionStatus(data.new_expiry);
             if (typeof startExpiryHeartbeat === 'function') startExpiryHeartbeat(data.new_expiry);
             if (typeof updateUIForAccess === 'function') updateUIForAccess();
 
@@ -3839,74 +3879,153 @@ async function requestHWIDReset() {
         location.reload();
     }
 
+    function refreshExpiryModal(expiryDate) {
+        const badge = document.getElementById('expiry-modal-badge');
+        const title = document.getElementById('expiry-modal-title');
+        const detail = document.getElementById('expiry-modal-detail');
+        const countdown = document.getElementById('expiry-modal-countdown');
+        const accessCopy = document.getElementById('expiry-modal-access');
+
+        const expiryTime = new Date(expiryDate).getTime();
+        const remainingMs = Number.isNaN(expiryTime) ? 0 : Math.max(0, expiryTime - Date.now());
+        const totalSeconds = Math.floor(remainingMs / 1000);
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = totalSeconds % 60;
+        const countdownLabel = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+
+        if (badge) {
+            badge.textContent = remainingMs > 0 ? "RENEWAL WARNING" : "SUBSCRIPTION EXPIRED";
+        }
+
+        if (title) {
+            title.textContent = remainingMs > 0 ? "VEXION ACCESS ENDING" : "VEXION ACCESS EXPIRED";
+        }
+
+        if (detail) {
+            detail.textContent = remainingMs > 0
+                ? `Your current session ends on ${new Date(expiryDate).toLocaleString()}. Redeem a fresh key or renew before the timer reaches zero.`
+                : "Your VEXION session has ended. Renew your plan or redeem a fresh key to restore module access.";
+        }
+
+        if (countdown) {
+            countdown.textContent = countdownLabel;
+        }
+
+        if (accessCopy) {
+            accessCopy.innerHTML = remainingMs > 0
+                ? `Modules stay active until the timer reaches <span style="color: #ffd54f;">00:00:00</span>.`
+                : `All module actions are now <span style="color: var(--red);">locked</span> until you renew.`;
+        }
+    }
+
+    async function notifyExpiryExpiration() {
+        if (!window.api?.showSystemNotification) {
+            return;
+        }
+
+        try {
+            await window.api.showSystemNotification(
+                "VEXION Subscription Expired",
+                "Your access has ended. Redeem a new key or renew your plan to restore module access."
+            );
+        } catch (error) {
+            console.warn("[EXPIRY NOTIFICATION ERROR]", error);
+        }
+    }
+
     function startExpiryHeartbeat(expiryDate) {
-        // Clear any existing timer first
         if (expiryCheckInterval) clearInterval(expiryCheckInterval);
 
         const expiryTime = new Date(expiryDate).getTime();
 
-        expiryCheckInterval = setInterval(() => {
-            const now = new Date().getTime();
+        if (!expiryDate || Number.isNaN(expiryTime)) {
+            return;
+        }
 
-            if (now >= expiryTime) {
+        expirySequenceTriggered = false;
+        refreshExpiryModal(expiryDate);
+
+        const tick = () => {
+            refreshExpiryModal(expiryDate);
+            updateSubscriptionStatus(expiryDate);
+
+            if (Date.now() >= expiryTime) {
                 console.log("[SECURITY] License Expired during runtime.");
                 clearInterval(expiryCheckInterval);
-                triggerExpirySequence();
+                triggerExpirySequence(expiryDate);
             }
-        }, 30000); // Check every 30 seconds
+        };
+
+        tick();
+        expiryCheckInterval = setInterval(tick, 1000);
     }
 
-    function triggerExpirySequence() {
+    function triggerExpirySequence(expiryDate = localStorage.getItem('expiry_date')) {
+        if (expirySequenceTriggered) {
+            refreshExpiryModal(expiryDate);
+            openModal('expiry-modal');
+            return;
+        }
 
+        expirySequenceTriggered = true;
+        refreshExpiryModal(expiryDate);
+        updateSubscriptionStatus(expiryDate);
+        updateUIForAccess();
+        closeModal('settings-modal');
+        closeModal('game-launch-modal');
+        closeModal('external-link-modal');
         openModal('expiry-modal');
+        void notifyExpiryExpiration();
+    }
 
-        document.querySelectorAll('.nav-btn').forEach(btn => btn.style.pointerEvents = 'none');
+    function openExpiryRenewalSupport() {
+        closeModal('expiry-modal');
+        openShop();
+    }
 
-        // 3. Play a subtle error sound if you want
-        // new Audio('assets/error.mp3').play();
+    function openExpiryRedeemFlow() {
+        closeModal('expiry-modal');
+        openModal('settings-modal');
     }
 
     function forceLogout() {
-        // Clear the session data so auto-login can't trigger
         stopHwidResetPolling();
+        closeModal('expiry-modal');
+        expirySequenceTriggered = false;
         localStorage.removeItem('user_email');
         localStorage.removeItem('license_key');
-        localStorage.removeItem('remembered-password')
+        localStorage.removeItem('expiry_date');
+        localStorage.removeItem('remembered_password');
+        localStorage.removeItem('remembered-password');
+        localStorage.setItem('remember-me', 'false');
 
-        document.getElementById('info-email').innerText = "---";
-        document.getElementById('info-hwid').innerText = "PENDING_HWID";
-        document.getElementById('info-hwid').style.color = "#607d8b";
-        document.getElementById('info-hwid').style.textShadow = "none";
-        document.getElementById('manage-status').innerText = "Offline";
-        document.getElementById('manage-status').style.color = "var(--red)";
+        const infoEmail = document.getElementById('info-email');
+        const infoHwid = document.getElementById('info-hwid');
+        const manageStatus = document.getElementById('manage-status');
 
-        // Stop the expiry background check
-        if (typeof expiryCheckInterval !== 'undefined' && expiryCheckInterval) {
-            clearInterval(expiryCheckInterval);
+        if (infoEmail) infoEmail.innerText = "---";
+        if (infoHwid) {
+            infoHwid.innerText = "PENDING_HWID";
+            infoHwid.style.color = "#607d8b";
+            infoHwid.style.textShadow = "none";
+        }
+        if (manageStatus) {
+            manageStatus.innerText = "Offline";
+            manageStatus.style.color = "var(--red)";
         }
 
-        // 3. Clear the Discord status (optional but recommended)
+        if (typeof expiryCheckInterval !== 'undefined' && expiryCheckInterval) {
+            clearInterval(expiryCheckInterval);
+            expiryCheckInterval = null;
+        }
+
         if (window.api && window.api.toggleDiscord) {
             window.api.toggleDiscord(false);
         }
 
-        // Hide the main dashboard
-        const mainApp = document.getElementById('main-app');
-        if (mainApp) mainApp.style.display = 'none';
-
-        // Show the login screen
-        const loginPanel = document.getElementById('login-panel');
-        if (loginPanel) {
-            loginPanel.style.display = 'block';
-
-            // Clear the input field so they have to re-type/paste
-            const keyInput = document.getElementById('license-key');
-            if (keyInput) {
-                keyInput.value = '';
-                keyInput.placeholder = "ENTER NEW LICENSE KEY...";
-            }
-        }
-
+        showManualLoginState("Your VEXION session ended. Renew or redeem a new key to continue.");
+        updateUIForAccess();
         console.log("> [AUTH] Session terminated. Returning to login...");
     }
 
