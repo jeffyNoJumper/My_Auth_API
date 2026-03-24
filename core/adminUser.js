@@ -16,6 +16,22 @@ const adminUserSchema = new mongoose.Schema({
         type: String,
         default: 'VEXION Admin'
     },
+    login_name: {
+        type: String,
+        unique: true,
+        sparse: true,
+        trim: true,
+        lowercase: true,
+        default: null
+    },
+    pin_hash: {
+        type: String,
+        default: null
+    },
+    quick_login_enabled: {
+        type: Boolean,
+        default: false
+    },
     role: {
         type: String,
         enum: ['owner', 'admin'],
