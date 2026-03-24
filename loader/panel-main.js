@@ -3,10 +3,12 @@ const { app, BrowserWindow, ipcMain } = require('electron');
 const LOGIN_WINDOW_SIZE = { width: 432, height: 620 };
 const PANEL_WINDOW_SIZE = { width: 1100, height: 840 };
 
-function createWindow() {
+let adminWindow = null;
+
+function buildWindow(size) {
     const win = new BrowserWindow({
-        width: LOGIN_WINDOW_SIZE.width,
-        height: LOGIN_WINDOW_SIZE.height,
+        width: size.width,
+        height: size.height,
         frame: false,
         transparent: true,
         resizable: false,
@@ -17,27 +19,65 @@ function createWindow() {
     });
 
     win.loadFile('admin.html');
-
-    const resizeWindow = (size) => {
-        if (!win || win.isDestroyed()) {
-            return;
+    win.on('closed', () => {
+        if (adminWindow === win) {
+            adminWindow = null;
         }
-
-        win.setSize(size.width, size.height, true);
-        win.center();
-    };
-
-    const fitAuthWindow = () => resizeWindow(LOGIN_WINDOW_SIZE);
-
-    ipcMain.on('admin-close', () => app.quit());
-    ipcMain.on('admin-min', () => win.minimize());
-    ipcMain.on('admin-expand', () => resizeWindow(PANEL_WINDOW_SIZE));
-    ipcMain.on('admin-collapse', () => fitAuthWindow());
-    ipcMain.on('admin-fit-auth-card', () => fitAuthWindow());
-    ipcMain.on('admin-reset-auth-shell', () => {
-        fitAuthWindow();
-        win.loadFile('admin.html');
     });
+
+    return win;
 }
 
-app.whenReady().then(createWindow);
+function ensureAdminWindow(size = LOGIN_WINDOW_SIZE, { recreate = false } = {}) {
+    if (recreate && adminWindow && !adminWindow.isDestroyed()) {
+        adminWindow.destroy();
+        adminWindow = null;
+    }
+
+    if (!adminWindow || adminWindow.isDestroyed()) {
+        adminWindow = buildWindow(size);
+    } else {
+        adminWindow.setSize(size.width, size.height, true);
+        adminWindow.center();
+    }
+
+    return adminWindow;
+}
+
+function resizeAdminWindow(size) {
+    const win = ensureAdminWindow(size);
+    win.setSize(size.width, size.height, true);
+    win.center();
+}
+
+function resetToFreshAuthWindow() {
+    const existing = adminWindow;
+    adminWindow = buildWindow(LOGIN_WINDOW_SIZE);
+    adminWindow.center();
+
+    if (existing && !existing.isDestroyed()) {
+        existing.destroy();
+    }
+}
+
+app.whenReady().then(() => {
+    ensureAdminWindow(LOGIN_WINDOW_SIZE, { recreate: true });
+
+    ipcMain.removeAllListeners('admin-close');
+    ipcMain.removeAllListeners('admin-min');
+    ipcMain.removeAllListeners('admin-expand');
+    ipcMain.removeAllListeners('admin-collapse');
+    ipcMain.removeAllListeners('admin-fit-auth-card');
+    ipcMain.removeAllListeners('admin-reset-auth-shell');
+
+    ipcMain.on('admin-close', () => app.quit());
+    ipcMain.on('admin-min', () => {
+        if (adminWindow && !adminWindow.isDestroyed()) {
+            adminWindow.minimize();
+        }
+    });
+    ipcMain.on('admin-expand', () => resizeAdminWindow(PANEL_WINDOW_SIZE));
+    ipcMain.on('admin-collapse', () => resizeAdminWindow(LOGIN_WINDOW_SIZE));
+    ipcMain.on('admin-fit-auth-card', () => resizeAdminWindow(LOGIN_WINDOW_SIZE));
+    ipcMain.on('admin-reset-auth-shell', () => resetToFreshAuthWindow());
+});
