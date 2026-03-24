@@ -36,13 +36,72 @@ mongoose.connect(process.env.MONGO_URL) // <- remove old options
     .then(() => console.log('✅ MongoDB Connected'))
     .catch(err => console.error('❌ MongoDB Connection Error:', err));
 
-// --- 1. ADMIN MIDDLEWARE ---
-function verifyAdmin(req, res, next) {
-    const { admin_password } = req.body;
-    if (!admin_password || admin_password !== process.env.ADMIN_SECRET) {
-        return res.status(401).json({ success: false, error: "Unauthorized" });
+const ADMIN_SESSION_DURATION_MS = 30 * 24 * 60 * 60 * 1000;
+
+function getAdminAuthCollection() {
+    return mongoose.connection.collection('admin_auth_logins');
+}
+
+function hashAdminSessionToken(token) {
+    return crypto.createHash('sha256').update(String(token || '')).digest('hex');
+}
+
+async function resolveAdminSession(sessionToken) {
+    if (!sessionToken) {
+        return null;
     }
-    next();
+
+    const sessions = getAdminAuthCollection();
+    const tokenHash = hashAdminSessionToken(sessionToken);
+    const now = new Date();
+    const session = await sessions.findOne({
+        token_hash: tokenHash,
+        revoked_at: null,
+        expires_at: { $gt: now }
+    });
+
+    if (!session) {
+        return null;
+    }
+
+    await sessions.updateOne(
+        { _id: session._id },
+        {
+            $set: { last_used_at: now },
+            $inc: { use_count: 1 }
+        }
+    );
+
+    return { ...session, last_used_at: now };
+}
+
+async function verifyAdmin(req, res, next) {
+    try {
+        const adminPassword = String(req.body?.admin_password || '').trim();
+
+        if (adminPassword && adminPassword === process.env.ADMIN_SECRET) {
+            req.adminAuth = { mode: 'secret', label: 'ADMIN_SECRET' };
+            return next();
+        }
+
+        const sessionToken = String(req.body?.admin_session_token || req.get('x-admin-session-token') || '').trim();
+        const session = await resolveAdminSession(sessionToken);
+
+        if (!session) {
+            return res.status(401).json({ success: false, error: "Unauthorized" });
+        }
+
+        req.adminAuth = {
+            mode: 'session',
+            label: session.admin_label || 'Admin',
+            session_id: String(session._id)
+        };
+
+        return next();
+    } catch (error) {
+        console.error('[ADMIN AUTH ERROR]', error);
+        return res.status(500).json({ success: false, error: "Admin authentication failed" });
+    }
 }
 
 function applyDuration(baseDate, daysValue) {
@@ -326,6 +385,98 @@ async function fetchLatestLoaderAnnouncement() {
 
     return fetchLatestDiscordAnnouncement();
 }
+
+app.post('/admin-auth/login', async (req, res) => {
+    try {
+        const adminPassword = String(req.body?.admin_password || '').trim();
+        const adminLabel = String(req.body?.admin_label || '').trim() || 'VEXION Admin';
+        const deviceInfo = String(req.body?.device_info || '').trim() || 'Unknown Device';
+
+        if (!adminPassword || adminPassword !== process.env.ADMIN_SECRET) {
+            return res.status(401).json({ success: false, error: 'Invalid admin secret.' });
+        }
+
+        const sessions = getAdminAuthCollection();
+        const sessionToken = crypto.randomBytes(32).toString('hex');
+        const now = new Date();
+        const expiresAt = new Date(now.getTime() + ADMIN_SESSION_DURATION_MS);
+
+        const sessionRecord = {
+            token_hash: hashAdminSessionToken(sessionToken),
+            admin_label: adminLabel,
+            device_info: deviceInfo,
+            source: 'admin_panel',
+            created_at: now,
+            last_used_at: now,
+            expires_at: expiresAt,
+            revoked_at: null,
+            use_count: 1,
+            user_agent: req.get('user-agent') || '',
+            remote_ip: req.ip || req.socket?.remoteAddress || '',
+            status: 'ACTIVE'
+        };
+
+        const insertResult = await sessions.insertOne(sessionRecord);
+
+        return res.json({
+            success: true,
+            session_token: sessionToken,
+            admin_label: adminLabel,
+            device_info: deviceInfo,
+            expires_at: expiresAt,
+            session_id: String(insertResult.insertedId)
+        });
+    } catch (error) {
+        console.error('[ADMIN AUTH LOGIN ERROR]', error);
+        return res.status(500).json({ success: false, error: 'Failed to create admin session.' });
+    }
+});
+
+app.post('/admin-auth/restore', async (req, res) => {
+    try {
+        const sessionToken = String(req.body?.admin_session_token || '').trim();
+        const session = await resolveAdminSession(sessionToken);
+
+        if (!session) {
+            return res.status(401).json({ success: false, error: 'Saved admin session expired or is invalid.' });
+        }
+
+        return res.json({
+            success: true,
+            admin_label: session.admin_label || 'VEXION Admin',
+            device_info: session.device_info || 'Unknown Device',
+            expires_at: session.expires_at,
+            session_id: String(session._id)
+        });
+    } catch (error) {
+        console.error('[ADMIN AUTH RESTORE ERROR]', error);
+        return res.status(500).json({ success: false, error: 'Failed to restore admin session.' });
+    }
+});
+
+app.post('/admin-auth/logout', async (req, res) => {
+    try {
+        const sessionToken = String(req.body?.admin_session_token || '').trim();
+        if (!sessionToken) {
+            return res.json({ success: true });
+        }
+
+        await getAdminAuthCollection().updateOne(
+            { token_hash: hashAdminSessionToken(sessionToken), revoked_at: null },
+            {
+                $set: {
+                    revoked_at: new Date(),
+                    status: 'REVOKED'
+                }
+            }
+        );
+
+        return res.json({ success: true });
+    } catch (error) {
+        console.error('[ADMIN AUTH LOGOUT ERROR]', error);
+        return res.status(500).json({ success: false, error: 'Failed to close admin session.' });
+    }
+});
 
 // --- 2. CREATE KEY ---
 app.post('/admin/create-key', verifyAdmin, async (req, res) => {
