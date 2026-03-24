@@ -6,6 +6,7 @@ const GUILD_ID = process.env.GUILD_ID || '1244947057320661043';
 const ADMIN_USER_ID = process.env.ADMIN_USER_ID || '1280926025789870209';
 const PANEL_CHANNEL_ID = process.env.PANEL_CHANNEL_ID || '1469005198700712046';
 const HWID_RESET_CHANNEL_ID = process.env.HWID_RESET_CHANNEL_ID || '1403918366623797268';
+const COMMAND_PANEL_CHANNEL_ID = process.env.DISCORD_COMMAND_PANEL_CHANNEL_ID || '1373760263572160612';
 const LOADER_ALERT_CHANNEL_ID = process.env.DISCORD_LOADER_ALERT_CHANNEL_ID || '1373760247658971256';
 const STORE_URL = process.env.STORE_URL || 'https://whosthesource.mysellauth.com';
 const APPLICATION_ID = process.env.DISCORD_APPLICATION_ID || process.env.APPLICATION_ID || process.env.CLIENT_ID || '1476724607485743277';
@@ -29,6 +30,7 @@ const discordBotState = {
     guildId: GUILD_ID,
     panelChannelId: PANEL_CHANNEL_ID,
     hwidResetChannelId: HWID_RESET_CHANNEL_ID,
+    commandPanelChannelId: COMMAND_PANEL_CHANNEL_ID,
     loaderAlertChannelId: LOADER_ALERT_CHANNEL_ID,
     endpointConfigured: false
 };
@@ -143,6 +145,46 @@ function buildHwidResetComponents() {
             { type: 2, custom_id: 'reset_hwid_btn', label: 'Reset HWID', style: 4 }
         ]
     }];
+}
+
+function getCommandGuideSections() {
+    return {
+        member: [
+            '/panel',
+            '/ping',
+            '/status',
+            '/redeem_key',
+            '/link'
+        ],
+        admin: [
+            '/genkey',
+            '/announce_loader',
+            '/refresh_panels',
+            '/resets',
+            '/approve',
+            '/deny'
+        ]
+    };
+}
+
+function buildCommandPanelEmbed() {
+    const sections = getCommandGuideSections();
+
+    return {
+        title: 'VEXION Command Guide',
+        description: 'Use this panel to see which slash commands are open to everyone and which ones are locked behind admin or higher access.',
+        color: 0x3B82F6,
+        fields: [
+            embedField('Member Commands', sections.member.map(command => `• \`${command}\``).join('\n'), false),
+            embedField('Admin / Higher Role Commands', sections.admin.map(command => `• \`${command}\``).join('\n'), false),
+            embedField(
+                'Access Rules',
+                'Everyone can use the member commands.\nAdministrator access or the configured VEXION owner/admin account is required for the higher-role commands.\nIf you do not have access, the bot will reply with `Admin access required.`',
+                false
+            )
+        ],
+        footer: { text: 'VEXION • Command Access Panel' }
+    };
 }
 
 function buildResetActionRows(requests) {
@@ -668,8 +710,13 @@ async function refreshStartupPanels(token) {
         components: buildHwidResetComponents()
     };
 
+    const commandPanel = {
+        embeds: [buildCommandPanelEmbed()]
+    };
+
     await replacePanelMessage(PANEL_CHANNEL_ID, 'VEXION License Panel', token, licensePanel);
     await replacePanelMessage(HWID_RESET_CHANNEL_ID, 'HWID Reset Panel', token, hwidPanel);
+    await replacePanelMessage(COMMAND_PANEL_CHANNEL_ID, 'VEXION Command Guide', token, commandPanel);
     discordBotState.panelsRefreshedAt = new Date().toISOString();
 }
 
@@ -952,7 +999,7 @@ function createDiscordInteractionsHandler({ User, mongoose }) {
                 }, 0);
 
                 return jsonResponse(res, 200, interactionMessageResponse({
-                    content: `Panel refresh queued for <#${PANEL_CHANNEL_ID}> and <#${HWID_RESET_CHANNEL_ID}>.`
+                    content: `Panel refresh queued for <#${PANEL_CHANNEL_ID}>, <#${HWID_RESET_CHANNEL_ID}>, and <#${COMMAND_PANEL_CHANNEL_ID}>.`
                 }));
             }
 
