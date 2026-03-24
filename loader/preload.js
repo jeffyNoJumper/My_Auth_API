@@ -95,6 +95,8 @@ contextBridge.exposeInMainWorld('api', {
     getGameLiveFeed: (gameName) => ipcRenderer.invoke('get-game-live-feed', gameName),
     close: () => ipcRenderer.send('window-close'),
     minimize: () => ipcRenderer.send('window-minimize'),
+    setAuthWindow: () => ipcRenderer.send('loader-window-auth'),
+    setAppWindow: () => ipcRenderer.send('loader-window-expand'),
     openExternal: (url) => shell.openExternal(url),
     showSystemNotification: (title, body) => ipcRenderer.invoke('show-system-notification', { title, body }),
 
