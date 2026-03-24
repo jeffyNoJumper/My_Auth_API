@@ -921,6 +921,7 @@
             } else {
                 ipcRenderer.send('admin-collapse');
                 fitAdminAuthWindow();
+                setTimeout(fitAdminAuthWindow, 80);
             }
             setOwnerToolsVisibility();
         }
