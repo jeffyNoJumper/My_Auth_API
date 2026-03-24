@@ -13,6 +13,7 @@ const PUBLIC_KEY = process.env.DISCORD_PUBLIC_KEY || '';
 
 const PRODUCT_CHOICES = ['CS2', 'FiveM', 'GTAV', 'Warzone', 'All-Access'];
 const EPHEMERAL_FLAG = 64;
+const DISCORD_API_MAX_RETRIES = 5;
 
 const discordBotState = {
     mode: 'interactions',
@@ -212,6 +213,10 @@ function jsonResponse(res, statusCode, payload) {
     res.status(statusCode).json(payload);
 }
 
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 function verifyDiscordSignature(req) {
     if (!PUBLIC_KEY) {
         discordBotState.lastError = 'missing_public_key';
@@ -239,7 +244,7 @@ function verifyDiscordSignature(req) {
     }
 }
 
-async function requestDiscordApi(method, path, token, body) {
+async function requestDiscordApi(method, path, token, body, attempt = 0) {
     const response = await fetch(`https://discord.com/api/v10${path}`, {
         method,
         headers: {
@@ -249,6 +254,24 @@ async function requestDiscordApi(method, path, token, body) {
         },
         body: body ? JSON.stringify(body) : undefined
     });
+
+    if (response.status === 429) {
+        const retryAfterHeader = response.headers.get('retry-after') || response.headers.get('x-ratelimit-reset-after');
+        const retryAfterSeconds = Number.parseFloat(retryAfterHeader || '');
+        const fallbackSeconds = Math.min(5 * (attempt + 1), 20);
+        const waitMs = Math.ceil((Number.isFinite(retryAfterSeconds) ? retryAfterSeconds : fallbackSeconds) * 1000);
+        const errorText = await response.text();
+        const rateLimitMessage = `Discord API 429 on ${method} ${path}; retrying in ${waitMs}ms`;
+        discordBotState.lastWarn = rateLimitMessage;
+        console.warn(`[DISCORD INTERACTIONS] ${rateLimitMessage}`);
+
+        if (attempt >= DISCORD_API_MAX_RETRIES) {
+            throw new Error(`Discord API 429: ${errorText.slice(0, 300)}`);
+        }
+
+        await sleep(waitMs);
+        return requestDiscordApi(method, path, token, body, attempt + 1);
+    }
 
     if (!response.ok) {
         const errorText = await response.text();
@@ -484,23 +507,26 @@ function initDiscordBot() {
         return;
     }
 
-    syncCommands(token)
-        .then(() => {
+    (async () => {
+        try {
+            await syncCommands(token);
             console.log('[DISCORD INTERACTIONS] Slash commands synced.');
-        })
-        .catch(error => {
+        } catch (error) {
             discordBotState.lastError = error?.message || String(error);
             console.error('[DISCORD INTERACTIONS] Slash command sync failed:', error.message);
-        });
+            return;
+        }
 
-    refreshStartupPanels(token)
-        .then(() => {
+        await sleep(1500);
+
+        try {
+            await refreshStartupPanels(token);
             console.log('[DISCORD INTERACTIONS] Startup panels refreshed.');
-        })
-        .catch(error => {
+        } catch (error) {
             discordBotState.lastWarn = error?.message || String(error);
             console.warn('[DISCORD INTERACTIONS] Startup panel refresh failed:', error.message);
-        });
+        }
+    })();
 }
 
 function getDiscordBotStatus() {
