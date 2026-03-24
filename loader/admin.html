@@ -330,12 +330,12 @@
 
         .admin-auth-screen {
             position: absolute;
-            inset: 35px 0 0 0;
+            inset: 40px 0 10px 0;
             z-index: 50;
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 18px 24px 24px;
+            padding: 10px 22px 14px;
             background:
                 radial-gradient(circle at top, rgba(0, 149, 255, 0.12), transparent 45%),
                 linear-gradient(180deg, rgba(8, 10, 15, 0.94), rgba(6, 8, 12, 0.98));
@@ -343,7 +343,7 @@
             backdrop-filter: blur(12px);
             -webkit-app-region: no-drag;
             box-sizing: border-box;
-            overflow-y: auto;
+            overflow: hidden;
         }
 
         .admin-auth-screen.hidden {
@@ -352,9 +352,8 @@
 
         .admin-auth-card {
             width: 100%;
-            max-width: 420px;
-            max-height: 100%;
-            padding: 24px 22px 18px;
+            max-width: 404px;
+            padding: 20px 20px 14px;
             border-radius: 16px;
             background:
                 linear-gradient(145deg, rgba(17, 20, 29, 0.96), rgba(8, 10, 15, 0.96));
@@ -369,36 +368,36 @@
             display: inline-flex;
             align-items: center;
             gap: 8px;
-            margin-bottom: 14px;
-            padding: 6px 12px;
+            margin-bottom: 12px;
+            padding: 5px 11px;
             border-radius: 999px;
             background: rgba(0, 149, 255, 0.08);
             border: 1px solid rgba(0, 149, 255, 0.18);
             color: var(--accent);
-            font-size: 10px;
+            font-size: 9px;
             font-weight: 800;
-            letter-spacing: 1.5px;
+            letter-spacing: 1.3px;
             text-transform: uppercase;
         }
 
         .admin-auth-card h1 {
-            margin: 0 0 10px 0;
-            font-size: 28px;
-            line-height: 1.05;
-            letter-spacing: 1.5px;
+            margin: 0 0 8px 0;
+            font-size: 26px;
+            line-height: 1.02;
+            letter-spacing: 1.2px;
             color: #fff;
         }
 
         .admin-auth-card p {
-            margin: 0 0 18px 0;
+            margin: 0 0 14px 0;
             color: #93a6b1;
-            font-size: 12px;
-            line-height: 1.6;
+            font-size: 11px;
+            line-height: 1.45;
         }
 
         .admin-auth-form {
             display: grid;
-            gap: 10px;
+            gap: 8px;
         }
 
         .admin-auth-meta {
@@ -406,7 +405,7 @@
             align-items: center;
             justify-content: space-between;
             gap: 10px;
-            margin-top: 4px;
+            margin-top: 2px;
         }
 
         .admin-remember {
@@ -428,8 +427,8 @@
 
         .admin-auth-status {
             min-height: 18px;
-            margin-top: 10px;
-            font-size: 11px;
+            margin-top: 8px;
+            font-size: 10px;
             color: var(--text-muted);
             letter-spacing: 0.4px;
         }
@@ -479,10 +478,10 @@
                 <form class="admin-auth-form" onsubmit="handleAdminAuth(event)">
                     <input type="email" id="admin-auth-email" placeholder="Admin Email">
                     <input type="password" id="admin-auth-pass" placeholder="Admin Password">
-                    <div style="text-align:center; font-size:10px; color:#7f98a6; letter-spacing:1px; text-transform:uppercase;">First login uses email + password</div>
+                    <div style="text-align:center; font-size:9px; color:#7f98a6; letter-spacing:0.9px; text-transform:uppercase; margin:2px 0 1px;">First login uses email + password</div>
                     <input type="text" id="admin-auth-user" placeholder="Quick Login Username">
                     <input type="password" id="admin-auth-pin" placeholder="4-Digit PIN" maxlength="4" inputmode="numeric">
-                    <div style="text-align:center; font-size:10px; color:#7f98a6; letter-spacing:1px; text-transform:uppercase;">Later logins can use username + pin</div>
+                    <div style="text-align:center; font-size:9px; color:#7f98a6; letter-spacing:0.9px; text-transform:uppercase; margin:1px 0 2px;">Later logins can use username + pin</div>
                     <div class="admin-auth-meta">
                         <label class="admin-remember">
                             <input type="checkbox" id="admin-remember">
