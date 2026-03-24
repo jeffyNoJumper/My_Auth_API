@@ -1313,11 +1313,7 @@ function scheduleDeferredStartupWork() {
 async function initializeLoader() {
     const el = (id) => document.getElementById(id);
 
-    const savedPfp = localStorage.getItem('saved_profile_pic');
-    if (savedPfp) {
-        if (el('user-pic')) el('user-pic').src = savedPfp;
-        if (el('modal-pfp')) el('modal-pfp').src = savedPfp;
-    }
+    applyProfileImage(getStoredProfileImage(), { persist: false });
 
     if (el('update-overlay')) el('update-overlay').classList.add('hidden');
 
@@ -1924,20 +1920,51 @@ async function runTerminalCommand(rawCommand) {
     addTerminalLine("> Type HELP for the available client controls.");
 }
 
-// Function to force-apply the PFP to all relevant elements
-function syncProfileImage() {
-    const savedPic = localStorage.getItem('saved_profile_pic');
-    if (!savedPic) return;
+function isRealProfileImage(value) {
+    const candidate = String(value || '').trim();
+    if (!candidate) {
+        return false;
+    }
 
-    // Target both the top-nav pic and the settings modal pic
-    const targets = ['user-pic', 'modal-pfp'];
-    targets.forEach(id => {
+    return !/^\.?\/?imgs\/default-(?:avatar|profile)\.png$/i.test(candidate);
+}
+
+function getStoredProfileImage() {
+    const savedProfilePic = localStorage.getItem('saved_profile_pic');
+    if (isRealProfileImage(savedProfilePic)) {
+        return savedProfilePic;
+    }
+
+    const legacyProfilePic = localStorage.getItem('profilePic');
+    if (isRealProfileImage(legacyProfilePic)) {
+        return legacyProfilePic;
+    }
+
+    return "imgs/default-profile.png";
+}
+
+function applyProfileImage(imageValue, options = {}) {
+    const { persist = true } = options;
+    const resolvedImage = isRealProfileImage(imageValue)
+        ? imageValue
+        : getStoredProfileImage();
+
+    if (persist) {
+        localStorage.setItem('saved_profile_pic', resolvedImage);
+        localStorage.setItem('profilePic', resolvedImage);
+    }
+
+    ['user-pic', 'modal-pfp', 'profile-pic'].forEach((id) => {
         const el = document.getElementById(id);
         if (el) {
-            el.src = savedPic;
-            console.log(`[PFP] Synced: ${id}`);
+            el.src = resolvedImage;
         }
     });
+}
+
+// Function to force-apply the PFP to all relevant elements
+function syncProfileImage() {
+    applyProfileImage(getStoredProfileImage(), { persist: false });
 }
 
 // 1. Initial Load when App Opens
@@ -1957,12 +1984,14 @@ window.addEventListener('DOMContentLoaded', () => {
 
             const reader = new FileReader();
             reader.onload = async (event) => {
-                const base64Image = event.target.result;
+                let profilePicData = event.target.result;
+
+                if (profilePicData?.startsWith('data:image')) {
+                    profilePicData = await compressImage(profilePicData);
+                }
 
                 // Save locally first for instant feedback
-                localStorage.setItem('saved_profile_pic', base64Image);
-                localStorage.setItem('profilePic', base64Image);
-                syncProfileImage();
+                applyProfileImage(profilePicData);
 
                 try {
                     const userEmail = localStorage.getItem('user_email');
@@ -1977,7 +2006,7 @@ window.addEventListener('DOMContentLoaded', () => {
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             user_id_email: userEmail.toLowerCase(),
-                            profile_pic: base64Image // This is the Base64 string
+                            profile_pic: profilePicData
                         })
                     });
 
@@ -1985,10 +2014,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
                     if (res.ok && data.success) {
                         console.log("✅ Profile pic synced to Render DB");
-                        // Optional: Update any other UI elements with the new PFP
-                        if (document.getElementById('modal-pfp')) {
-                            document.getElementById('modal-pfp').src = base64Image;
-                        }
+                        applyProfileImage(data.profile_pic || profilePicData);
                     } else {
                         console.error("❌ Server rejected update:", data.error || res.statusText);
                     }
@@ -2023,7 +2049,7 @@ function switchScreen(oldId, newId) {
         const avatarEl = document.getElementById("profile-pic");
 
         if (usernameEl) usernameEl.innerText = localStorage.getItem("username") || "Guest";
-        if (avatarEl) avatarEl.src = localStorage.getItem("profilePic") || "imgs/default-avatar.png";
+        if (avatarEl) avatarEl.src = getStoredProfileImage();
     }
 }
 
@@ -2195,11 +2221,10 @@ async function handleLogin(isAutoLogin = false, creds = {}) {
             }
 
             // ---------- PROFILE ----------
-            const profilePic = data.profile_pic || "imgs/default-profile.png";
-            localStorage.setItem("saved_profile_pic", profilePic);
-            localStorage.setItem("profilePic", profilePic);
-            document.querySelectorAll("#user-pic, #modal-pfp")
-                .forEach(img => img.src = profilePic);
+            const profilePic = isRealProfileImage(data.profile_pic)
+                ? data.profile_pic
+                : getStoredProfileImage();
+            applyProfileImage(profilePic);
 
             // ---------- USER INFO ----------
             //const username = email.split("@")[0];
@@ -2870,9 +2895,7 @@ async function saveProfileChanges() {
             if (payload.new_license_key) localStorage.setItem('license_key', payload.new_license_key);
 
             if (profilePicData) {
-                localStorage.setItem('saved_profile_pic', profilePicData);
-                localStorage.setItem('profilePic', profilePicData);
-                document.querySelectorAll('#user-pic, #modal-pfp').forEach(img => img.src = profilePicData);
+                applyProfileImage(profilePicData);
             }
 
             await showSuccessDialog("Profile Updated", "Profile changes were saved successfully.");
