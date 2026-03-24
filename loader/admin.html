@@ -465,27 +465,38 @@
                     </div>
 
 
-                    <!-- EXTEND TIME SECTION (DAYS + HOURS) -->
+                    <!-- ADJUST TIME SECTION (DAYS + HOURS) -->
                     <div style="margin-bottom:15px; padding:12px; background:var(--bg-card); border-radius:8px; border:1px solid #222;">
-                        <div class="section-label" style="font-size:9px; margin-bottom:10px; border-left-width: 2px;">Extend Subscription</div>
+                        <div class="section-label" style="font-size:9px; margin-bottom:10px; border-left-width: 2px;">Adjust Subscription</div>
 
                         <div class="time-group">
 
                             <input type="number" id="add-days-input" placeholder="0D" title="Days" class="time-input">
 
                             <input type="number" id="add-hours-input" placeholder="0H" title="Hours" class="time-input">
+                        </div>
 
-                            <button onclick="addTimeCombined()" style="height:30px; padding:0; margin:0; font-size:10px; flex:1;">
-                                ADD_TIME
+                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px; margin-top:6px;">
+                            <button onclick="addTimeCombined()" style="height:30px; padding:0; margin:0; font-size:10px; background:var(--accent); color:black;">
+                                ADD TIME
+                            </button>
+                            <button onclick="removeTimeCombined()" style="height:30px; padding:0; margin:0; font-size:10px; background:#5a2020; color:white; border:1px solid rgba(255, 84, 84, 0.3);">
+                                REMOVE TIME
                             </button>
                         </div>
 
-                        <!-- Quick Add Buttons -->
-                        <div style="display:grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap:5px;">
+                        <div style="display:grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap:5px; margin-top:6px;">
                             <button onclick="quickAdd(0.0416)" style="font-size:9px; background:var(--bg-input); border:1px solid #333; color:#888; padding:5px 0;">+1H</button>
                             <button onclick="quickAdd(1)" style="font-size:9px; background:var(--bg-input); border:1px solid #333; color:#888; padding:5px 0;">+1D</button>
                             <button onclick="quickAdd(7)" style="font-size:9px; background:var(--bg-input); border:1px solid #333; color:#888; padding:5px 0;">+7D</button>
                             <button onclick="quickAdd(30)" style="font-size:9px; background:var(--bg-input); border:1px solid #333; color:#888; padding:5px 0;">+30D</button>
+                        </div>
+
+                        <div style="display:grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap:5px; margin-top:5px;">
+                            <button onclick="quickRemove(0.0416)" style="font-size:9px; background:#1c1111; border:1px solid #4a2424; color:#ff9e9e; padding:5px 0;">-1H</button>
+                            <button onclick="quickRemove(1)" style="font-size:9px; background:#1c1111; border:1px solid #4a2424; color:#ff9e9e; padding:5px 0;">-1D</button>
+                            <button onclick="quickRemove(7)" style="font-size:9px; background:#1c1111; border:1px solid #4a2424; color:#ff9e9e; padding:5px 0;">-7D</button>
+                            <button onclick="quickRemove(30)" style="font-size:9px; background:#1c1111; border:1px solid #4a2424; color:#ff9e9e; padding:5px 0;">-30D</button>
                         </div>
                     </div>
 
@@ -1008,7 +1019,7 @@
             }
 
             let daysToSend = customDays;
-            if (action === 'add-time' && daysToSend === null) {
+            if ((action === 'add-time' || action === 'remove-time') && daysToSend === null) {
                 const inputValue = parseFloat(document.getElementById('add-days-input')?.value || '0');
                 if (!inputValue || inputValue <= 0) {
                     alert('Enter a valid amount of time.');
@@ -1024,7 +1035,7 @@
                 admin_password: adminPass
             };
 
-            if (action === 'add-time') {
+            if (action === 'add-time' || action === 'remove-time') {
                 payload.days = daysToSend;
             }
 
@@ -1046,7 +1057,7 @@
                     return;
                 }
 
-                if (action === 'add-time') {
+                if (action === 'add-time' || action === 'remove-time') {
                     document.getElementById('add-days-input').value = '';
                     document.getElementById('add-hours-input').value = '';
                 }
@@ -1078,8 +1089,28 @@
             await modifyKey('add-time', totalDays);
         }
 
+        async function removeTimeCombined() {
+            const daysInput = document.getElementById('add-days-input');
+            const hoursInput = document.getElementById('add-hours-input');
+
+            const days = parseFloat(daysInput?.value || '0') || 0;
+            const hours = parseFloat(hoursInput?.value || '0') || 0;
+
+            if (days <= 0 && hours <= 0) {
+                alert('Enter at least some time to remove.');
+                return;
+            }
+
+            const totalDays = days + (hours / 24);
+            await modifyKey('remove-time', totalDays);
+        }
+
         function quickAdd(daysValue) {
             modifyKey('add-time', daysValue);
+        }
+
+        function quickRemove(daysValue) {
+            modifyKey('remove-time', daysValue);
         }
 
         async function copyActiveKey() {
