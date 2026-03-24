@@ -177,6 +177,43 @@ async function fetchLatestDiscordAnnouncement() {
     };
 }
 
+async function fetchLatestStoredLoaderAnnouncement() {
+    try {
+        const latest = await mongoose.connection
+            .collection('loader_notifications')
+            .findOne({}, { sort: { created_at: -1 } });
+
+        if (!latest) {
+            return null;
+        }
+
+        return {
+            enabled: true,
+            channel_id: DISCORD_LOADER_ALERT_CHANNEL_ID,
+            announcement: {
+                id: String(latest._id || ""),
+                title: trimAnnouncementText(latest.title || "New Admin Notice", 120),
+                detail: trimAnnouncementText(latest.detail || latest.message || "A new admin notice was posted.", 320),
+                author: trimAnnouncementText(latest.author || "Admin", 80),
+                timestamp: latest.timestamp || latest.created_at || new Date().toISOString()
+            }
+        };
+    } catch (error) {
+        console.error("[LOADER NOTIFICATION STORE ERROR]", error);
+        return null;
+    }
+}
+
+async function fetchLatestLoaderAnnouncement() {
+    const storedPayload = await fetchLatestStoredLoaderAnnouncement();
+
+    if (storedPayload?.announcement?.id) {
+        return storedPayload;
+    }
+
+    return fetchLatestDiscordAnnouncement();
+}
+
 // --- 2. CREATE KEY ---
 app.post('/admin/create-key', verifyAdmin, async (req, res) => {
     try {
@@ -951,7 +988,7 @@ app.get('/health', (req, res) => {
 
 app.get('/loader-notification/latest', async (req, res) => {
     try {
-        const payload = await fetchLatestDiscordAnnouncement();
+        const payload = await fetchLatestLoaderAnnouncement();
         res.json(payload);
     } catch (error) {
         console.error("[DISCORD ANNOUNCEMENT ERROR]", error);
