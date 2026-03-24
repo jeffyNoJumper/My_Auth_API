@@ -1254,6 +1254,20 @@ body.logged-in .main-content {
     line-height: 1.35;
 }
 
+.tab-stat-card strong.active-status,
+.tab-stat-card strong.status-active {
+    color: #4CAF50;
+}
+
+.tab-stat-card strong.inactive,
+.tab-stat-card strong.status-inactive {
+    color: #ff6464;
+}
+
+.tab-stat-card strong.processing {
+    color: #f1c40f;
+}
+
 .tab-panel {
     border-radius: 14px;
     padding: 16px;
@@ -2950,20 +2964,30 @@ input:checked + .slider:before {
 }
 
 /* TYPING ANIMATION */
+.terminal-line {
+    display: block;
+    width: fit-content;
+    max-width: 100%;
+}
+
 .typewriter {
+    display: inline-block;
     overflow: hidden;
     white-space: nowrap;
     border-right: 2px solid var(--accent);
+    width: fit-content;
+    max-width: 100%;
+    vertical-align: top;
     animation: typing 3.5s steps(40, end), blink-caret .75s step-end infinite;
 }
 
 @keyframes typing {
     from {
-        width: 0
+        clip-path: inset(0 100% 0 0);
     }
 
     to {
-        width: 100%
+        clip-path: inset(0 0 0 0);
     }
 }
 
