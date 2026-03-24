@@ -285,6 +285,28 @@ async function requestDiscordApi(method, path, token, body, attempt = 0) {
     return response.json();
 }
 
+async function requestDiscordWebhook(method, path, body) {
+    const response = await fetch(`https://discord.com/api/v10${path}`, {
+        method,
+        headers: {
+            'Content-Type': 'application/json',
+            'User-Agent': 'VEXION-Interactions/1.0'
+        },
+        body: body ? JSON.stringify(body) : undefined
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Discord webhook ${response.status}: ${errorText.slice(0, 300)}`);
+    }
+
+    if (response.status === 204) {
+        return null;
+    }
+
+    return response.json();
+}
+
 async function fetchTextChannelMessages(channelId, token, limit = 25) {
     return requestDiscordApi('GET', `/channels/${channelId}/messages?limit=${limit}`, token);
 }
@@ -478,6 +500,14 @@ async function sendLoaderAnnouncement(token, interaction, title, message) {
     await requestDiscordApi('POST', `/channels/${LOADER_ALERT_CHANNEL_ID}/messages`, token, {
         embeds: [embed]
     });
+}
+
+async function updateDeferredInteraction(interactionToken, payload) {
+    return requestDiscordWebhook(
+        'PATCH',
+        `/webhooks/${APPLICATION_ID}/${interactionToken}/messages/@original`,
+        payload
+    );
 }
 
 async function syncCommands(token) {
@@ -745,12 +775,32 @@ function createDiscordInteractionsHandler({ User, mongoose }) {
 
                 const title = String(getCommandOption(interaction, 'title') || '').trim();
                 const message = String(getCommandOption(interaction, 'message') || '').trim();
+                const interactionToken = interaction?.token;
 
-                await sendLoaderAnnouncement(token, interaction, title, message);
+                setTimeout(() => {
+                    void (async () => {
+                        try {
+                            await sendLoaderAnnouncement(token, interaction, title, message);
+                            await updateDeferredInteraction(interactionToken, {
+                                content: `Loader announcement sent to <#${LOADER_ALERT_CHANNEL_ID}>.`
+                            });
+                        } catch (error) {
+                            discordBotState.lastError = error?.message || String(error);
+                            console.error('[DISCORD INTERACTIONS] announce_loader failed:', error);
 
-                return jsonResponse(res, 200, interactionMessageResponse({
-                    content: `Loader announcement sent to <#${LOADER_ALERT_CHANNEL_ID}>.`
-                }));
+                            await updateDeferredInteraction(interactionToken, {
+                                content: `Failed to send loader announcement: ${error?.message || 'Unknown error'}`
+                            }).catch(() => { });
+                        }
+                    })();
+                }, 0);
+
+                return jsonResponse(res, 200, {
+                    type: 5,
+                    data: {
+                        flags: EPHEMERAL_FLAG
+                    }
+                });
             }
 
             if (commandName === 'resets') {
