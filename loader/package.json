@@ -9,6 +9,8 @@
     "start-panel": "electron panel-main.js",
     "bump-build-version": "node ../scripts/bump-loader-version.js",
     "sync-discord-commands": "node ../scripts/register-discord-commands.js",
+    "refresh-discord-panels": "node ../scripts/refresh-discord-panels.js",
+    "reset-discord-bot": "node ../scripts/reset-discord-bot.js",
     "build": "electron-builder",
     "build-panel": "electron-builder --config electron-builder-panel.json",
     "publish": "electron-builder --publish always"
