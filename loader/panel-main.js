@@ -1,6 +1,6 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 
-const LOGIN_WINDOW_SIZE = { width: 420, height: 520 };
+const LOGIN_WINDOW_SIZE = { width: 432, height: 620 };
 const PANEL_WINDOW_SIZE = { width: 1100, height: 840 };
 
 function createWindow() {
@@ -27,24 +27,17 @@ function createWindow() {
         win.center();
     };
 
-    const fitAuthWindow = (bounds = {}) => {
-        const width = Math.max(
-            LOGIN_WINDOW_SIZE.width,
-            Math.min(500, Math.ceil(Number(bounds.width) || 0) + 20)
-        );
-        const height = Math.max(
-            LOGIN_WINDOW_SIZE.height,
-            Math.min(660, Math.ceil(Number(bounds.height) || 0) + 24)
-        );
-
-        resizeWindow({ width, height });
-    };
+    const fitAuthWindow = () => resizeWindow(LOGIN_WINDOW_SIZE);
 
     ipcMain.on('admin-close', () => app.quit());
     ipcMain.on('admin-min', () => win.minimize());
     ipcMain.on('admin-expand', () => resizeWindow(PANEL_WINDOW_SIZE));
     ipcMain.on('admin-collapse', () => fitAuthWindow());
-    ipcMain.on('admin-fit-auth-card', (event, bounds) => fitAuthWindow(bounds));
+    ipcMain.on('admin-fit-auth-card', () => fitAuthWindow());
+    ipcMain.on('admin-reset-auth-shell', () => {
+        fitAuthWindow();
+        win.loadFile('admin.html');
+    });
 }
 
 app.whenReady().then(createWindow);
