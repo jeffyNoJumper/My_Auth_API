@@ -798,7 +798,11 @@ app.post('/update-profile', async (req, res) => {
 
         await user.save();
 
-        res.json({ success: true, message: "Profile updated!" });
+        res.json({
+            success: true,
+            message: "Profile updated!",
+            profile_pic: user.profile_pic || ""
+        });
 
     } catch (err) {
         console.error("Update Error:", err);
