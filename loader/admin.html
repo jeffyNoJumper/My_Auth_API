@@ -335,13 +335,15 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 28px;
+            padding: 18px 24px 24px;
             background:
                 radial-gradient(circle at top, rgba(0, 149, 255, 0.12), transparent 45%),
                 linear-gradient(180deg, rgba(8, 10, 15, 0.94), rgba(6, 8, 12, 0.98));
             border-radius: 0 0 12px 12px;
             backdrop-filter: blur(12px);
             -webkit-app-region: no-drag;
+            box-sizing: border-box;
+            overflow-y: auto;
         }
 
         .admin-auth-screen.hidden {
@@ -351,7 +353,8 @@
         .admin-auth-card {
             width: 100%;
             max-width: 420px;
-            padding: 28px 24px 22px;
+            max-height: 100%;
+            padding: 24px 22px 18px;
             border-radius: 16px;
             background:
                 linear-gradient(145deg, rgba(17, 20, 29, 0.96), rgba(8, 10, 15, 0.96));
@@ -359,6 +362,7 @@
             box-shadow:
                 0 22px 48px rgba(0, 0, 0, 0.45),
                 0 0 22px rgba(0, 149, 255, 0.10);
+            box-sizing: border-box;
         }
 
         .admin-auth-kicker {
