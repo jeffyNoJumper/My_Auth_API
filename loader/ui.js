@@ -2301,9 +2301,7 @@ async function handleLogin(isAutoLogin = false, creds = {}) {
                 localStorage.setItem("remembered_password", password);
             }
 
-            if (data.license_key) {
-                localStorage.setItem("license_key", data.license_key.toUpperCase());
-            }
+            setSessionAccess(data.license_key || '');
 
             // ---------- PROFILE ----------
             const profilePic = isRealProfileImage(data.profile_pic)
