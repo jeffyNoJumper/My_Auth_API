@@ -4,6 +4,7 @@ const mongoose = require('mongoose');
 const crypto = require('crypto');
 const bcrypt = require("bcryptjs");
 const cors = require('cors');
+const dns = require('dns').promises;
 const { createDiscordInteractionsHandler, initDiscordBot, getDiscordBotStatus } = require('./discordBot');
 
 const fixDates = (data) => {
@@ -72,6 +73,89 @@ function normalizeGamesInput(games) {
     }
 
     return [];
+}
+
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const blockedEmailDomains = new Set([
+    'mailinator.com',
+    'guerrillamail.com',
+    '10minutemail.com',
+    'temp-mail.org',
+    'tempmail.com',
+    'getnada.com',
+    'moakt.com',
+    'moakt.cc',
+    'mail.tm',
+    'sharklasers.com',
+    'yopmail.com',
+    'mintemail.com',
+    'dispostable.com',
+    'throwawaymail.com',
+    'trashmail.com',
+    'fakeinbox.com',
+    'emailondeck.com',
+    'minuteinbox.com',
+    'tempmailo.com',
+    'spamgourmet.com'
+]);
+
+async function validateEmailAddress(email) {
+    const cleanEmail = String(email || '').toLowerCase().trim();
+
+    if (!cleanEmail || !emailRegex.test(cleanEmail)) {
+        return { valid: false, reason: 'invalid_format' };
+    }
+
+    const [, domain = ""] = cleanEmail.split('@');
+    if (!domain) {
+        return { valid: false, reason: 'invalid_domain' };
+    }
+
+    if (blockedEmailDomains.has(domain)) {
+        return { valid: false, reason: 'disposable_domain' };
+    }
+
+    try {
+        const mxRecords = await dns.resolveMx(domain);
+        if (Array.isArray(mxRecords) && mxRecords.length > 0) {
+            return { valid: true };
+        }
+    } catch (mxError) {
+        try {
+            const [ipv4Records, ipv6Records] = await Promise.allSettled([
+                dns.resolve4(domain),
+                dns.resolve6(domain)
+            ]);
+
+            const hasFallbackRecords =
+                (ipv4Records.status === 'fulfilled' && ipv4Records.value.length > 0) ||
+                (ipv6Records.status === 'fulfilled' && ipv6Records.value.length > 0);
+
+            if (hasFallbackRecords) {
+                return { valid: true };
+            }
+        } catch (fallbackError) {
+            console.warn('[EMAIL DNS FALLBACK ERROR]', fallbackError);
+        }
+
+        console.warn('[EMAIL MX LOOKUP FAILED]', domain, mxError?.message || mxError);
+        return { valid: false, reason: 'mail_domain_unreachable' };
+    }
+
+    return { valid: false, reason: 'mail_domain_unreachable' };
+}
+
+function getEmailValidationMessage(reason) {
+    switch (reason) {
+        case 'invalid_format':
+            return 'Enter a valid email address.';
+        case 'disposable_domain':
+            return 'Disposable or temporary email addresses are not allowed.';
+        case 'mail_domain_unreachable':
+            return 'That email domain is not configured to receive mail. Use a real inbox.';
+        default:
+            return 'Email validation failed.';
+    }
 }
 
 function generateLicenseKey(games) {
@@ -258,6 +342,17 @@ app.post('/admin/create-key', verifyAdmin, async (req, res) => {
             return res.status(400).json({ success: false, error: "Email is required when pre-register is enabled." });
         }
 
+        if (cleanEmail) {
+            const emailCheck = await validateEmailAddress(cleanEmail);
+            if (!emailCheck.valid) {
+                return res.status(400).json({
+                    success: false,
+                    error: getEmailValidationMessage(emailCheck.reason),
+                    code: 'invalid_email'
+                });
+            }
+        }
+
         const newKey = generateLicenseKey(normalizedGames);
         const voucherRecord = new User({
             license_key: newKey,
@@ -394,28 +489,33 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                 ? normalizedIdentifier.toUpperCase()
                 : null;
 
-        if (cleanAction === 'add-time') {
-            // Pull 'days' from req.body
-            const daysToAdd = parseFloat(req.body.days);
+        if (cleanAction === 'add-time' || cleanAction === 'remove-time') {
+            const requestedDays = parseFloat(req.body.days);
 
-            if (isNaN(daysToAdd)) {
+            if (isNaN(requestedDays) || requestedDays <= 0) {
                 return res.status(400).json({ success: false, error: "Invalid days value" });
             }
 
-            // Math: If expired, start from NOW. If active, add to existing
-            let currentExpiry = user.expiry_date ? new Date(user.expiry_date) : new Date();
-            const baseDate = (currentExpiry > new Date()) ? currentExpiry : new Date();
-            const newExpiry = applyDuration(baseDate, daysToAdd);
+            const isRemoveAction = cleanAction === 'remove-time';
+            const signedDays = isRemoveAction ? -requestedDays : requestedDays;
+            const currentExpiry = user.expiry_date ? new Date(user.expiry_date) : new Date();
+            const baseDate = isRemoveAction
+                ? currentExpiry
+                : ((currentExpiry > new Date()) ? currentExpiry : new Date());
+            const newExpiry = applyDuration(baseDate, signedDays);
 
             user.expiry_date = newExpiry;
             await user.save();
 
-            console.log(`[ADMIN] Successfully added ${daysToAdd} days to: ${resolvedLicenseKey || normalizedIdentifier}`);
+            console.log(`[ADMIN] Successfully ${isRemoveAction ? 'removed' : 'added'} ${requestedDays} days ${isRemoveAction ? 'from' : 'to'}: ${resolvedLicenseKey || normalizedIdentifier}`);
             return res.json({
                 success: true,
-                message: daysToAdd >= 999
-                    ? `Set lifetime expiry: ${newExpiry.toLocaleDateString()}`
-                    : `Added ${daysToAdd} days. New Expiry: ${newExpiry.toLocaleDateString()}`
+                message: isRemoveAction
+                    ? `Removed ${requestedDays} days. New Expiry: ${newExpiry.toLocaleDateString()}`
+                    : (requestedDays >= 999
+                        ? `Set lifetime expiry: ${newExpiry.toLocaleDateString()}`
+                        : `Added ${requestedDays} days. New Expiry: ${newExpiry.toLocaleDateString()}`),
+                new_expiry: newExpiry
             });
         }
 
@@ -640,6 +740,14 @@ app.post('/register', async (req, res) => {
         const cleanEmail = email.toLowerCase().trim();
         const cleanPass = password.trim();
 
+        const emailCheck = await validateEmailAddress(cleanEmail);
+        if (!emailCheck.valid) {
+            return res.json({
+                error: "invalid_email",
+                message: getEmailValidationMessage(emailCheck.reason)
+            });
+        }
+
         // Check if account already exists
         const existingUser = await User.findOne({ email: cleanEmail });
 
@@ -794,7 +902,21 @@ app.post('/update-profile', async (req, res) => {
         if (password) user.password = password;
 
         // 4. Update Email display if changed
-        if (email) user.email = email.toLowerCase();
+        if (email) {
+            const cleanEmail = email.toLowerCase().trim();
+            if (cleanEmail !== user.email) {
+                const emailCheck = await validateEmailAddress(cleanEmail);
+                if (!emailCheck.valid) {
+                    return res.status(400).json({
+                        success: false,
+                        error: getEmailValidationMessage(emailCheck.reason),
+                        code: 'invalid_email'
+                    });
+                }
+            }
+
+            user.email = cleanEmail;
+        }
 
         await user.save();
 
