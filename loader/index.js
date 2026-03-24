@@ -43,6 +43,26 @@ mongoose.connect(process.env.MONGO_URL) // <- remove old options
 const ADMIN_SESSION_DURATION_MS = 30 * 24 * 60 * 60 * 1000;
 const DEFAULT_OWNER_EMAIL = process.env.ADMIN_OWNER_EMAIL || 'owner@vexion.local';
 const DEFAULT_OWNER_LABEL = process.env.ADMIN_OWNER_LABEL || 'VEXION Owner';
+const DEFAULT_OWNER_LOGIN = process.env.ADMIN_OWNER_LOGIN || 'owner';
+
+function normalizeAdminLoginName(value) {
+    return String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, '');
+}
+
+function isValidAdminLoginName(value) {
+    return /^[a-z0-9_.-]{3,24}$/.test(String(value || ''));
+}
+
+function normalizeAdminPin(value) {
+    return String(value || '').trim();
+}
+
+function isValidAdminPin(value) {
+    return /^\d{4}$/.test(String(value || ''));
+}
 
 function getAdminAuthCollection() {
     return mongoose.connection.collection('admin_auth_logins');
@@ -57,6 +77,8 @@ async function ensureBootstrapAdmin() {
         const ownerEmail = String(DEFAULT_OWNER_EMAIL || '').toLowerCase().trim();
         const ownerPassword = String(process.env.ADMIN_OWNER_PASSWORD || process.env.ADMIN_SECRET || '').trim();
         const ownerLabel = String(DEFAULT_OWNER_LABEL || 'VEXION Owner').trim() || 'VEXION Owner';
+        const ownerLoginName = normalizeAdminLoginName(DEFAULT_OWNER_LOGIN || 'owner');
+        const ownerPin = normalizeAdminPin(process.env.ADMIN_OWNER_PIN || '');
 
         if (!ownerEmail || !ownerPassword) {
             console.warn('[ADMIN BOOTSTRAP] Skipped: owner email or password is missing.');
@@ -65,18 +87,42 @@ async function ensureBootstrapAdmin() {
 
         const existingOwner = await AdminUser.findOne({ email: ownerEmail });
         if (existingOwner) {
+            const updates = {};
+
+            if (!existingOwner.label && ownerLabel) {
+                updates.label = ownerLabel;
+            }
+
+            if (!existingOwner.login_name && ownerLoginName && isValidAdminLoginName(ownerLoginName)) {
+                updates.login_name = ownerLoginName;
+            }
+
+            if (!existingOwner.pin_hash && ownerPin && isValidAdminPin(ownerPin)) {
+                updates.pin_hash = await bcrypt.hash(ownerPin, 12);
+                updates.quick_login_enabled = true;
+            }
+
+            if (Object.keys(updates).length) {
+                await AdminUser.updateOne({ _id: existingOwner._id }, { $set: updates });
+            }
+
             return;
         }
 
         const passwordHash = await bcrypt.hash(ownerPassword, 12);
-        await AdminUser.create({
+        const bootstrapDoc = {
             email: ownerEmail,
             password_hash: passwordHash,
             label: ownerLabel,
+            login_name: isValidAdminLoginName(ownerLoginName) ? ownerLoginName : null,
+            pin_hash: ownerPin && isValidAdminPin(ownerPin) ? await bcrypt.hash(ownerPin, 12) : null,
+            quick_login_enabled: Boolean(ownerPin && isValidAdminPin(ownerPin)),
             role: 'owner',
             is_active: true,
             created_by: 'bootstrap'
-        });
+        };
+
+        await AdminUser.create(bootstrapDoc);
 
         console.log(`[ADMIN BOOTSTRAP] Owner account ready: ${ownerEmail}`);
     } catch (error) {
@@ -134,6 +180,7 @@ async function resolveAdminSession(sessionToken) {
         ...session,
         admin_user_id: String(adminUser._id),
         admin_email: adminUser.email,
+        admin_login_name: adminUser.login_name || '',
         admin_label: adminUser.label || session.admin_label || 'VEXION Admin',
         admin_role: adminUser.role || 'admin',
         last_used_at: now
@@ -466,20 +513,49 @@ app.post('/admin-auth/login', async (req, res) => {
     try {
         const adminEmail = String(req.body?.admin_email || '').toLowerCase().trim();
         const adminPassword = String(req.body?.admin_password || '').trim();
+        const adminLoginName = normalizeAdminLoginName(req.body?.admin_login_name || '');
+        const adminPin = normalizeAdminPin(req.body?.admin_pin || '');
         const deviceInfo = String(req.body?.device_info || '').trim() || 'Unknown Device';
+        const usingQuickLogin = Boolean(adminLoginName || adminPin);
 
-        if (!adminEmail || !adminPassword) {
+        if (usingQuickLogin && (!adminLoginName || !adminPin)) {
+            return res.status(400).json({ success: false, error: 'Enter both admin username and 4-digit PIN.' });
+        }
+
+        if (!usingQuickLogin && (!adminEmail || !adminPassword)) {
             return res.status(400).json({ success: false, error: 'Admin email and password are required.' });
         }
 
-        const adminUser = await AdminUser.findOne({ email: adminEmail });
+        let adminUser = null;
+
+        if (usingQuickLogin) {
+            adminUser = await AdminUser.findOne({ login_name: adminLoginName });
+        } else {
+            adminUser = await AdminUser.findOne({ email: adminEmail });
+        }
+
         if (!adminUser || !adminUser.is_active) {
             return res.status(401).json({ success: false, error: 'Invalid admin credentials.' });
         }
 
-        const passwordValid = await bcrypt.compare(adminPassword, adminUser.password_hash);
-        if (!passwordValid) {
-            return res.status(401).json({ success: false, error: 'Invalid admin credentials.' });
+        if (usingQuickLogin) {
+            if (!adminUser.last_login_at) {
+                return res.status(403).json({ success: false, error: 'Use email and password for the first admin login on this account.' });
+            }
+
+            if (!adminUser.quick_login_enabled || !adminUser.pin_hash) {
+                return res.status(403).json({ success: false, error: 'Quick login is not enabled for this admin account yet.' });
+            }
+
+            const pinValid = await bcrypt.compare(adminPin, adminUser.pin_hash);
+            if (!pinValid) {
+                return res.status(401).json({ success: false, error: 'Invalid admin credentials.' });
+            }
+        } else {
+            const passwordValid = await bcrypt.compare(adminPassword, adminUser.password_hash);
+            if (!passwordValid) {
+                return res.status(401).json({ success: false, error: 'Invalid admin credentials.' });
+            }
         }
 
         const sessions = getAdminAuthCollection();
@@ -491,10 +567,12 @@ app.post('/admin-auth/login', async (req, res) => {
             token_hash: hashAdminSessionToken(sessionToken),
             admin_user_id: String(adminUser._id),
             admin_email: adminUser.email,
+            admin_login_name: adminUser.login_name || '',
             admin_label: adminUser.label || 'VEXION Admin',
             admin_role: adminUser.role || 'admin',
             device_info: deviceInfo,
             source: 'admin_panel',
+            login_method: usingQuickLogin ? 'username_pin' : 'email_password',
             created_at: now,
             last_used_at: now,
             expires_at: expiresAt,
@@ -515,6 +593,7 @@ app.post('/admin-auth/login', async (req, res) => {
             success: true,
             session_token: sessionToken,
             admin_email: adminUser.email,
+            admin_login_name: adminUser.login_name || '',
             admin_label: adminUser.label || 'VEXION Admin',
             admin_role: adminUser.role || 'admin',
             device_info: deviceInfo,
@@ -539,6 +618,7 @@ app.post('/admin-auth/restore', async (req, res) => {
         return res.json({
             success: true,
             admin_email: session.admin_email || '',
+            admin_login_name: session.admin_login_name || '',
             admin_label: session.admin_label || 'VEXION Admin',
             admin_role: session.admin_role || 'admin',
             device_info: session.device_info || 'Unknown Device',
@@ -555,14 +635,24 @@ app.post('/admin-auth/create-admin', verifyAdmin, requireOwner, async (req, res)
     try {
         const adminEmail = String(req.body?.email || '').toLowerCase().trim();
         const adminPassword = String(req.body?.password || '').trim();
+        const adminLoginName = normalizeAdminLoginName(req.body?.login_name || '');
+        const adminPin = normalizeAdminPin(req.body?.pin || '');
         const adminLabel = String(req.body?.label || '').trim() || adminEmail;
 
-        if (!adminEmail || !adminPassword) {
-            return res.status(400).json({ success: false, error: 'Admin email and password are required.' });
+        if (!adminEmail || !adminPassword || !adminLoginName || !adminPin) {
+            return res.status(400).json({ success: false, error: 'Admin username, email, password, and 4-digit PIN are required.' });
         }
 
         if (!emailRegex.test(adminEmail)) {
             return res.status(400).json({ success: false, error: 'Enter a valid admin email address.' });
+        }
+
+        if (!isValidAdminLoginName(adminLoginName)) {
+            return res.status(400).json({ success: false, error: 'Admin username must be 3-24 characters using letters, numbers, dot, dash, or underscore.' });
+        }
+
+        if (!isValidAdminPin(adminPin)) {
+            return res.status(400).json({ success: false, error: 'Admin PIN must be exactly 4 digits.' });
         }
 
         const existingAdmin = await AdminUser.findOne({ email: adminEmail });
@@ -570,10 +660,19 @@ app.post('/admin-auth/create-admin', verifyAdmin, requireOwner, async (req, res)
             return res.status(400).json({ success: false, error: 'An admin with that email already exists.' });
         }
 
+        const existingLoginName = await AdminUser.findOne({ login_name: adminLoginName });
+        if (existingLoginName) {
+            return res.status(400).json({ success: false, error: 'That admin username is already in use.' });
+        }
+
         const passwordHash = await bcrypt.hash(adminPassword, 12);
+        const pinHash = await bcrypt.hash(adminPin, 12);
         const createdAdmin = await AdminUser.create({
             email: adminEmail,
             password_hash: passwordHash,
+            login_name: adminLoginName,
+            pin_hash: pinHash,
+            quick_login_enabled: true,
             label: adminLabel,
             role: 'admin',
             is_active: true,
@@ -585,10 +684,11 @@ app.post('/admin-auth/create-admin', verifyAdmin, requireOwner, async (req, res)
             admin: {
                 id: String(createdAdmin._id),
                 email: createdAdmin.email,
+                login_name: createdAdmin.login_name || '',
                 label: createdAdmin.label,
                 role: createdAdmin.role
             },
-            message: `Admin login created for ${createdAdmin.email}.`
+            message: `Admin login created for ${createdAdmin.email}. First login uses email/password, then ${createdAdmin.login_name} + PIN can be used.`
         });
     } catch (error) {
         console.error('[ADMIN CREATE ERROR]', error);
