@@ -919,6 +919,7 @@
             if (isAdminAuthenticated) {
                 ipcRenderer.send('admin-expand');
             } else {
+                ipcRenderer.send('admin-collapse');
                 fitAdminAuthWindow();
             }
             setOwnerToolsVisibility();
