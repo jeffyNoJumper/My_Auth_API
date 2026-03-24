@@ -753,9 +753,26 @@ function createDiscordInteractionsHandler({ User, mongoose }) {
                     }));
                 }
 
+                const loaderNotifications = mongoose.connection.collection('loader_notifications');
+                const authorName =
+                    interaction?.member?.user?.global_name
+                    || interaction?.member?.user?.username
+                    || interaction?.user?.global_name
+                    || interaction?.user?.username
+                    || 'Admin';
+
                 setTimeout(() => {
                     void (async () => {
                         try {
+                            await loaderNotifications.insertOne({
+                                title: title.slice(0, 240),
+                                detail: message.slice(0, 3900),
+                                author: String(authorName).slice(0, 80),
+                                timestamp: new Date().toISOString(),
+                                created_at: new Date(),
+                                source: 'discord_interaction',
+                                channel_id: LOADER_ALERT_CHANNEL_ID
+                            });
                             await sendLoaderAnnouncement(token, interaction, title, message);
                             console.log(`[DISCORD INTERACTIONS] Loader announcement sent to channel ${LOADER_ALERT_CHANNEL_ID}.`);
                         } catch (error) {
