@@ -93,6 +93,35 @@ function buildPendingVoucherEmail(key) {
     return `pending_${String(key || '').toLowerCase()}`;
 }
 
+async function getNextHwidTicketNumber() {
+    const counterDoc = await mongoose.connection.collection('counters').findOneAndUpdate(
+        { _id: 'hwid_reset_ticket' },
+        { $inc: { value: 1 } },
+        { upsert: true, returnDocument: 'after', includeResultMetadata: false }
+    );
+
+    return Number(counterDoc?.value || 1);
+}
+
+async function ensureHwidTicketNumber(requestsCollection, requestDoc) {
+    const existingTicket = Number(requestDoc?.ticket_number);
+
+    if (Number.isFinite(existingTicket) && existingTicket > 0) {
+        return existingTicket;
+    }
+
+    const nextTicket = await getNextHwidTicketNumber();
+
+    if (requestDoc?._id) {
+        await requestsCollection.updateOne(
+            { _id: requestDoc._id },
+            { $set: { ticket_number: nextTicket } }
+        );
+    }
+
+    return nextTicket;
+}
+
 const DISCORD_LOADER_ALERT_CHANNEL_ID = process.env.DISCORD_LOADER_ALERT_CHANNEL_ID || "1373760247658971256";
 
 function trimAnnouncementText(value, maxLength = 240) {
@@ -784,8 +813,10 @@ app.get('/check-reset-status', async (req, res) => {
         const { key } = req.query;
         if (!key) return res.json({ status: "NONE" });
 
+        const requestsCollection = mongoose.connection.collection('requests');
+
         // Find the LATEST entry in the 'requests' collection for this key
-        const request = await mongoose.connection.collection('requests')
+        const request = await requestsCollection
             .find({ license_key: key.toUpperCase() })
             .sort({ date: -1 })
             .limit(1)
@@ -795,10 +826,13 @@ app.get('/check-reset-status', async (req, res) => {
             return res.json({ status: "NONE" });
         }
 
+        const ticketNumber = await ensureHwidTicketNumber(requestsCollection, request[0]);
+
         // Return only the status (PENDING, APPROVED, or DENIED)
         res.json({
             status: request[0].status,
             requestId: String(request[0]._id),
+            ticketNumber,
             date: request[0].date || null
         });
     } catch (err) {
@@ -828,11 +862,13 @@ app.post('/request-hwid-reset', async (req, res) => {
             .toArray();
 
         if (existingPending.length > 0) {
+            const ticketNumber = await ensureHwidTicketNumber(requestsCollection, existingPending[0]);
             return res.json({
                 success: true,
                 message: "Request already pending.",
                 status: "PENDING",
                 requestId: String(existingPending[0]._id),
+                ticketNumber,
                 date: existingPending[0].date || null
             });
         }
@@ -846,12 +882,14 @@ app.post('/request-hwid-reset', async (req, res) => {
 
         // --- 1. SAVE TO DATABASE ---
         const requestDate = new Date();
+        const ticketNumber = await getNextHwidTicketNumber();
         const insertResult = await requestsCollection.insertOne({
             old_hwid: oldHwid,
             new_hwid: hwid,
             license_key: upperKey,
             type: type,
             status: "PENDING",
+            ticket_number: ticketNumber,
             date: requestDate
         });
 
@@ -880,6 +918,7 @@ app.post('/request-hwid-reset', async (req, res) => {
             message: "Admin notified.",
             status: "PENDING",
             requestId: String(insertResult.insertedId),
+            ticketNumber,
             date: requestDate
         });
     } catch (err) {
