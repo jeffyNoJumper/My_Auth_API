@@ -13,8 +13,11 @@
     <div id="login-screen" class="screen">
         <div class="login-card">
             <div class="card-header">
-                <h2 class="glow-text-cyan">AUTHENTICATION</h2>
-                <p>Enter your credentials to access the loader</p>
+                <div class="login-card-headline">
+                    <h2 class="glow-text-cyan">AUTHENTICATION</h2>
+                    <p>Enter your credentials to access the loader</p>
+                </div>
+                <button type="button" class="login-card-close" onclick="window.api?.close?.()" aria-label="Close loader">&times;</button>
             </div>
 
             <form id="login-form" class="login-form" onsubmit="handleLoginSubmit(event)" novalidate>
