@@ -1635,23 +1635,23 @@ function getTerminalToggleTarget(command) {
     const targets = [
         {
             id: 'discord-rpc',
-            keywords: ['rich presence', 'discord rich presence', 'discord rich', 'discord rpc', 'rich', 'rpc', 'presence']
+            keywords: ['rich presence', 'discord rich presence', 'discord rich', 'discord rpc', 'rich', 'rpc', 'presence', 'discord status']
         },
         {
             id: 'stream-proof',
-            keywords: ['stream proof', 'streamproof', 'stream mode', 'hide from stream', 'hide on stream']
+            keywords: ['stream proof', 'streamproof', 'stream mode', 'hide from stream', 'hide on stream', 'streaming protection']
         },
         {
             id: 'auto-close-launcher',
-            keywords: ['auto close', 'close launcher', 'close after inject', 'exit after inject', 'quit after inject', 'stay open', 'keep open', 'leave open']
+            keywords: ['auto close', 'close launcher', 'close after inject', 'exit after inject', 'quit after inject', 'stay open', 'keep open', 'leave open', 'launcher open']
         },
         {
             id: 'auto-update-loader',
-            keywords: ['auto update', 'automatic update', 'auto updates', 'update automatically']
+            keywords: ['auto update', 'automatic update', 'auto updates', 'update automatically', 'updates', 'launcher updates']
         },
         {
             id: 'auto-launch',
-            keywords: ['auto launch', 'launch on startup', 'start on startup', 'start with windows', 'open on startup']
+            keywords: ['auto launch', 'launch on startup', 'start on startup', 'start with windows', 'open on startup', 'startup']
         }
     ];
 
@@ -1755,12 +1755,16 @@ function parseTerminalNavigationCommand(command) {
 
 function parseTerminalExternalCommand(command) {
     const externalTargets = [
-        { key: 'discord', keywords: ['discord', 'server'] },
-        { key: 'support', keywords: ['support', 'shop', 'store'] },
-        { key: 'github', keywords: ['github', 'repo', 'repository'] }
+        { key: 'discord', keywords: ['discord', 'server'], exact: ['discord', 'open discord', 'join discord'] },
+        { key: 'support', keywords: ['support', 'shop', 'store'], exact: ['support', 'shop', 'open support', 'open shop', 'shop support'] },
+        { key: 'github', keywords: ['github', 'repo', 'repository'], exact: ['github', 'open github'] }
     ];
 
     for (const target of externalTargets) {
+        if (target.exact.includes(command)) {
+            return target.key;
+        }
+
         if (command === target.key) {
             return target.key;
         }
