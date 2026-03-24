@@ -26,6 +26,7 @@ let activeGameLaunchResolver = null;
 let gameFeedRefreshInterval = null;
 let discordAnnouncementPollInterval = null;
 let latestDiscordAnnouncementId = localStorage.getItem('last_seen_discord_loader_notification_id') || "";
+const expiryLockedTabs = new Set(['games', 'hwid', 'spoofing', 'settings']);
 
 const themePresets = {
     default: {
@@ -978,6 +979,56 @@ function getAccessPlanLabel(prefix) {
     };
 
     return planMap[prefix] || "PENDING";
+}
+
+function isSubscriptionExpired(expiryDate = localStorage.getItem('expiry_date')) {
+    if (!expiryDate || expiryDate === "null") {
+        return false;
+    }
+
+    const expiryTime = new Date(expiryDate).getTime();
+    if (Number.isNaN(expiryTime)) {
+        return false;
+    }
+
+    return Date.now() >= expiryTime;
+}
+
+function hasExpiredTabLock() {
+    return Boolean(localStorage.getItem('license_key')) && isSubscriptionExpired();
+}
+
+function updateProtectedTabLocks() {
+    const lockActive = hasExpiredTabLock();
+    const tabButtonMap = {
+        home: 'btn-home',
+        games: 'btn-games',
+        hwid: 'btn-hwid',
+        spoofing: 'btn-spoofing',
+        settings: 'btn-settings'
+    };
+
+    Object.entries(tabButtonMap).forEach(([tabName, elementId]) => {
+        const button = document.getElementById(elementId);
+        if (!button) {
+            return;
+        }
+
+        const isLocked = lockActive && expiryLockedTabs.has(tabName);
+        button.classList.toggle('is-locked', isLocked);
+        button.setAttribute(
+            'title',
+            isLocked
+                ? 'Subscription expired. Redeem a new key to unlock this section.'
+                : ''
+        );
+    });
+}
+
+function dismissExpiryLockModal() {
+    closeModal('expiry-modal');
+    updateProtectedTabLocks();
+    showTab('home', { bypassExpiryLock: true, silent: true });
 }
 
 function maskLicenseKey(key) {
@@ -2076,7 +2127,17 @@ function switchScreen(oldId, newId) {
     }
 }
 
-function showTab(tabName) {
+function showTab(tabName, options = {}) {
+    const { bypassExpiryLock = false, silent = false } = options;
+
+    if (!bypassExpiryLock && hasExpiredTabLock() && expiryLockedTabs.has(tabName)) {
+        refreshExpiryModal(localStorage.getItem('expiry_date'));
+        openModal('expiry-modal');
+        if (!silent) {
+            addTerminalLine(`> [ACCESS] ${tabName.toUpperCase()} is locked until a fresh key is redeemed.`);
+        }
+        return;
+    }
 
     // ---------- HIDE ALL TABS ----------
     document.querySelectorAll('.tab-content').forEach(tab => {
@@ -2136,6 +2197,7 @@ function showTab(tabName) {
     const dropdown = document.getElementById("user-dropdown");
     if (dropdown) dropdown.classList.add("hidden");
 
+    updateProtectedTabLocks();
     console.log(`[UI] Switched to ${tabName.toUpperCase()} module.`);
 }
 
@@ -2582,11 +2644,12 @@ function hasAccessQuietly(gameName) {
 
 async function refreshGameCardsForAvailability(currentPrefix = getCurrentPrefix()) {
     const cards = Array.from(document.querySelectorAll('.game-card[data-game]'));
+    const subscriptionExpired = isSubscriptionExpired();
 
     await Promise.all(cards.map(async (card) => {
         const gameName = card.dataset.game || "";
         const config = getGameModuleConfig(gameName);
-        const hasModuleAccess = (currentPrefix === "ALLX") || hasAccessQuietly(gameName);
+        const hasModuleAccess = !subscriptionExpired && ((currentPrefix === "ALLX") || hasAccessQuietly(gameName));
         const availability = await getGameModuleAvailability(gameName);
         const hasInternal = Boolean(availability?.hasInternal);
         const hasExternal = Boolean(availability?.hasExternal);
@@ -2666,6 +2729,7 @@ function updateUIForAccess() {
     }
 
     void refreshGameCardsForAvailability(currentPrefix);
+    updateProtectedTabLocks();
 
     if (typeof updateHomeTabUI === "function") {
         updateHomeTabUI();
@@ -2817,8 +2881,10 @@ async function redeemNewKey() {
             updateSubscriptionStatus(data.new_expiry);
             if (typeof startExpiryHeartbeat === 'function') startExpiryHeartbeat(data.new_expiry);
             if (typeof updateUIForAccess === 'function') updateUIForAccess();
+            updateProtectedTabLocks();
 
             closeModal('settings-modal');
+            showTab('home', { bypassExpiryLock: true, silent: true });
             console.log(`[AUTH] Key Upgraded to: ${newKey}`);
         } else {
             // Handle logical errors (Invalid Key, Already Used, etc.)
@@ -3946,23 +4012,25 @@ async function requestHWIDReset() {
         expiryCheckInterval = setInterval(tick, 1000);
     }
 
-    function triggerExpirySequence(expiryDate = localStorage.getItem('expiry_date')) {
-        if (expirySequenceTriggered) {
-            refreshExpiryModal(expiryDate);
-            openModal('expiry-modal');
-            return;
+function triggerExpirySequence(expiryDate = localStorage.getItem('expiry_date')) {
+    if (expirySequenceTriggered) {
+        refreshExpiryModal(expiryDate);
+        openModal('expiry-modal');
+        return;
         }
 
         expirySequenceTriggered = true;
-        refreshExpiryModal(expiryDate);
-        updateSubscriptionStatus(expiryDate);
-        updateUIForAccess();
-        closeModal('settings-modal');
-        closeModal('game-launch-modal');
-        closeModal('external-link-modal');
-        openModal('expiry-modal');
-        void notifyExpiryExpiration();
-    }
+    refreshExpiryModal(expiryDate);
+    updateSubscriptionStatus(expiryDate);
+    updateUIForAccess();
+    updateProtectedTabLocks();
+    closeModal('settings-modal');
+    closeModal('game-launch-modal');
+    closeModal('external-link-modal');
+    showTab('home', { bypassExpiryLock: true, silent: true });
+    openModal('expiry-modal');
+    void notifyExpiryExpiration();
+}
 
     function openExpiryRenewalSupport() {
         closeModal('expiry-modal');
@@ -3974,7 +4042,7 @@ async function requestHWIDReset() {
         openModal('settings-modal');
     }
 
-    function forceLogout() {
+function forceLogout() {
         stopHwidResetPolling();
         closeModal('expiry-modal');
         expirySequenceTriggered = false;
@@ -4005,14 +4073,15 @@ async function requestHWIDReset() {
             expiryCheckInterval = null;
         }
 
-        if (window.api && window.api.toggleDiscord) {
-            window.api.toggleDiscord(false);
-        }
-
-        showManualLoginState("Your VEXION session ended. Renew or redeem a new key to continue.");
-        updateUIForAccess();
-        console.log("> [AUTH] Session terminated. Returning to login...");
+    if (window.api && window.api.toggleDiscord) {
+        window.api.toggleDiscord(false);
     }
+
+    showManualLoginState("Your VEXION session ended. Renew or redeem a new key to continue.");
+    updateUIForAccess();
+    updateProtectedTabLocks();
+    console.log("> [AUTH] Session terminated. Returning to login...");
+}
 
     // ==== AUTO-UPDATE FUNCTION ====
 async function checkForUpdates(options = {}) {
