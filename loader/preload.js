@@ -97,6 +97,7 @@ contextBridge.exposeInMainWorld('api', {
     minimize: () => ipcRenderer.send('window-minimize'),
     setAuthWindow: () => ipcRenderer.send('loader-window-auth'),
     setAppWindow: () => ipcRenderer.send('loader-window-expand'),
+    resetAuthShell: () => ipcRenderer.send('loader-reset-auth-shell'),
     openExternal: (url) => shell.openExternal(url),
     showSystemNotification: (title, body) => ipcRenderer.invoke('show-system-notification', { title, body }),
 
