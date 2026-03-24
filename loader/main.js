@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog, Notification } = require('electron');
 const crypto = require('crypto');
 const { autoUpdater } = require('electron-updater');
 const path = require('path');
@@ -223,7 +223,7 @@ try {
     };
 }
 
-app.setAppUserModelId("com.sk.allinone");
+app.setAppUserModelId("com.vexion.allinone");
 
 // --- 1. WINDOW SETUP ---
 function createWindow() {
@@ -280,6 +280,36 @@ ipcMain.on('window-close', () => {
 
 ipcMain.on('window-minimize', () => {
     if (mainWindow) mainWindow.minimize();
+});
+
+ipcMain.handle('show-system-notification', async (event, payload = {}) => {
+    const title = String(payload?.title || "VEXION Notice").trim() || "VEXION Notice";
+    const body = String(payload?.body || "").trim();
+
+    try {
+        if (Notification.isSupported()) {
+            new Notification({
+                title,
+                body,
+                icon: path.join(__dirname, 'imgs', 'VEXION.ico'),
+                silent: false
+            }).show();
+        }
+
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.flashFrame(true);
+            setTimeout(() => {
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    mainWindow.flashFrame(false);
+                }
+            }, 5000);
+        }
+
+        return { success: true };
+    } catch (error) {
+        console.error("[NOTIFICATION ERROR]", error);
+        return { success: false, error: error?.message || "Notification failed" };
+    }
 });
 
 ipcMain.handle('get-app-version', () => {
