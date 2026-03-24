@@ -524,6 +524,8 @@
 
         let loadedUser = null;
         let countdownInterval = null;
+        let apiKeepAliveInterval = null;
+        let apiWarmPromise = null;
 
         function closeWin() {
             ipcRenderer.send('admin-close');
@@ -661,6 +663,39 @@
             return data;
         }
 
+        async function pingApi() {
+            const response = await fetch(`${API}/health`, {
+                method: 'GET',
+                cache: 'no-store'
+            });
+
+            if (!response.ok) {
+                throw new Error(`API wake failed (${response.status})`);
+            }
+
+            return response.json().catch(() => ({}));
+        }
+
+        async function warmApi() {
+            if (!apiWarmPromise) {
+                apiWarmPromise = pingApi().finally(() => {
+                    apiWarmPromise = null;
+                });
+            }
+
+            return apiWarmPromise;
+        }
+
+        function startApiKeepAlive() {
+            if (apiKeepAliveInterval) {
+                return;
+            }
+
+            apiKeepAliveInterval = setInterval(() => {
+                pingApi().catch(() => { });
+            }, 4 * 60 * 1000);
+        }
+
         async function generateKey() {
             const button = document.getElementById('gen-btn');
             const adminPass = getAdminPassword();
@@ -769,9 +804,13 @@
             }
 
             const previousSelection = preferredIdentifier || select.value;
-            select.innerHTML = '<option value="">Connecting to API...</option>';
+            select.innerHTML = '<option value="">Waking API...</option>';
 
             try {
+                await warmApi();
+                startApiKeepAlive();
+                select.innerHTML = '<option value="">Loading users...</option>';
+
                 const data = await postJson('/admin/load-keys', {
                     admin_password: adminPass
                 });
@@ -949,7 +988,9 @@
                 }
 
                 renderLoadedUser(data);
-                await loadKeysDropdown(data.identifier || data.license_key || identifier);
+                loadKeysDropdown(data.identifier || data.license_key || identifier).catch((error) => {
+                    console.error('[ADMIN] Background refresh failed:', error);
+                });
             } catch (error) {
                 console.error('[ADMIN] Load user failed:', error);
                 alert(error.message || 'API connection failed.');
@@ -999,7 +1040,9 @@
                     document.getElementById('single-key-input').value = '';
                     document.getElementById('manage-key-input').value = '';
                     resetLoadedUser();
-                    await loadKeysDropdown();
+                    loadKeysDropdown().catch((error) => {
+                        console.error('[ADMIN] Background delete refresh failed:', error);
+                    });
                     return;
                 }
 
@@ -1128,6 +1171,9 @@
 
         document.addEventListener('DOMContentLoaded', () => {
             resetLoadedUser();
+            warmApi().then(() => {
+                startApiKeepAlive();
+            }).catch(() => { });
 
             const generatedKey = document.getElementById('key-text');
             const manualInput = document.getElementById('single-key-input');
