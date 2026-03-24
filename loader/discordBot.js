@@ -902,6 +902,7 @@ function createDiscordInteractionsHandler({ User, mongoose }) {
 }
 
 module.exports = {
+    buildCommandDefinitions,
     createDiscordInteractionsHandler,
     getDiscordBotStatus,
     initDiscordBot
