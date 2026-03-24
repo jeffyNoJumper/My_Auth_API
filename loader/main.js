@@ -218,6 +218,7 @@ function createWindow() {
     mainWindow = new BrowserWindow({
         width: 980,
         height: 780,
+        show: false,
         frame: false,
         resizable: false,
         transparent: true,
@@ -234,17 +235,30 @@ function createWindow() {
         }
     });
 
+    let windowRevealed = false;
+    const revealWindow = () => {
+        if (windowRevealed || !mainWindow || mainWindow.isDestroyed()) {
+            return;
+        }
+
+        windowRevealed = true;
+        mainWindow.center();
+        mainWindow.show();
+    };
+
     mainWindow.loadFile('index.html');
 
-    mainWindow.once('ready-to-show', () => {
+    mainWindow.webContents.once('did-finish-load', revealWindow);
+    mainWindow.once('ready-to-show', revealWindow);
+    setTimeout(revealWindow, 900);
+
+    setTimeout(() => {
         if (process.env.ENABLE_NATIVE_UPDATER === 'true') {
             autoUpdater.checkForUpdatesAndNotify();
         } else {
             console.log("[UPDATER] Native updater disabled. Loader will use the custom manifest-based update flow.");
         }
-        mainWindow.center(); 
-        mainWindow.show();
-    });
+    }, 1200);
 }
 
 // --- IPC HANDLERS ---
