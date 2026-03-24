@@ -165,6 +165,16 @@ function buildResetActionRows(requests) {
     }));
 }
 
+function normalizeResetLookupInput(rawValue) {
+    return String(rawValue || '').trim();
+}
+
+function parseTicketNumber(rawValue) {
+    const cleaned = normalizeResetLookupInput(rawValue).replace(/^#/, '');
+    const numeric = Number.parseInt(cleaned, 10);
+    return Number.isFinite(numeric) && numeric > 0 ? numeric : null;
+}
+
 function getCommandOption(interaction, optionName) {
     const options = interaction?.data?.options || [];
     const match = options.find(option => option.name === optionName);
@@ -183,7 +193,7 @@ function interactionMessageResponse({ content = '', embeds = [], components = []
     };
 }
 
-function interactionModalResponse({ customId, title, label, placeholder }) {
+function interactionModalResponse({ customId, title, label, placeholder, fieldId = 'license_key', maxLength = 64 }) {
     return {
         type: 9,
         data: {
@@ -195,12 +205,12 @@ function interactionModalResponse({ customId, title, label, placeholder }) {
                     components: [
                         {
                             type: 4,
-                            custom_id: 'license_key',
+                            custom_id: fieldId,
                             label,
                             placeholder,
                             style: 1,
                             required: true,
-                            max_length: 64
+                            max_length: maxLength
                         }
                     ]
                 }
@@ -347,6 +357,7 @@ function buildCommandDefinitions() {
                 { type: 3, name: 'message', description: 'Main message shown in the loader toast', required: true }
             ]
         },
+        { name: 'refresh_panels', description: 'Admin: re-post the Discord panel messages.', type: 1 },
         { name: 'resets', description: 'Admin: list pending HWID reset requests.', type: 1 },
         {
             name: 'approve',
@@ -421,17 +432,55 @@ async function linkLicenseToDiscord(User, cleanKey, discordUserId) {
     return { ok: true, pending: isPendingVoucher(targetLicense), user: targetLicense };
 }
 
-async function processResetRequest(mongoose, User, requestId, status) {
-    let objectId;
-    try {
-        objectId = new ObjectId(requestId);
-    } catch {
-        return { ok: false, message: 'Invalid request ID.' };
+async function getNextHwidTicketNumber(mongoose) {
+    const counterDoc = await mongoose.connection.collection('counters').findOneAndUpdate(
+        { _id: 'hwid_reset_ticket' },
+        { $inc: { value: 1 } },
+        { upsert: true, returnDocument: 'after', includeResultMetadata: false }
+    );
+
+    return Number(counterDoc?.value || 1);
+}
+
+async function ensureHwidTicketNumber(mongoose, requestDoc) {
+    const existingTicket = Number(requestDoc?.ticket_number);
+    if (Number.isFinite(existingTicket) && existingTicket > 0) {
+        return existingTicket;
     }
 
+    const nextTicket = await getNextHwidTicketNumber(mongoose);
+
+    if (requestDoc?._id) {
+        await mongoose.connection.collection('requests').updateOne(
+            { _id: requestDoc._id },
+            { $set: { ticket_number: nextTicket } }
+        );
+    }
+
+    return nextTicket;
+}
+
+async function processResetRequest(mongoose, User, requestId, status) {
     const requestsCollection = mongoose.connection.collection('requests');
+    const lookupValue = normalizeResetLookupInput(requestId);
+    const ticketNumber = parseTicketNumber(lookupValue);
+
+    let query;
+    if (ticketNumber) {
+        query = { ticket_number: ticketNumber, status: 'PENDING' };
+    } else {
+        let objectId;
+        try {
+            objectId = new ObjectId(lookupValue);
+        } catch {
+            return { ok: false, message: 'Invalid request ID.' };
+        }
+
+        query = { _id: objectId, status: 'PENDING' };
+    }
+
     const requestDoc = await requestsCollection.findOneAndUpdate(
-        { _id: objectId, status: 'PENDING' },
+        query,
         { $set: { status, resolved_at: new Date() } },
         { returnDocument: 'after', includeResultMetadata: false }
     );
@@ -459,6 +508,36 @@ function getModalTextValue(interaction, customId) {
         }
     }
     return '';
+}
+
+async function resolveResetLicenseKey(mongoose, rawInput) {
+    const lookupValue = normalizeResetLookupInput(rawInput);
+    const ticketNumber = parseTicketNumber(lookupValue);
+
+    if (ticketNumber) {
+        const requestDoc = await mongoose.connection.collection('requests').findOne(
+            { ticket_number: ticketNumber },
+            { sort: { date: -1 } }
+        );
+
+        if (!requestDoc?.license_key) {
+            return { ok: false, message: `Request ${lookupValue.startsWith('#') ? lookupValue : `#${ticketNumber}`} was not found.` };
+        }
+
+        return {
+            ok: true,
+            licenseKey: String(requestDoc.license_key).toUpperCase(),
+            ticketNumber: requestDoc.ticket_number || ticketNumber,
+            requestDoc
+        };
+    }
+
+    return {
+        ok: true,
+        licenseKey: lookupValue.toUpperCase(),
+        ticketNumber: null,
+        requestDoc: null
+    };
 }
 
 async function sendLoaderAnnouncement(token, interaction, title, message) {
@@ -591,12 +670,13 @@ function createDiscordInteractionsHandler({ User, mongoose }) {
             return jsonResponse(res, 400, { error: 'invalid_json_body' });
         }
 
-        const interactionType = interaction?.type;
-        const token = process.env.DISCORD_TOKEN || process.env.DISCORD_BOT_TOKEN || process.env.TOKEN;
+        try {
+            const interactionType = interaction?.type;
+            const token = process.env.DISCORD_TOKEN || process.env.DISCORD_BOT_TOKEN || process.env.TOKEN;
 
-        if (interactionType === 1) {
-            return jsonResponse(res, 200, { type: 1 });
-        }
+            if (interactionType === 1) {
+                return jsonResponse(res, 200, { type: 1 });
+            }
 
         if (interactionType === 2) {
             const commandName = interaction?.data?.name;
@@ -783,7 +863,32 @@ function createDiscordInteractionsHandler({ User, mongoose }) {
                 }, 0);
 
                 return jsonResponse(res, 200, interactionMessageResponse({
-                    content: `Loader announcement queued for <#${LOADER_ALERT_CHANNEL_ID}>.`
+                    content: 'Loader announcement accepted. Connected loaders will pick it up on the next poll.'
+                }));
+            }
+
+            if (commandName === 'refresh_panels') {
+                if (!hasAdminAccess(interaction)) {
+                    return jsonResponse(res, 200, interactionMessageResponse({ content: 'Admin access required.' }));
+                }
+
+                if (!token) {
+                    return jsonResponse(res, 200, interactionMessageResponse({ content: 'DISCORD_TOKEN is missing on the API service.' }));
+                }
+
+                setTimeout(() => {
+                    void refreshStartupPanels(token)
+                        .then(() => {
+                            console.log('[DISCORD INTERACTIONS] Manual panel refresh completed.');
+                        })
+                        .catch((error) => {
+                            discordBotState.lastWarn = error?.message || String(error);
+                            console.warn('[DISCORD INTERACTIONS] Manual panel refresh failed:', error?.message || error);
+                        });
+                }, 0);
+
+                return jsonResponse(res, 200, interactionMessageResponse({
+                    content: `Panel refresh queued for <#${PANEL_CHANNEL_ID}> and <#${HWID_RESET_CHANNEL_ID}>.`
                 }));
             }
 
@@ -804,11 +909,12 @@ function createDiscordInteractionsHandler({ User, mongoose }) {
 
                 const lines = pending.map((reqDoc, index) => {
                     const when = formatExpiry(reqDoc?.date);
-                    return `${index + 1}. \`${reqDoc._id}\` | \`${reqDoc.license_key || 'N/A'}\` | ${when}`;
+                    const ticketLabel = reqDoc?.ticket_number ? `#${reqDoc.ticket_number}` : String(reqDoc._id);
+                    return `${index + 1}. \`${ticketLabel}\` | \`${reqDoc.license_key || 'N/A'}\` | ${when}`;
                 }).join('\n');
 
                 return jsonResponse(res, 200, interactionMessageResponse({
-                    content: `Pending HWID reset requests:\n${lines}\nUse /approve or /deny with the request ID, or the buttons below for the first 5.`,
+                    content: `Pending HWID reset requests:\n${lines}\nUse /approve or /deny with the ticket number (for example \`#32\`) or the raw request ID, or use the buttons below for the first 5.`,
                     components: buildResetActionRows(pending)
                 }));
             }
@@ -848,8 +954,8 @@ function createDiscordInteractionsHandler({ User, mongoose }) {
                 return jsonResponse(res, 200, interactionModalResponse({
                     customId: 'hwid_reset_modal',
                     title: 'HWID Reset Request',
-                    label: 'Enter your License Key',
-                    placeholder: 'CS2X-XXXX-XXXX-XXXX'
+                    label: 'Enter Request # or License Key',
+                    placeholder: '#32 or CS2X-XXXX-XXXX-XXXX'
                 }));
             }
 
@@ -870,7 +976,8 @@ function createDiscordInteractionsHandler({ User, mongoose }) {
 
         if (interactionType === 5) {
             const modalId = interaction?.data?.custom_id || '';
-            const cleanKey = String(getModalTextValue(interaction, 'license_key') || '').trim().toUpperCase();
+            const modalInput = String(getModalTextValue(interaction, 'license_key') || '').trim();
+            const cleanKey = modalInput.toUpperCase();
             const discordUser = interaction?.member?.user || interaction?.user || {};
 
             if (modalId === 'redeem_key_modal') {
@@ -896,26 +1003,47 @@ function createDiscordInteractionsHandler({ User, mongoose }) {
 
             if (modalId === 'hwid_reset_modal') {
                 const requestsCollection = mongoose.connection.collection('requests');
-                const userData = await User.findOne({ license_key: cleanKey }).lean();
+                const resolvedTarget = await resolveResetLicenseKey(mongoose, modalInput);
+
+                if (!resolvedTarget.ok) {
+                    return jsonResponse(res, 200, interactionMessageResponse({ content: resolvedTarget.message }));
+                }
+
+                const resolvedKey = resolvedTarget.licenseKey;
+                const userData = await User.findOne({ license_key: resolvedKey }).lean();
 
                 if (!userData) {
-                    return jsonResponse(res, 200, interactionMessageResponse({ content: `Key \`${cleanKey}\` was not found.` }));
+                    return jsonResponse(res, 200, interactionMessageResponse({ content: `Key \`${resolvedKey}\` was not found.` }));
                 }
 
                 const existingPending = await requestsCollection.findOne(
-                    { license_key: cleanKey, status: 'PENDING' },
+                    { license_key: resolvedKey, status: 'PENDING' },
                     { sort: { date: -1 } }
                 );
 
                 if (existingPending) {
-                    return jsonResponse(res, 200, interactionMessageResponse({ content: 'A reset request is already pending for this key.' }));
+                    const ticketNumber = await ensureHwidTicketNumber(mongoose, existingPending);
+                    const ticketLabel = existingPending.ticket_number
+                        ? ` #${existingPending.ticket_number}`
+                        : (ticketNumber ? ` #${ticketNumber}` : '');
+
+                    await User.updateOne(
+                        { _id: userData._id },
+                        { $set: { discord_id: String(discordUser.id) } }
+                    );
+
+                    return jsonResponse(res, 200, interactionMessageResponse({
+                        content: `A reset request is already pending for \`${resolvedKey}\`${ticketLabel}.`
+                    }));
                 }
 
+                const ticketNumber = await getNextHwidTicketNumber(mongoose);
                 await requestsCollection.insertOne({
                     hwid: userData.hwid || 'N/A',
-                    license_key: cleanKey,
+                    license_key: resolvedKey,
                     type: 'ADMIN-PANEL_RESET',
                     status: 'PENDING',
+                    ticket_number: ticketNumber,
                     date: new Date(),
                     discord_id: String(discordUser.id)
                 });
@@ -926,12 +1054,22 @@ function createDiscordInteractionsHandler({ User, mongoose }) {
                 );
 
                 return jsonResponse(res, 200, interactionMessageResponse({
-                    content: `Reset request created for \`${cleanKey}\`. An admin can now approve it.`
+                    content: `Reset request created for \`${resolvedKey}\` as #${ticketNumber}. An admin can now approve it.`
                 }));
             }
         }
 
-        return jsonResponse(res, 400, { error: 'unsupported_interaction_type' });
+            return jsonResponse(res, 400, { error: 'unsupported_interaction_type' });
+        } catch (error) {
+            discordBotState.lastError = error?.message || String(error);
+            console.error('[DISCORD INTERACTIONS] Unhandled interaction failure:', error);
+
+            if (!res.headersSent) {
+                return jsonResponse(res, 200, interactionMessageResponse({
+                    content: `Command failed: ${error?.message || 'Unknown error'}`
+                }));
+            }
+        }
     };
 }
 
