@@ -914,6 +914,8 @@
             activeAdminLabel = '';
             activeAdminRole = '';
             activeAdminLoginName = '';
+            localStorage.removeItem(ADMIN_SESSION_TOKEN_STORAGE_KEY);
+            localStorage.removeItem(ADMIN_LABEL_STORAGE_KEY);
             syncAdminPasswordInputs('');
             syncAdminPinInput('');
             setAdminAuthState(false);
@@ -1296,16 +1298,19 @@
             const password = getAdminPassword();
             const loginName = getAdminLoginName();
             const pin = getAdminPin();
-            const useQuickLogin = Boolean(loginName || pin);
+            const hasFullLogin = Boolean(email && password);
+            const hasQuickInputs = Boolean(loginName || pin);
+            const hasQuickLogin = Boolean(loginName && pin);
+            const useQuickLogin = hasQuickLogin && !hasFullLogin;
 
-            if (useQuickLogin && (!loginName || !pin)) {
+            if (!hasFullLogin && hasQuickInputs && !hasQuickLogin) {
                 setAdminAuthState(false);
                 setAdminAuthStatus('Enter both the admin username and the 4-digit PIN.', 'error');
                 document.getElementById(!loginName ? 'admin-auth-user' : 'admin-auth-pin')?.focus();
                 return false;
             }
 
-            if (!useQuickLogin && (!email || !password)) {
+            if (!useQuickLogin && !hasFullLogin) {
                 setAdminAuthState(false);
                 setAdminAuthStatus('Enter your admin email and password to unlock the panel.', 'error');
                 document.getElementById(!email ? 'admin-auth-email' : 'admin-auth-pass')?.focus();
