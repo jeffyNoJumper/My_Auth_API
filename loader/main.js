@@ -22,6 +22,15 @@ const gameFeedCache = new Map();
 const AUTH_WINDOW_SIZE = { width: 468, height: 620 };
 const APP_WINDOW_SIZE = { width: 980, height: 780 };
 
+function resizeMainWindow(size) {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+        return;
+    }
+
+    mainWindow.setSize(size.width, size.height, true);
+    mainWindow.center();
+}
+
 function getBundledAssetsPath() {
     return app.isPackaged
         ? path.join(process.resourcesPath, 'assets')
@@ -248,15 +257,6 @@ function createWindow() {
             sandbox: false
         }
     });
-
-    const resizeMainWindow = (size) => {
-        if (!mainWindow || mainWindow.isDestroyed()) {
-            return;
-        }
-
-        mainWindow.setSize(size.width, size.height, true);
-        mainWindow.center();
-    };
 
     let windowRevealed = false;
     const revealWindow = () => {
