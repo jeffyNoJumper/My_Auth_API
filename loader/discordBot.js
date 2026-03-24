@@ -546,16 +546,7 @@ function initDiscordBot() {
     }
 
     (async () => {
-        try {
-            await syncCommands(token);
-            console.log('[DISCORD INTERACTIONS] Slash commands synced.');
-        } catch (error) {
-            discordBotState.lastError = error?.message || String(error);
-            console.error('[DISCORD INTERACTIONS] Slash command sync failed:', error.message);
-            return;
-        }
-
-        await sleep(1500);
+        await sleep(1000);
 
         try {
             await refreshStartupPanels(token);
@@ -563,6 +554,16 @@ function initDiscordBot() {
         } catch (error) {
             discordBotState.lastWarn = error?.message || String(error);
             console.warn('[DISCORD INTERACTIONS] Startup panel refresh failed:', error.message);
+        }
+    })();
+
+    (async () => {
+        try {
+            await syncCommands(token);
+            console.log('[DISCORD INTERACTIONS] Slash commands synced.');
+        } catch (error) {
+            discordBotState.lastError = error?.message || String(error);
+            console.error('[DISCORD INTERACTIONS] Slash command sync failed:', error.message);
         }
     })();
 }
@@ -752,18 +753,21 @@ function createDiscordInteractionsHandler({ User, mongoose }) {
                     }));
                 }
 
-                try {
-                    await sendLoaderAnnouncement(token, interaction, title, message);
-                    return jsonResponse(res, 200, interactionMessageResponse({
-                        content: `Loader announcement sent to <#${LOADER_ALERT_CHANNEL_ID}>.`
-                    }));
-                } catch (error) {
-                    discordBotState.lastError = error?.message || String(error);
-                    console.error('[DISCORD INTERACTIONS] announce_loader failed:', error);
-                    return jsonResponse(res, 200, interactionMessageResponse({
-                        content: `Failed to send loader announcement: ${error?.message || 'Unknown error'}`
-                    }));
-                }
+                setTimeout(() => {
+                    void (async () => {
+                        try {
+                            await sendLoaderAnnouncement(token, interaction, title, message);
+                            console.log(`[DISCORD INTERACTIONS] Loader announcement sent to channel ${LOADER_ALERT_CHANNEL_ID}.`);
+                        } catch (error) {
+                            discordBotState.lastError = error?.message || String(error);
+                            console.error('[DISCORD INTERACTIONS] announce_loader failed:', error);
+                        }
+                    })();
+                }, 0);
+
+                return jsonResponse(res, 200, interactionMessageResponse({
+                    content: `Loader announcement queued for <#${LOADER_ALERT_CHANNEL_ID}>.`
+                }));
             }
 
             if (commandName === 'resets') {
