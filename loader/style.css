@@ -292,8 +292,49 @@ body.login-active #login-screen .login-card {
     }
 
 .card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
     -webkit-app-region: drag;
     cursor: move;
+}
+
+.login-card-headline {
+    min-width: 0;
+}
+
+.login-card-headline h2,
+.login-card-headline p {
+    margin: 0;
+}
+
+.login-card-headline p {
+    margin-top: 12px;
+}
+
+.login-card-close {
+    width: 34px;
+    height: 34px;
+    border: 1px solid rgba(26, 188, 156, 0.28);
+    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.16);
+    color: rgba(255, 255, 255, 0.78);
+    font-size: 22px;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    -webkit-app-region: no-drag !important;
+    cursor: pointer !important;
+    transition: border-color 0.18s ease, color 0.18s ease, background 0.18s ease;
+}
+
+.login-card-close:hover {
+    color: #ffffff;
+    border-color: rgba(26, 188, 156, 0.52);
+    background: rgba(26, 188, 156, 0.12);
 }
 
 /* --- AUTH SPINNER --- */
