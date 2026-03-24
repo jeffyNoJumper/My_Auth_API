@@ -32,6 +32,10 @@
             user-select: none;
         }
 
+        body.auth-card-window {
+            display: block;
+        }
+
         .panel {
             background: var(--bg-main);
             padding: 22px 25px 25px 25px;
@@ -47,12 +51,15 @@
         }
 
         .panel.auth-card-mode {
-            width: auto;
+            width: 100vw;
+            height: 100vh;
             padding: 0;
+            margin: 0;
             border-color: transparent;
             background: transparent;
             box-shadow: none;
             backdrop-filter: none;
+            overflow: hidden;
         }
 
         .panel.auth-card-mode > :not(#admin-auth-screen) {
@@ -327,17 +334,25 @@
         }
 
         .panel.auth-card-mode .admin-auth-screen {
-            position: static;
-            padding: 0;
+            position: absolute;
+            inset: 0;
+            padding: 8px;
             background: transparent;
             border-radius: 0;
-            overflow: visible;
+            overflow: hidden;
             backdrop-filter: none;
             -webkit-app-region: drag;
+            align-items: stretch;
+            justify-content: stretch;
         }
 
         .panel.auth-card-mode .admin-auth-card {
             -webkit-app-region: drag;
+            width: 100%;
+            max-width: none;
+            min-height: 100%;
+            height: 100%;
+            border-radius: 18px;
         }
 
         .admin-auth-screen.hidden {
@@ -900,6 +915,7 @@
             const overlay = document.getElementById('admin-auth-screen');
             const chip = document.getElementById('admin-session-chip');
             const panel = document.querySelector('.panel');
+            const pageBody = document.body;
 
             if (overlay) {
                 overlay.classList.toggle('hidden', isAdminAuthenticated);
@@ -907,6 +923,10 @@
 
             if (panel) {
                 panel.classList.toggle('auth-card-mode', !isAdminAuthenticated);
+            }
+
+            if (pageBody) {
+                pageBody.classList.toggle('auth-card-window', !isAdminAuthenticated);
             }
 
             if (chip) {
@@ -924,6 +944,16 @@
                 setTimeout(fitAdminAuthWindow, 80);
             }
             setOwnerToolsVisibility();
+        }
+
+        function resetAdminWindowToStartup() {
+            if (!ipcRenderer) {
+                return;
+            }
+
+            setTimeout(() => {
+                ipcRenderer.send('admin-reset-auth-shell');
+            }, 60);
         }
 
         async function forgetRememberedAdmin() {
@@ -951,6 +981,7 @@
             syncAdminPinInput('');
             setAdminAuthState(false);
             setAdminAuthStatus('Saved admin session removed from this machine.', 'info');
+            resetAdminWindowToStartup();
         }
 
         async function logoutAdminSession() {
@@ -977,6 +1008,7 @@
             setAdminAuthState(false);
             setAdminAuthStatus('Admin session signed out.', 'info');
             document.getElementById('admin-auth-email')?.focus();
+            resetAdminWindowToStartup();
         }
 
         function getAdminPassword() {
