@@ -32,12 +32,69 @@ function buildReleaseUrl(version) {
     return `https://github.com/${RELEASE_REPO}/releases/download/v${version}/${installerName}`;
 }
 
+function parseArgs(argv) {
+    const parsed = {
+        dryRun: false,
+        mode: 'sync',
+        version: null
+    };
+
+    for (let index = 0; index < argv.length; index += 1) {
+        const token = argv[index];
+
+        if (token === '--dry-run') {
+            parsed.dryRun = true;
+            continue;
+        }
+
+        if (token === '--patch') {
+            parsed.mode = 'patch';
+            continue;
+        }
+
+        if (token === '--sync') {
+            parsed.mode = 'sync';
+            continue;
+        }
+
+        if (token === '--set') {
+            parsed.mode = 'set';
+            parsed.version = argv[index + 1] || '';
+            index += 1;
+            continue;
+        }
+
+        if (!token.startsWith('--')) {
+            parsed.mode = 'set';
+            parsed.version = token;
+        }
+    }
+
+    return parsed;
+}
+
+function normalizeVersion(version) {
+    const clean = String(version || '').trim().replace(/^v/i, '');
+    if (!/^\d+\.\d+\.\d+$/.test(clean)) {
+        throw new Error(`Unsupported version format: ${version}`);
+    }
+
+    return clean;
+}
+
 function main() {
-    const dryRun = process.argv.includes('--dry-run');
+    const args = parseArgs(process.argv.slice(2));
+    const dryRun = args.dryRun;
 
     const loaderPackage = readJson(loaderPackagePath);
     const currentVersion = loaderPackage.version;
-    const nextVersion = bumpPatchVersion(currentVersion);
+    let nextVersion = currentVersion;
+
+    if (args.mode === 'patch') {
+        nextVersion = bumpPatchVersion(currentVersion);
+    } else if (args.mode === 'set') {
+        nextVersion = normalizeVersion(args.version);
+    }
 
     const manifest = {
         version: nextVersion,
@@ -62,7 +119,8 @@ function main() {
         writeJson(versionManifestPath, manifest);
     }
 
-    console.log(`[VERSION] ${dryRun ? 'Preview' : 'Updated'} loader version ${currentVersion} -> ${nextVersion}`);
+    const actionLabel = currentVersion === nextVersion ? 'Synced' : 'Updated';
+    console.log(`[VERSION] ${dryRun ? 'Preview' : actionLabel} loader version ${currentVersion} -> ${nextVersion}`);
     console.log(`[VERSION] Manifest URL: ${manifest.url}`);
     console.log(`[VERSION] version.txt: ${versionManifestPath}`);
 }
