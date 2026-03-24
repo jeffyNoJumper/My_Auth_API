@@ -470,11 +470,15 @@
                     <span>ADMIN CONSOLE</span>
                 </div>
                 <h1>Unlock The<br>Control Panel</h1>
-                <p>Sign in with the admin secret to manage subscriptions, HWID resets, key generation, and renewal time. Remembered secrets stay only on this machine.</p>
+                <p>Sign in with your VEXION admin account to manage subscriptions, HWID resets, key generation, and renewal time. Remember-me stores only an admin session token on this machine.</p>
 
                 <form class="admin-auth-form" onsubmit="handleAdminAuth(event)">
-                    <input type="text" id="admin-auth-label" placeholder="Admin Name / Tag">
-                    <input type="password" id="admin-auth-pass" placeholder="Enter Admin Secret">
+                    <input type="email" id="admin-auth-email" placeholder="Admin Email">
+                    <input type="password" id="admin-auth-pass" placeholder="Admin Password">
+                    <div style="text-align:center; font-size:10px; color:#7f98a6; letter-spacing:1px; text-transform:uppercase;">First login uses email + password</div>
+                    <input type="text" id="admin-auth-user" placeholder="Quick Login Username">
+                    <input type="password" id="admin-auth-pin" placeholder="4-Digit PIN" maxlength="4" inputmode="numeric">
+                    <div style="text-align:center; font-size:10px; color:#7f98a6; letter-spacing:1px; text-transform:uppercase;">Later logins can use username + pin</div>
                     <div class="admin-auth-meta">
                         <label class="admin-remember">
                             <input type="checkbox" id="admin-remember">
@@ -485,7 +489,7 @@
                     <button id="admin-auth-btn" type="submit">Unlock Panel</button>
                 </form>
 
-                <div id="admin-auth-status" class="admin-auth-status">Enter the admin secret to connect to the VEXION API.</div>
+                <div id="admin-auth-status" class="admin-auth-status">Use admin email + password for the first login, then username + PIN can be used later.</div>
             </div>
         </div>
 
@@ -494,12 +498,12 @@
         <!-- Admin Auth Row -->
         <div style="display:flex; align-items:center; gap:10px; margin-bottom:15px;">
             <div id="admin-session-chip" class="panel-lock-note" style="min-width: 220px;">PANEL LOCKED</div>
-            <input type="password" id="admin-pass" placeholder="Admin Secret Key" style="width: 200px; margin:0; display:none;">
+            <input type="password" id="admin-pass" placeholder="Admin Password" style="width: 200px; margin:0; display:none;">
             <label class="admin-remember" style="white-space: nowrap;">
                 <input type="checkbox" id="admin-remember-inline">
                 <span>Remember Me</span>
             </label>
-            <button onclick="handleAdminAuth()" style="width:120px; margin:0; background:#333; color:white;">Unlock</button>
+            <button onclick="logoutAdminSession()" style="width:120px; margin:0; background:#333; color:white;">Sign Out</button>
             <button onclick="forgetRememberedAdmin()" style="width:120px; margin:0; background:#1b202b; color:#c6d4dc; border:1px solid #2b3445;">Forget Saved</button>
         </div>
 
@@ -544,6 +548,17 @@
                 <div id="key-display" style="margin-top:10px; padding:10px; background:#111; border-radius:4px; border:1px dashed #444;">
                     <div id="key-text" style="color:var(--accent); font-weight:bold; font-size:13px; cursor:pointer;" title="Click to Copy">---</div>
                     <div id="key-expiry" style="font-size:10px; color:#888;">No key generated</div>
+                </div>
+
+                <div id="owner-admin-create-card" style="margin-top:14px; padding:12px; background:rgba(0,149,255,0.03); border-radius:8px; border:1px solid #1d2a3a; display:none;">
+                    <div class="section-label" style="font-size:9px; margin-bottom:10px; border-left-width: 2px;">Owner: Create Admin Login</div>
+                    <input type="text" id="new-admin-login-name" placeholder="Admin Username">
+                    <input type="email" id="new-admin-email" placeholder="Admin Email">
+                    <input type="password" id="new-admin-password" placeholder="Admin Password">
+                    <input type="password" id="new-admin-pin" placeholder="4-Digit PIN" maxlength="4" inputmode="numeric">
+                    <input type="text" id="new-admin-label" placeholder="Admin Display Name">
+                    <button id="create-admin-btn" onclick="createAdminLogin()">Create Admin Login</button>
+                    <div id="admin-create-status" style="margin-top:8px; font-size:10px; color:#7f98a6;">Owner-only tool. New admins are created with username, email, password, and PIN. First login uses email/password. Later logins can use username + PIN.</div>
                 </div>
             </div>
 
@@ -697,9 +712,11 @@
         let isAdminAuthenticated = false;
         let adminSessionToken = '';
         let activeAdminLabel = '';
+        let activeAdminRole = '';
+        let activeAdminLoginName = '';
         const ADMIN_SESSION_TOKEN_STORAGE_KEY = 'vexion_admin_session_token';
         const ADMIN_LABEL_STORAGE_KEY = 'vexion_admin_session_label';
-        const ADMIN_REMEMBER_STORAGE_KEY = 'vexion_admin_remember_secret';
+        const ADMIN_REMEMBER_STORAGE_KEY = 'vexion_admin_remember_session';
 
         function closeWin() {
             ipcRenderer.send('admin-close');
@@ -736,12 +753,30 @@
             if (inlineRemember) inlineRemember.checked = remember;
         }
 
-        function syncAdminLabelInputs(value = '') {
+        function syncAdminEmailInput(value = '') {
             const cleanValue = String(value || '');
-            const overlayLabel = document.getElementById('admin-auth-label');
+            const overlayEmail = document.getElementById('admin-auth-email');
 
-            if (overlayLabel && overlayLabel.value !== cleanValue) {
-                overlayLabel.value = cleanValue;
+            if (overlayEmail && overlayEmail.value !== cleanValue) {
+                overlayEmail.value = cleanValue;
+            }
+        }
+
+        function syncAdminUsernameInput(value = '') {
+            const cleanValue = String(value || '');
+            const usernameInput = document.getElementById('admin-auth-user');
+
+            if (usernameInput && usernameInput.value !== cleanValue) {
+                usernameInput.value = cleanValue;
+            }
+        }
+
+        function syncAdminPinInput(value = '') {
+            const cleanValue = String(value || '');
+            const pinInput = document.getElementById('admin-auth-pin');
+
+            if (pinInput && pinInput.value !== cleanValue) {
+                pinInput.value = cleanValue;
             }
         }
 
@@ -759,7 +794,7 @@
             }
         }
 
-        function shouldRememberAdminSecret() {
+        function shouldRememberAdminSession() {
             return Boolean(
                 document.getElementById('admin-remember')?.checked ||
                 document.getElementById('admin-remember-inline')?.checked
@@ -778,9 +813,16 @@
             return `${os.userInfo().username}@${os.hostname()} | ${os.platform()} ${os.release()}`;
         }
 
-        function getAdminLabel() {
-            const typedLabel = document.getElementById('admin-auth-label')?.value.trim() || '';
-            return typedLabel || activeAdminLabel || localStorage.getItem(ADMIN_LABEL_STORAGE_KEY) || getDefaultAdminLabel();
+        function getAdminEmail() {
+            return document.getElementById('admin-auth-email')?.value.trim().toLowerCase() || '';
+        }
+
+        function getAdminLoginName() {
+            return document.getElementById('admin-auth-user')?.value.trim().toLowerCase() || '';
+        }
+
+        function getAdminPin() {
+            return document.getElementById('admin-auth-pin')?.value.trim() || '';
         }
 
         function getAdminSessionToken() {
@@ -788,16 +830,25 @@
         }
 
         function persistAdminSession(sessionToken, adminLabel) {
-            const remember = shouldRememberAdminSecret();
+            const remember = shouldRememberAdminSession();
             localStorage.setItem(ADMIN_REMEMBER_STORAGE_KEY, remember ? 'true' : 'false');
 
             if (remember && sessionToken) {
                 localStorage.setItem(ADMIN_SESSION_TOKEN_STORAGE_KEY, sessionToken);
-                localStorage.setItem(ADMIN_LABEL_STORAGE_KEY, adminLabel || getAdminLabel());
+                localStorage.setItem(ADMIN_LABEL_STORAGE_KEY, adminLabel || activeAdminLabel || getDefaultAdminLabel());
             } else {
                 localStorage.removeItem(ADMIN_SESSION_TOKEN_STORAGE_KEY);
                 localStorage.removeItem(ADMIN_LABEL_STORAGE_KEY);
             }
+        }
+
+        function setOwnerToolsVisibility() {
+            const ownerCard = document.getElementById('owner-admin-create-card');
+            if (!ownerCard) {
+                return;
+            }
+
+            ownerCard.style.display = activeAdminRole === 'owner' ? 'block' : 'none';
         }
 
         function setAdminAuthState(authenticated) {
@@ -811,10 +862,12 @@
 
             if (chip) {
                 chip.textContent = isAdminAuthenticated
-                    ? `SIGNED IN: ${activeAdminLabel || getAdminLabel()}`
+                    ? `SIGNED IN: ${activeAdminLabel || getDefaultAdminLabel()}`
                     : 'PANEL LOCKED';
                 chip.style.color = isAdminAuthenticated ? '#63f3b1' : '#8fa8b8';
             }
+
+            setOwnerToolsVisibility();
         }
 
         async function forgetRememberedAdmin() {
@@ -830,14 +883,42 @@
 
             adminSessionToken = '';
             activeAdminLabel = '';
+            activeAdminRole = '';
+            activeAdminLoginName = '';
             localStorage.removeItem(ADMIN_SESSION_TOKEN_STORAGE_KEY);
             localStorage.removeItem(ADMIN_LABEL_STORAGE_KEY);
             localStorage.setItem(ADMIN_REMEMBER_STORAGE_KEY, 'false');
             syncAdminRememberInputs(false);
             syncAdminPasswordInputs('');
-            syncAdminLabelInputs(getDefaultAdminLabel());
+            syncAdminEmailInput('');
+            syncAdminUsernameInput('');
+            syncAdminPinInput('');
             setAdminAuthState(false);
             setAdminAuthStatus('Saved admin session removed from this machine.', 'info');
+        }
+
+        async function logoutAdminSession() {
+            const savedToken = getAdminSessionToken();
+            if (!savedToken) {
+                setAdminAuthState(false);
+                return;
+            }
+
+            try {
+                await postJson('/admin-auth/logout', { admin_session_token: savedToken });
+            } catch (error) {
+                console.warn('[ADMIN] Logout request failed:', error);
+            }
+
+            adminSessionToken = '';
+            activeAdminLabel = '';
+            activeAdminRole = '';
+            activeAdminLoginName = '';
+            syncAdminPasswordInputs('');
+            syncAdminPinInput('');
+            setAdminAuthState(false);
+            setAdminAuthStatus('Admin session signed out.', 'info');
+            document.getElementById('admin-auth-email')?.focus();
         }
 
         function getAdminPassword() {
@@ -1122,9 +1203,9 @@
 
             if (!adminPass && !sessionToken) {
                 setAdminAuthState(false);
-                setAdminAuthStatus('Enter the admin secret first.', 'error');
+                setAdminAuthStatus('Enter your admin login first.', 'error');
                 if (!silent) {
-                    alert('Enter Admin Password first.');
+                    alert('Enter your admin login first.');
                 }
                 return false;
             }
@@ -1147,7 +1228,7 @@
                 if (!data.success || !Array.isArray(data.keys)) {
                     select.innerHTML = '<option value="">Access Denied</option>';
                     setAdminAuthState(false);
-                    setAdminAuthStatus(data.error || 'Admin secret rejected by the API.', 'error');
+                    setAdminAuthStatus(data.error || 'Admin session rejected by the API.', 'error');
                     if (!silent) {
                         alert(data.error || 'Failed to load users.');
                     }
@@ -1211,18 +1292,28 @@
             }
 
             const authButton = document.getElementById('admin-auth-btn');
-            const secret = getAdminPassword();
-            const adminLabel = getAdminLabel();
+            const email = getAdminEmail();
+            const password = getAdminPassword();
+            const loginName = getAdminLoginName();
+            const pin = getAdminPin();
+            const useQuickLogin = Boolean(loginName || pin);
 
-            if (!secret) {
+            if (useQuickLogin && (!loginName || !pin)) {
                 setAdminAuthState(false);
-                setAdminAuthStatus('Enter the admin secret to unlock the panel.', 'error');
-                document.getElementById('admin-auth-pass')?.focus();
+                setAdminAuthStatus('Enter both the admin username and the 4-digit PIN.', 'error');
+                document.getElementById(!loginName ? 'admin-auth-user' : 'admin-auth-pin')?.focus();
                 return false;
             }
 
-            syncAdminPasswordInputs(secret);
-            syncAdminRememberInputs(shouldRememberAdminSecret());
+            if (!useQuickLogin && (!email || !password)) {
+                setAdminAuthState(false);
+                setAdminAuthStatus('Enter your admin email and password to unlock the panel.', 'error');
+                document.getElementById(!email ? 'admin-auth-email' : 'admin-auth-pass')?.focus();
+                return false;
+            }
+
+            syncAdminPasswordInputs(password);
+            syncAdminRememberInputs(shouldRememberAdminSession());
 
             if (authButton) {
                 authButton.disabled = true;
@@ -1230,11 +1321,19 @@
             }
 
             try {
-                const login = await postJson('/admin-auth/login', {
-                    admin_password: secret,
-                    admin_label: adminLabel,
+                const loginPayload = {
                     device_info: getAdminDeviceInfo()
-                });
+                };
+
+                if (useQuickLogin) {
+                    loginPayload.admin_login_name = loginName;
+                    loginPayload.admin_pin = pin;
+                } else {
+                    loginPayload.admin_email = email;
+                    loginPayload.admin_password = password;
+                }
+
+                const login = await postJson('/admin-auth/login', loginPayload);
 
                 if (!login.success || !login.session_token) {
                     setAdminAuthState(false);
@@ -1243,10 +1342,14 @@
                 }
 
                 adminSessionToken = login.session_token;
-                activeAdminLabel = login.admin_label || adminLabel;
+                activeAdminLabel = login.admin_label || login.admin_email || login.admin_login_name || email || loginName;
+                activeAdminRole = login.admin_role || '';
+                activeAdminLoginName = login.admin_login_name || loginName || '';
                 persistAdminSession(adminSessionToken, activeAdminLabel);
-                syncAdminLabelInputs(activeAdminLabel);
+                syncAdminEmailInput(login.admin_email || email);
+                syncAdminUsernameInput(login.admin_login_name || activeAdminLoginName);
                 syncAdminPasswordInputs('');
+                syncAdminPinInput('');
                 setAdminAuthState(true);
                 setAdminAuthStatus(`Admin session active as ${activeAdminLabel}.`, 'success');
 
@@ -1261,6 +1364,49 @@
                     authButton.disabled = false;
                     authButton.textContent = 'UNLOCK PANEL';
                 }
+            }
+        }
+
+        async function createAdminLogin() {
+            const button = document.getElementById('create-admin-btn');
+            const loginName = document.getElementById('new-admin-login-name')?.value.trim().toLowerCase() || '';
+            const email = document.getElementById('new-admin-email')?.value.trim().toLowerCase() || '';
+            const password = document.getElementById('new-admin-password')?.value.trim() || '';
+            const pin = document.getElementById('new-admin-pin')?.value.trim() || '';
+            const label = document.getElementById('new-admin-label')?.value.trim() || '';
+            const status = document.getElementById('admin-create-status');
+
+            if (!getAdminSessionToken()) {
+                status.textContent = 'Unlock the owner admin session first.';
+                status.style.color = '#ff8b8b';
+                return;
+            }
+
+            if (!loginName || !email || !password || !pin) {
+                status.textContent = 'Enter username, email, password, and 4-digit PIN for the new admin.';
+                status.style.color = '#ff8b8b';
+                return;
+            }
+
+            button.disabled = true;
+            button.textContent = 'CREATING...';
+
+            try {
+                const data = await postJson('/admin-auth/create-admin', { login_name: loginName, email, password, pin, label });
+                status.textContent = data.message || `Admin created: ${email}`;
+                status.style.color = '#63f3b1';
+                document.getElementById('new-admin-login-name').value = '';
+                document.getElementById('new-admin-email').value = '';
+                document.getElementById('new-admin-password').value = '';
+                document.getElementById('new-admin-pin').value = '';
+                document.getElementById('new-admin-label').value = '';
+            } catch (error) {
+                console.error('[ADMIN] Create admin failed:', error);
+                status.textContent = error.message || 'Failed to create admin login.';
+                status.style.color = '#ff8b8b';
+            } finally {
+                button.disabled = false;
+                button.textContent = 'CREATE ADMIN LOGIN';
             }
         }
 
@@ -1612,20 +1758,30 @@
             const manualInput = document.getElementById('single-key-input');
             const dropdown = document.getElementById('manage-key-input');
             const adminInput = document.getElementById('admin-pass');
+            const overlayAdminEmail = document.getElementById('admin-auth-email');
             const overlayAdminInput = document.getElementById('admin-auth-pass');
+            const overlayAdminUser = document.getElementById('admin-auth-user');
+            const overlayAdminPin = document.getElementById('admin-auth-pin');
             const rememberInline = document.getElementById('admin-remember-inline');
             const rememberOverlay = document.getElementById('admin-remember');
             const rememberEnabled = localStorage.getItem(ADMIN_REMEMBER_STORAGE_KEY) === 'true';
-            const rememberedSecret = rememberEnabled ? (localStorage.getItem(ADMIN_SECRET_STORAGE_KEY) || '') : '';
+            const rememberedSession = rememberEnabled ? (localStorage.getItem(ADMIN_SESSION_TOKEN_STORAGE_KEY) || '') : '';
+            const rememberedLabel = localStorage.getItem(ADMIN_LABEL_STORAGE_KEY) || getDefaultAdminLabel();
 
             syncAdminRememberInputs(rememberEnabled);
-            syncAdminPasswordInputs(rememberedSecret);
+            syncAdminEmailInput('');
+            syncAdminUsernameInput('');
+            syncAdminPinInput('');
             setAdminAuthStatus(
-                rememberEnabled && rememberedSecret
-                    ? 'Saved admin secret found. Unlocking automatically...'
-                    : 'Enter the admin secret to connect to the VEXION API.',
+                rememberEnabled && rememberedSession
+                    ? 'Saved admin session found. Restoring automatically...'
+                    : 'Use email + password the first time, then username + PIN can be used later.',
                 'info'
             );
+            activeAdminLabel = rememberedLabel;
+            if (rememberEnabled && rememberedSession) {
+                adminSessionToken = rememberedSession;
+            }
 
             generatedKey?.addEventListener('click', async () => {
                 if (!generatedKey.textContent || generatedKey.textContent === '---') {
@@ -1671,8 +1827,30 @@
                 syncAdminPasswordInputs(adminInput.value);
             });
 
+            overlayAdminEmail?.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter') {
+                    handleAdminAuth();
+                }
+            });
+
+            overlayAdminUser?.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter') {
+                    handleAdminAuth();
+                }
+            });
+
             overlayAdminInput?.addEventListener('input', () => {
                 syncAdminPasswordInputs(overlayAdminInput.value);
+            });
+
+            overlayAdminPin?.addEventListener('input', () => {
+                overlayAdminPin.value = overlayAdminPin.value.replace(/\D/g, '').slice(0, 4);
+            });
+
+            overlayAdminPin?.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter') {
+                    handleAdminAuth();
+                }
             });
 
             rememberInline?.addEventListener('change', () => {
@@ -1683,12 +1861,27 @@
                 syncAdminRememberInputs(rememberOverlay.checked);
             });
 
-            if (rememberEnabled && rememberedSecret) {
+            if (rememberEnabled && rememberedSession) {
                 setTimeout(() => {
-                    handleAdminAuth(null, { silent: true }).catch(() => { });
+                    postJson('/admin-auth/restore', { admin_session_token: rememberedSession })
+                        .then(async (data) => {
+                            adminSessionToken = rememberedSession;
+                            activeAdminLabel = data.admin_label || rememberedLabel;
+                            activeAdminRole = data.admin_role || '';
+                            activeAdminLoginName = data.admin_login_name || '';
+                            syncAdminEmailInput(data.admin_email || '');
+                            syncAdminUsernameInput(data.admin_login_name || '');
+                            setAdminAuthState(true);
+                            setAdminAuthStatus(`Restored admin session as ${activeAdminLabel}.`, 'success');
+                            await loadKeysDropdown('', { silent: true });
+                        })
+                        .catch(() => {
+                            forgetRememberedAdmin().catch(() => { });
+                        });
                 }, 180);
             } else {
-                overlayAdminInput?.focus();
+                syncAdminEmailInput('');
+                overlayAdminEmail?.focus();
             }
         });
     </script>
