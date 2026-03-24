@@ -7,8 +7,6 @@ const fs = require('fs');
 const axios = require('axios');
 const { promisify } = require('util');
 
-const exePath = path.join(__dirname, 'bin', 'Volumeid64.exe');
-
 const newID = "12AB-34CD";
 
 let mainWindow
@@ -21,6 +19,20 @@ let hardwareSnapshotCache = null;
 let hardwareSnapshotPromise = null;
 const GAME_FEED_TTL_MS = 5 * 60 * 1000;
 const gameFeedCache = new Map();
+
+function getBundledAssetsPath() {
+    return app.isPackaged
+        ? path.join(process.resourcesPath, 'assets')
+        : path.join(__dirname, '..', 'assets');
+}
+
+function getBundledBinPath(fileName = "") {
+    const basePath = app.isPackaged
+        ? path.join(process.resourcesPath, 'bin')
+        : path.join(__dirname, 'bin');
+
+    return fileName ? path.join(basePath, fileName) : basePath;
+}
 
 app.on('will-quit', async () => {
     if (rpcClient) {
@@ -43,9 +55,9 @@ async function changeVolumeID() {
     // take first 8 hex chars
     const volumeID = clean.slice(0, 4) + "-" + clean.slice(4, 8);
 
-    const exePath = path.join(__dirname, 'bin', 'Volumeid64.exe');
+    const volumeIdPath = getBundledBinPath('Volumeid64.exe');
 
-    execFile(exePath, ["C:", volumeID], { windowsHide: true }, (err, stdout, stderr) => {
+    execFile(volumeIdPath, ["C:", volumeID], { windowsHide: true }, (err, stdout, stderr) => {
 
         if (err) {
             console.error("VolumeID Failed:", err);
@@ -304,13 +316,9 @@ ipcMain.handle('start-spoof', async (event, options) => {
         // ---------------- LOAD KERNEL DRIVER ----------------
 
         if (safeOptions.kernel) {
-
-            const basePath = app.isPackaged
-                ? process.resourcesPath
-                : __dirname;
-
-            const kdmapperPath = path.join(basePath, "assets", "kdmapper_Release.exe");
-            const driverPath = path.join(basePath, "assets", "km.sys");
+            const assetsPath = getBundledAssetsPath();
+            const kdmapperPath = resolveSharedToolPath(assetsPath, 'kdmapper_Release.exe');
+            const driverPath = resolveSharedToolPath(assetsPath, 'km.sys');
 
             console.log("[MAIN] Launching kdmapper...");
 
@@ -748,7 +756,7 @@ async function fetchGameFeed(gameName) {
 }
 
 ipcMain.handle('get-game-module-availability', async (event, gameName) => {
-    const assetsPath = path.join(__dirname, '..', 'assets');
+    const assetsPath = getBundledAssetsPath();
 
     if (!fs.existsSync(assetsPath)) {
         return { game: normalizeLaunchGameName(gameName), hasInternal: false, hasExternal: false };
@@ -795,7 +803,7 @@ ipcMain.handle('launch-game', async (event, gameName, autoClose, licenseKey, inj
     const finalType = injectionType === "dll" ? "internal" : (injectionType || "external");
     const normalizedGame = normalizeLaunchGameName(gameName);
     const gameLabel = getLaunchGameLabel(gameName);
-    const assetsPath = path.join(__dirname, '..', 'assets');
+    const assetsPath = getBundledAssetsPath();
 
     function getDaysRemaining(expiry) {
         if (!expiry) return "Unknown";
@@ -847,7 +855,7 @@ ipcMain.handle('launch-game', async (event, gameName, autoClose, licenseKey, inj
             }
 
             spawn(injectorPath, [], {
-                cwd: assetsPath,
+                cwd: path.dirname(injectorPath),
                 detached: true,
                 stdio: "ignore",
                 windowsHide: true
