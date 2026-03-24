@@ -17,6 +17,8 @@ let rpcClient = null;
 const execFileAsync = promisify(execFile);
 let hardwareSnapshotCache = null;
 let hardwareSnapshotPromise = null;
+let machineIdCache = null;
+let machineIdPromise = null;
 const GAME_FEED_TTL_MS = 5 * 60 * 1000;
 const gameFeedCache = new Map();
 const AUTH_WINDOW_SIZE = { width: 432, height: 468 };
@@ -97,6 +99,42 @@ function quickAdd(days) {
 function resetHardwareSnapshot() {
     hardwareSnapshotCache = null;
     hardwareSnapshotPromise = null;
+    machineIdCache = null;
+    machineIdPromise = null;
+}
+
+async function getFastMachineId(options = {}) {
+    const { forceRefresh = false } = options;
+
+    if (forceRefresh) {
+        machineIdCache = null;
+        machineIdPromise = null;
+    }
+
+    if (machineIdCache) {
+        return machineIdCache;
+    }
+
+    if (!machineIdPromise) {
+        machineIdPromise = Promise.resolve()
+            .then(() => {
+                if (spoofer?.getMachineID) {
+                    return spoofer.getMachineID();
+                }
+
+                throw new Error("Spoofer machine ID unavailable");
+            })
+            .catch(() => readMachineGuid())
+            .then((machineId) => {
+                machineIdCache = machineId || "UNKNOWN";
+                return machineIdCache;
+            })
+            .finally(() => {
+                machineIdPromise = null;
+            });
+    }
+
+    return machineIdPromise;
 }
 
 function parseCommandValue(output, headerName) {
@@ -273,7 +311,7 @@ function createWindow() {
 
     mainWindow.webContents.once('did-finish-load', revealWindow);
     mainWindow.once('ready-to-show', revealWindow);
-    setTimeout(revealWindow, 900);
+    setTimeout(revealWindow, 250);
 
     setTimeout(() => {
         if (process.env.ENABLE_NATIVE_UPDATER === 'true') {
@@ -305,6 +343,30 @@ ipcMain.on('loader-window-auth', () => {
         mainWindow.setResizable(false);
     }
     resizeMainWindow(AUTH_WINDOW_SIZE);
+});
+
+ipcMain.on('loader-reset-auth-shell', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+        return;
+    }
+
+    const targetWindow = mainWindow;
+    targetWindow.hide();
+    resizeMainWindow(AUTH_WINDOW_SIZE);
+    targetWindow.loadFile('index.html');
+
+    const revealAuthShell = () => {
+        if (!targetWindow || targetWindow.isDestroyed()) {
+            return;
+        }
+
+        resizeMainWindow(AUTH_WINDOW_SIZE);
+        targetWindow.center();
+        targetWindow.show();
+    };
+
+    targetWindow.webContents.once('did-finish-load', revealAuthShell);
+    setTimeout(revealAuthShell, 250);
 });
 
 ipcMain.handle('show-system-notification', async (event, payload = {}) => {
@@ -1028,8 +1090,7 @@ ipcMain.handle('get-hardware-snapshot', async (event, options = {}) => {
 });
 
 ipcMain.handle('get-machine-id', async (event, options = {}) => {
-    const snapshot = await getHardwareSnapshot(options);
-    return snapshot.machineId;
+    return getFastMachineId(options);
 });
 
 // Listener for Baseboard Serial
