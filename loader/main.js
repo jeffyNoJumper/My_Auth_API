@@ -276,7 +276,7 @@ app.setAppUserModelId("com.vexion.allinone");
 
 // --- 1. WINDOW SETUP ---
 function createWindow() {
-    mainWindow = new BrowserWindow({
+    const window = new BrowserWindow({
         width: AUTH_WINDOW_SIZE.width,
         height: AUTH_WINDOW_SIZE.height,
         show: false,
@@ -296,22 +296,30 @@ function createWindow() {
         }
     });
 
+    mainWindow = window;
+
     let windowRevealed = false;
     const revealWindow = () => {
-        if (windowRevealed || !mainWindow || mainWindow.isDestroyed()) {
+        if (windowRevealed || !window || window.isDestroyed()) {
             return;
         }
 
         windowRevealed = true;
-        mainWindow.center();
-        mainWindow.show();
+        window.center();
+        window.show();
     };
 
-    mainWindow.loadFile('index.html');
+    window.loadFile('index.html');
 
-    mainWindow.webContents.once('did-finish-load', revealWindow);
-    mainWindow.once('ready-to-show', revealWindow);
+    window.webContents.once('did-finish-load', revealWindow);
+    window.once('ready-to-show', revealWindow);
     setTimeout(revealWindow, 250);
+
+    window.on('closed', () => {
+        if (mainWindow === window) {
+            mainWindow = null;
+        }
+    });
 
     setTimeout(() => {
         if (process.env.ENABLE_NATIVE_UPDATER === 'true') {
@@ -320,6 +328,8 @@ function createWindow() {
             console.log("[UPDATER] Native updater disabled. Loader will use the custom manifest-based update flow.");
         }
     }, 1200);
+
+    return window;
 }
 
 // --- IPC HANDLERS ---
@@ -347,26 +357,19 @@ ipcMain.on('loader-window-auth', () => {
 
 ipcMain.on('loader-reset-auth-shell', () => {
     if (!mainWindow || mainWindow.isDestroyed()) {
+        createWindow();
         return;
     }
 
-    const targetWindow = mainWindow;
-    targetWindow.hide();
-    resizeMainWindow(AUTH_WINDOW_SIZE);
-    targetWindow.loadFile('index.html');
+    const previousWindow = mainWindow;
+    previousWindow.hide();
 
-    const revealAuthShell = () => {
-        if (!targetWindow || targetWindow.isDestroyed()) {
-            return;
+    const replacementWindow = createWindow();
+    replacementWindow.once('show', () => {
+        if (previousWindow && !previousWindow.isDestroyed()) {
+            previousWindow.destroy();
         }
-
-        resizeMainWindow(AUTH_WINDOW_SIZE);
-        targetWindow.center();
-        targetWindow.show();
-    };
-
-    targetWindow.webContents.once('did-finish-load', revealAuthShell);
-    setTimeout(revealAuthShell, 250);
+    });
 });
 
 ipcMain.handle('show-system-notification', async (event, payload = {}) => {
