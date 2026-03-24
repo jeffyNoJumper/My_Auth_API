@@ -2955,11 +2955,11 @@ function deriveHwidTicketNumber(requestId) {
 function formatHwidRequestBadge(ticketNumber, requestId = "") {
     const normalized = Number(ticketNumber);
     if (Number.isFinite(normalized) && normalized > 0) {
-        return `#${normalized}`;
+        return `#${String(normalized).padStart(4, '0')}`;
     }
 
     const derived = deriveHwidTicketNumber(requestId);
-    return derived ? `#${derived}` : '#----';
+    return derived ? `#${String(derived).padStart(4, '0')}` : '#----';
 }
 
 function syncHwidRequestBadge() {
@@ -3017,7 +3017,7 @@ function setHwidResetControls(state, detail = "") {
 
     hwidResetApprovalStatus = state;
 
-    const applyState = (statusText, statusClass, requestState, resetText, resetDisabled, requestText, requestDisabled, note) => {
+    const applyState = (statusText, statusClass, requestState, requestStateClass, resetText, resetDisabled, requestText, requestDisabled, note) => {
         if (statusEl) {
             statusEl.textContent = statusText;
             statusEl.className = statusClass;
@@ -3025,6 +3025,7 @@ function setHwidResetControls(state, detail = "") {
 
         if (requestStateEl) {
             requestStateEl.textContent = requestState;
+            requestStateEl.className = requestStateClass || "";
         }
 
         if (resetBtn) {
@@ -3048,6 +3049,7 @@ function setHwidResetControls(state, detail = "") {
                 "REQUEST PENDING",
                 "processing",
                 "PENDING REVIEW",
+                "processing",
                 "WAITING FOR APPROVAL",
                 true,
                 "REQUEST PENDING",
@@ -3060,6 +3062,7 @@ function setHwidResetControls(state, detail = "") {
                 "ADMIN APPROVED",
                 "active-status",
                 "APPROVED",
+                "active-status",
                 "HWID RESET",
                 false,
                 "APPROVED",
@@ -3072,6 +3075,7 @@ function setHwidResetControls(state, detail = "") {
                 "APPLYING RESET",
                 "processing",
                 "CONSUMING APPROVAL",
+                "processing",
                 "RESETTING...",
                 true,
                 "APPROVED",
@@ -3084,6 +3088,7 @@ function setHwidResetControls(state, detail = "") {
                 "RESET APPLIED",
                 "active-status",
                 "APPROVAL USED",
+                "active-status",
                 "REQUEST NEW APPROVAL",
                 true,
                 "REQUEST AGAIN",
@@ -3096,6 +3101,7 @@ function setHwidResetControls(state, detail = "") {
                 "REQUEST DENIED",
                 "inactive",
                 "DENIED",
+                "inactive",
                 "WAITING FOR APPROVAL",
                 true,
                 "REQUEST AGAIN",
@@ -3108,6 +3114,7 @@ function setHwidResetControls(state, detail = "") {
                 "STATUS UNAVAILABLE",
                 "inactive",
                 "SYNC ERROR",
+                "inactive",
                 "WAITING FOR APPROVAL",
                 true,
                 "TRY AGAIN",
@@ -3120,6 +3127,7 @@ function setHwidResetControls(state, detail = "") {
                 "APPROVAL REQUIRED",
                 "processing",
                 "AWAITING APPROVAL",
+                "",
                 "WAITING FOR APPROVAL",
                 true,
                 "REQUEST HWID RESET",
