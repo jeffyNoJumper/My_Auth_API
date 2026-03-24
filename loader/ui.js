@@ -16,6 +16,7 @@ let serverHealthState = "CHECKING";
 let hwidResetPollInterval = null;
 let hwidResetApprovalStatus = "idle";
 let latestHwidResetRequestId = null;
+let latestHwidResetTicketNumber = null;
 let injectionProgressTimer = null;
 let autoLoginRequestToken = 0;
 let activeExternalLink = null;
@@ -823,6 +824,15 @@ function formatAnnouncementTimestamp(value) {
         hour: 'numeric',
         minute: '2-digit'
     }).toUpperCase();
+}
+
+function isRecentAnnouncement(value, maxAgeMinutes = 15) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+        return false;
+    }
+
+    return (Date.now() - date.getTime()) <= maxAgeMinutes * 60 * 1000;
 }
 
 function showErrorDialog(title, message, detail = "") {
@@ -1732,18 +1742,22 @@ window.addEventListener('DOMContentLoaded', () => {
 
                 // Save locally first for instant feedback
                 localStorage.setItem('saved_profile_pic', base64Image);
+                localStorage.setItem('profilePic', base64Image);
                 syncProfileImage();
 
                 try {
-                    const rawKey = localStorage.getItem('license_key');
-                    const key = rawKey ? rawKey.trim().toUpperCase() : null;
+                    const userEmail = localStorage.getItem('user_email');
+                    const cleanAPI = API.endsWith('/') ? API.slice(0, -1) : API;
 
-                    // FIX: Added the endpoint '/update-profile' to the URL
-                    const res = await fetch('https://my-auth-api-1ykc.onrender.com', {
+                    if (!userEmail) {
+                        return;
+                    }
+
+                    const res = await fetch(`${cleanAPI}/update-profile`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            license_key: key,
+                            user_id_email: userEmail.toLowerCase(),
                             profile_pic: base64Image // This is the Base64 string
                         })
                     });
@@ -1964,6 +1978,7 @@ async function handleLogin(isAutoLogin = false, creds = {}) {
             // ---------- PROFILE ----------
             const profilePic = data.profile_pic || "imgs/default-profile.png";
             localStorage.setItem("saved_profile_pic", profilePic);
+            localStorage.setItem("profilePic", profilePic);
             document.querySelectorAll("#user-pic, #modal-pfp")
                 .forEach(img => img.src = profilePic);
 
@@ -2449,6 +2464,8 @@ window.addEventListener('DOMContentLoaded', async () => {
             userPic.src = 'imgs/default-profile.png';
         }
     }
+
+    syncHwidRequestBadge();
     console.log(`[LOADER] Session Restored: ${savedEmail || 'Guest'} | Prefix: ${savedPrefix}`);
 });
 
@@ -2635,6 +2652,7 @@ async function saveProfileChanges() {
 
             if (profilePicData) {
                 localStorage.setItem('saved_profile_pic', profilePicData);
+                localStorage.setItem('profilePic', profilePicData);
                 document.querySelectorAll('#user-pic, #modal-pfp').forEach(img => img.src = profilePicData);
             }
 
@@ -2918,6 +2936,43 @@ function clearConsumedHwidResetRequest() {
     localStorage.removeItem(getHwidResetConsumedStorageKey());
 }
 
+function deriveHwidTicketNumber(requestId) {
+    const cleanId = String(requestId || '').replace(/[^a-fA-F0-9]/g, '');
+    if (!cleanId) {
+        return null;
+    }
+
+    const tail = cleanId.slice(-6);
+    const numeric = Number.parseInt(tail, 16);
+
+    if (!Number.isFinite(numeric)) {
+        return null;
+    }
+
+    return (numeric % 9000) + 1000;
+}
+
+function formatHwidRequestBadge(ticketNumber, requestId = "") {
+    const normalized = Number(ticketNumber);
+    if (Number.isFinite(normalized) && normalized > 0) {
+        return `#${normalized}`;
+    }
+
+    const derived = deriveHwidTicketNumber(requestId);
+    return derived ? `#${derived}` : '#----';
+}
+
+function syncHwidRequestBadge() {
+    const badge = document.getElementById('hwid-request-badge');
+    if (!badge) {
+        return;
+    }
+
+    const label = formatHwidRequestBadge(latestHwidResetTicketNumber, latestHwidResetRequestId);
+    badge.textContent = label;
+    badge.classList.toggle('is-empty', label === '#----');
+}
+
 function stopHwidResetPolling() {
     if (hwidResetPollInterval) {
         clearInterval(hwidResetPollInterval);
@@ -3073,6 +3128,8 @@ function setHwidResetControls(state, detail = "") {
             );
             break;
     }
+
+    syncHwidRequestBadge();
 }
 
 async function fetchHwidResetStatus(savedKey) {
@@ -3083,11 +3140,16 @@ async function fetchHwidResetStatus(savedKey) {
 function applyHwidResetStatus(statusData, logTransition = true) {
     const normalizedStatus = (statusData?.status || "NONE").toUpperCase();
     const requestId = statusData?.requestId || null;
+    const ticketNumber = Number(statusData?.ticketNumber);
     const consumedRequestId = getConsumedHwidResetRequestId();
     const previousStatus = hwidResetApprovalStatus;
 
     if (requestId) {
         latestHwidResetRequestId = requestId;
+    }
+
+    if (Number.isFinite(ticketNumber) && ticketNumber > 0) {
+        latestHwidResetTicketNumber = ticketNumber;
     }
 
     if (normalizedStatus === "PENDING") {
@@ -3128,6 +3190,11 @@ function applyHwidResetStatus(statusData, logTransition = true) {
     }
 
     stopHwidResetPolling();
+
+    if (!requestId) {
+        latestHwidResetRequestId = null;
+        latestHwidResetTicketNumber = null;
+    }
 
     if (requestId && requestId === consumedRequestId) {
         setHwidResetControls("completed");
@@ -3285,8 +3352,11 @@ async function requestHWIDReset() {
             }
 
             latestHwidResetRequestId = data.requestId || latestHwidResetRequestId;
+            latestHwidResetTicketNumber = Number(data.ticketNumber) || latestHwidResetTicketNumber;
             clearConsumedHwidResetRequest();
+            syncHwidRequestBadge();
             appendAdminRequestLog(data.message === "Request already pending." ? "REQUEST ALREADY PENDING." : "REQUEST SENT TO ADMIN.");
+            appendAdminRequestLog(`REQUEST ID: ${formatHwidRequestBadge(latestHwidResetTicketNumber, latestHwidResetRequestId)}`);
             appendAdminRequestLog("STATUS: PENDING APPROVAL.");
             beginHwidResetPolling(savedKey);
         } catch (err) {
@@ -3759,7 +3829,7 @@ async function pollDiscordAnnouncements({ silentBaseline = false } = {}) {
             latestDiscordAnnouncementId = announcement.id;
             localStorage.setItem('last_seen_discord_loader_notification_id', announcement.id);
 
-            if (!silentBaseline) {
+            if (!silentBaseline || isRecentAnnouncement(announcement.timestamp)) {
                 showDiscordAnnouncementToast(announcement);
             }
             return;
