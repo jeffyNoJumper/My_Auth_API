@@ -697,6 +697,53 @@ function renderAppDialogActions(actions = []) {
     });
 }
 
+function escapeHtml(value = "") {
+    return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+
+function formatDiscordMarkup(value = "") {
+    let html = escapeHtml(String(value || "").replace(/\r\n/g, "\n"));
+    const placeholders = [];
+    const stash = (markup) => {
+        const token = `%%DISCORD_MD_${placeholders.length}%%`;
+        placeholders.push(markup);
+        return token;
+    };
+
+    html = html.replace(/`([^`\n]+)`/g, (_, code) => stash(`<code class="discord-md-code">${code}</code>`));
+    html = html.replace(/\*\*\*([\s\S]+?)\*\*\*/g, '<strong><em>$1</em></strong>');
+    html = html.replace(/___([\s\S]+?)___/g, '<span class="discord-md-underline"><em>$1</em></span>');
+    html = html.replace(/\*\*([\s\S]+?)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/__([\s\S]+?)__/g, '<span class="discord-md-underline">$1</span>');
+    html = html.replace(/~~([\s\S]+?)~~/g, '<s>$1</s>');
+    html = html.replace(/(^|[^*])\*([^*\n][\s\S]*?)\*(?!\*)/g, '$1<em>$2</em>');
+    html = html.replace(/(^|[^_])_([^_\n][\s\S]*?)_(?!_)/g, '$1<em>$2</em>');
+    html = html.replace(/\n/g, '<br>');
+
+    return placeholders.reduce(
+        (output, markup, index) => output.replace(`%%DISCORD_MD_${index}%%`, markup),
+        html
+    );
+}
+
+function setElementContent(element, value = "", { discordMarkup = false } = {}) {
+    if (!element) {
+        return;
+    }
+
+    if (discordMarkup) {
+        element.innerHTML = formatDiscordMarkup(value);
+        return;
+    }
+
+    element.textContent = value;
+}
+
 function showAppDialog(options = {}) {
     const {
         title = "Notification",
@@ -704,6 +751,7 @@ function showAppDialog(options = {}) {
         detail = "",
         tone = "info",
         kicker = "SYSTEM NOTICE",
+        renderDiscordMarkup = false,
         actions = [{ label: "OK", value: true, variant: "primary" }]
     } = options;
 
@@ -724,8 +772,8 @@ function showAppDialog(options = {}) {
 
     card.dataset.tone = tone;
     kickerEl.textContent = kicker;
-    titleEl.textContent = title;
-    messageEl.textContent = message;
+    setElementContent(titleEl, title, { discordMarkup: renderDiscordMarkup });
+    setElementContent(messageEl, message, { discordMarkup: renderDiscordMarkup });
     detailEl.textContent = detail || "";
     detailEl.classList.toggle('hidden', !detail);
     renderAppDialogActions(actions);
@@ -3630,17 +3678,28 @@ function showUpdateReminder() {
 function createToast(title, message, onClick, options = {}) {
     const stack = getToastStack();
     const toast = document.createElement("div");
+    const titleEl = document.createElement("strong");
+    const messageEl = document.createElement("p");
+    const metaEl = options.meta ? document.createElement("span") : null;
+
     toast.classList.add("toast-notification");
+    titleEl.className = "toast-title";
+    messageEl.className = "toast-message";
 
     if (options.variant) {
         toast.classList.add(`is-${options.variant}`);
     }
 
-    toast.innerHTML = `
-        <strong class="toast-title">${title}</strong>
-        <p class="toast-message">${message}</p>
-        ${options.meta ? `<span class="toast-meta">${options.meta}</span>` : ''}
-    `;
+    setElementContent(titleEl, title, { discordMarkup: Boolean(options.renderDiscordMarkup) });
+    setElementContent(messageEl, message, { discordMarkup: Boolean(options.renderDiscordMarkup) });
+    toast.appendChild(titleEl);
+    toast.appendChild(messageEl);
+
+    if (metaEl) {
+        metaEl.className = "toast-meta";
+        metaEl.textContent = options.meta;
+        toast.appendChild(metaEl);
+    }
 
     toast.addEventListener("click", () => {
         if (onClick) onClick();
@@ -3666,12 +3725,14 @@ function showDiscordAnnouncementToast(announcement) {
                 detail: `${announcement.author || "Admin"} · ${formatAnnouncementTimestamp(announcement.timestamp)}`,
                 tone: "info",
                 kicker: "ADMIN ANNOUNCEMENT",
+                renderDiscordMarkup: true,
                 actions: [{ label: "OK", value: true, variant: "primary" }]
             });
         },
         {
             variant: "admin",
             duration: 10000,
+            renderDiscordMarkup: true,
             meta: `${announcement.author || "ADMIN"} · ${formatAnnouncementTimestamp(announcement.timestamp)}`
         }
     );
