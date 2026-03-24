@@ -407,6 +407,10 @@ function showManualLoginState(noticeText = null, keepAutoLoginModal = false) {
         sidebar.style.removeProperty("display");
     }
 
+    if (window.api?.setAuthWindow) {
+        window.api.setAuthWindow();
+    }
+
     setLoginNotice(noticeText, noticeText ? "info" : "error");
 }
 
@@ -2333,6 +2337,10 @@ async function handleLogin(isAutoLogin = false, creds = {}) {
             if (sidebar) {
                 sidebar.style.display = "flex";
                 sidebar.classList.remove("hidden");
+            }
+
+            if (window.api?.setAppWindow) {
+                window.api.setAppWindow();
             }
 
             expirySequenceTriggered = false;
