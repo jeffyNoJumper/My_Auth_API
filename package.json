@@ -3,7 +3,8 @@
   "version": "1.0.6",
   "main": "loader/index.js",
   "scripts": {
-    "start": "node loader/index.js"
+    "start": "node loader/index.js",
+    "sync-discord-commands": "node scripts/register-discord-commands.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
