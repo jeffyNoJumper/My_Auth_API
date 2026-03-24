@@ -473,6 +473,7 @@
                 <p>Sign in with the admin secret to manage subscriptions, HWID resets, key generation, and renewal time. Remembered secrets stay only on this machine.</p>
 
                 <form class="admin-auth-form" onsubmit="handleAdminAuth(event)">
+                    <input type="text" id="admin-auth-label" placeholder="Admin Name / Tag">
                     <input type="password" id="admin-auth-pass" placeholder="Enter Admin Secret">
                     <div class="admin-auth-meta">
                         <label class="admin-remember">
@@ -492,7 +493,8 @@
 
         <!-- Admin Auth Row -->
         <div style="display:flex; align-items:center; gap:10px; margin-bottom:15px;">
-            <input type="password" id="admin-pass" placeholder="Admin Secret Key" style="width: 200px; margin:0;">
+            <div id="admin-session-chip" class="panel-lock-note" style="min-width: 220px;">PANEL LOCKED</div>
+            <input type="password" id="admin-pass" placeholder="Admin Secret Key" style="width: 200px; margin:0; display:none;">
             <label class="admin-remember" style="white-space: nowrap;">
                 <input type="checkbox" id="admin-remember-inline">
                 <span>Remember Me</span>
@@ -685,6 +687,7 @@
 
     <script>
         const { ipcRenderer, clipboard } = require('electron');
+        const os = require('os');
         const API = 'https://my-auth-api-1ykc.onrender.com';
 
         let loadedUser = null;
@@ -692,7 +695,10 @@
         let apiKeepAliveInterval = null;
         let apiWarmPromise = null;
         let isAdminAuthenticated = false;
-        const ADMIN_SECRET_STORAGE_KEY = 'vexion_admin_saved_secret';
+        let adminSessionToken = '';
+        let activeAdminLabel = '';
+        const ADMIN_SESSION_TOKEN_STORAGE_KEY = 'vexion_admin_session_token';
+        const ADMIN_LABEL_STORAGE_KEY = 'vexion_admin_session_label';
         const ADMIN_REMEMBER_STORAGE_KEY = 'vexion_admin_remember_secret';
 
         function closeWin() {
@@ -730,6 +736,15 @@
             if (inlineRemember) inlineRemember.checked = remember;
         }
 
+        function syncAdminLabelInputs(value = '') {
+            const cleanValue = String(value || '');
+            const overlayLabel = document.getElementById('admin-auth-label');
+
+            if (overlayLabel && overlayLabel.value !== cleanValue) {
+                overlayLabel.value = cleanValue;
+            }
+        }
+
         function syncAdminPasswordInputs(value = '') {
             const cleanValue = String(value || '');
             const inlineInput = document.getElementById('admin-pass');
@@ -751,31 +766,78 @@
             );
         }
 
-        function persistAdminSecret(secret) {
+        function getDefaultAdminLabel() {
+            try {
+                return `${os.userInfo().username}@${os.hostname()}`;
+            } catch (error) {
+                return `admin@${os.hostname?.() || 'local-machine'}`;
+            }
+        }
+
+        function getAdminDeviceInfo() {
+            return `${os.userInfo().username}@${os.hostname()} | ${os.platform()} ${os.release()}`;
+        }
+
+        function getAdminLabel() {
+            const typedLabel = document.getElementById('admin-auth-label')?.value.trim() || '';
+            return typedLabel || activeAdminLabel || localStorage.getItem(ADMIN_LABEL_STORAGE_KEY) || getDefaultAdminLabel();
+        }
+
+        function getAdminSessionToken() {
+            return String(adminSessionToken || '').trim();
+        }
+
+        function persistAdminSession(sessionToken, adminLabel) {
             const remember = shouldRememberAdminSecret();
             localStorage.setItem(ADMIN_REMEMBER_STORAGE_KEY, remember ? 'true' : 'false');
 
-            if (remember && secret) {
-                localStorage.setItem(ADMIN_SECRET_STORAGE_KEY, secret);
+            if (remember && sessionToken) {
+                localStorage.setItem(ADMIN_SESSION_TOKEN_STORAGE_KEY, sessionToken);
+                localStorage.setItem(ADMIN_LABEL_STORAGE_KEY, adminLabel || getAdminLabel());
             } else {
-                localStorage.removeItem(ADMIN_SECRET_STORAGE_KEY);
+                localStorage.removeItem(ADMIN_SESSION_TOKEN_STORAGE_KEY);
+                localStorage.removeItem(ADMIN_LABEL_STORAGE_KEY);
             }
         }
 
         function setAdminAuthState(authenticated) {
             isAdminAuthenticated = Boolean(authenticated);
             const overlay = document.getElementById('admin-auth-screen');
+            const chip = document.getElementById('admin-session-chip');
 
             if (overlay) {
                 overlay.classList.toggle('hidden', isAdminAuthenticated);
             }
+
+            if (chip) {
+                chip.textContent = isAdminAuthenticated
+                    ? `SIGNED IN: ${activeAdminLabel || getAdminLabel()}`
+                    : 'PANEL LOCKED';
+                chip.style.color = isAdminAuthenticated ? '#63f3b1' : '#8fa8b8';
+            }
         }
 
-        function forgetRememberedAdmin() {
-            localStorage.removeItem(ADMIN_SECRET_STORAGE_KEY);
+        async function forgetRememberedAdmin() {
+            const savedToken = getAdminSessionToken() || localStorage.getItem(ADMIN_SESSION_TOKEN_STORAGE_KEY) || '';
+
+            if (savedToken) {
+                fetch(`${API}/admin-auth/logout`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ admin_session_token: savedToken })
+                }).catch(() => { });
+            }
+
+            adminSessionToken = '';
+            activeAdminLabel = '';
+            localStorage.removeItem(ADMIN_SESSION_TOKEN_STORAGE_KEY);
+            localStorage.removeItem(ADMIN_LABEL_STORAGE_KEY);
             localStorage.setItem(ADMIN_REMEMBER_STORAGE_KEY, 'false');
             syncAdminRememberInputs(false);
-            setAdminAuthStatus('Saved admin secret removed from this machine.', 'info');
+            syncAdminPasswordInputs('');
+            syncAdminLabelInputs(getDefaultAdminLabel());
+            setAdminAuthState(false);
+            setAdminAuthStatus('Saved admin session removed from this machine.', 'info');
         }
 
         function getAdminPassword() {
@@ -883,11 +945,20 @@
             throw new Error('Clipboard unavailable');
         }
 
-        async function postJson(path, payload) {
+        async function postJson(path, payload = {}) {
+            const bodyPayload = { ...(payload || {}) };
+
+            if (path.startsWith('/admin') && !path.startsWith('/admin-auth') && !bodyPayload.admin_password) {
+                const sessionToken = getAdminSessionToken();
+                if (sessionToken) {
+                    bodyPayload.admin_session_token = sessionToken;
+                }
+            }
+
             const response = await fetch(`${API}${path}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+                body: JSON.stringify(bodyPayload)
             });
 
             const rawText = await response.text();
@@ -944,6 +1015,7 @@
         async function generateKey() {
             const button = document.getElementById('gen-btn');
             const adminPass = getAdminPassword();
+            const sessionToken = getAdminSessionToken();
             const days = parseFloat(document.getElementById('key-days')?.value || '0');
             const game = document.getElementById('key-game')?.value;
             const keyText = document.getElementById('key-text');
@@ -953,8 +1025,8 @@
             const preregisterToggle = document.getElementById('pre-register-user');
             const shouldPreRegister = Boolean(preregisterToggle?.checked || userPass);
 
-            if (!adminPass) {
-                alert('Enter Admin Password first.');
+            if (!adminPass && !sessionToken) {
+                alert('Unlock the admin panel first.');
                 return;
             }
 
@@ -968,13 +1040,16 @@
 
             try {
                 const payload = {
-                    admin_password: adminPass,
                     days,
                     games: [game],
                     email: userEmail,
                     password: userPass,
                     pre_register: shouldPreRegister
                 };
+
+                if (adminPass && !sessionToken) {
+                    payload.admin_password = adminPass;
+                }
 
                 const data = await postJson('/admin/create-key', payload);
 
@@ -1038,13 +1113,14 @@
             const { silent = false } = options;
 
             const adminPass = getAdminPassword();
+            const sessionToken = getAdminSessionToken();
             const select = document.getElementById('manage-key-input');
 
             if (!select) {
                 return;
             }
 
-            if (!adminPass) {
+            if (!adminPass && !sessionToken) {
                 setAdminAuthState(false);
                 setAdminAuthStatus('Enter the admin secret first.', 'error');
                 if (!silent) {
@@ -1060,11 +1136,13 @@
                 await warmApi();
                 startApiKeepAlive();
                 select.innerHTML = '<option value="">Loading users...</option>';
-                syncAdminPasswordInputs(adminPass);
+                if (adminPass) {
+                    syncAdminPasswordInputs(adminPass);
+                }
 
-                const data = await postJson('/admin/load-keys', {
+                const data = await postJson('/admin/load-keys', adminPass ? {
                     admin_password: adminPass
-                });
+                } : {});
 
                 if (!data.success || !Array.isArray(data.keys)) {
                     select.innerHTML = '<option value="">Access Denied</option>';
@@ -1076,9 +1154,8 @@
                     return false;
                 }
 
-                persistAdminSecret(adminPass);
                 setAdminAuthState(true);
-                setAdminAuthStatus('Admin session active. Panel unlocked.', 'success');
+                setAdminAuthStatus(`Admin session active${activeAdminLabel ? ` as ${activeAdminLabel}` : ''}.`, 'success');
 
                 select.innerHTML = '';
 
@@ -1135,6 +1212,7 @@
 
             const authButton = document.getElementById('admin-auth-btn');
             const secret = getAdminPassword();
+            const adminLabel = getAdminLabel();
 
             if (!secret) {
                 setAdminAuthState(false);
@@ -1152,6 +1230,26 @@
             }
 
             try {
+                const login = await postJson('/admin-auth/login', {
+                    admin_password: secret,
+                    admin_label: adminLabel,
+                    device_info: getAdminDeviceInfo()
+                });
+
+                if (!login.success || !login.session_token) {
+                    setAdminAuthState(false);
+                    setAdminAuthStatus(login.error || 'Admin login failed.', 'error');
+                    return false;
+                }
+
+                adminSessionToken = login.session_token;
+                activeAdminLabel = login.admin_label || adminLabel;
+                persistAdminSession(adminSessionToken, activeAdminLabel);
+                syncAdminLabelInputs(activeAdminLabel);
+                syncAdminPasswordInputs('');
+                setAdminAuthState(true);
+                setAdminAuthStatus(`Admin session active as ${activeAdminLabel}.`, 'success');
+
                 const success = await loadKeysDropdown('', { silent: Boolean(options.silent) });
                 if (!success) {
                     return false;
@@ -1273,18 +1371,24 @@
         async function loadKey() {
             const identifier = getSelectedIdentifier();
             const adminPass = getAdminPassword();
+            const sessionToken = getAdminSessionToken();
 
-            if (!identifier || !adminPass) {
-                alert('Select a user and enter Admin Password first.');
+            if (!identifier || (!adminPass && !sessionToken)) {
+                alert('Unlock the admin panel first and select a user.');
                 return;
             }
 
             try {
-                const data = await postJson('/admin/get-key', {
+                const payload = {
                     identifier,
-                    license_key: normalizeLicenseKey(identifier),
-                    admin_password: adminPass
-                });
+                    license_key: normalizeLicenseKey(identifier)
+                };
+
+                if (adminPass && !sessionToken) {
+                    payload.admin_password = adminPass;
+                }
+
+                const data = await postJson('/admin/get-key', payload);
 
                 if (!data.success) {
                     alert(data.error || 'Failed to load selected user.');
@@ -1305,9 +1409,10 @@
         async function modifyKey(action, customDays = null) {
             const identifier = loadedUser?.identifier || getSelectedIdentifier();
             const adminPass = getAdminPassword();
+            const sessionToken = getAdminSessionToken();
 
-            if (!identifier || !adminPass) {
-                alert('Select a user and enter Admin Password first.');
+            if (!identifier || (!adminPass && !sessionToken)) {
+                alert('Unlock the admin panel first and select a user.');
                 return;
             }
 
@@ -1324,9 +1429,12 @@
 
             const payload = {
                 identifier,
-                license_key: loadedUser?.license_key || normalizeLicenseKey(identifier),
-                admin_password: adminPass
+                license_key: loadedUser?.license_key || normalizeLicenseKey(identifier)
             };
+
+            if (adminPass && !sessionToken) {
+                payload.admin_password = adminPass;
+            }
 
             if (action === 'add-time' || action === 'remove-time') {
                 payload.days = daysToSend;
