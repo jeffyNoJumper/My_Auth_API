@@ -4,7 +4,7 @@ const mongoose = require('mongoose');
 const crypto = require('crypto');
 const bcrypt = require("bcryptjs");
 const cors = require('cors');
-const { initDiscordBot, getDiscordBotStatus } = require('./discordBot');
+const { createDiscordInteractionsHandler, initDiscordBot, getDiscordBotStatus } = require('./discordBot');
 
 const fixDates = (data) => {
     for (let key in data) {
@@ -23,7 +23,7 @@ const User = require('../core/user');
 
 const app = express();
 
-app.use(express.json());
+app.post('/discord/interactions', express.raw({ type: 'application/json' }), createDiscordInteractionsHandler({ User, mongoose }));
 
 // --- 2. MIDDLEWARE ---
 app.use(express.json({ limit: '75mb' }));
