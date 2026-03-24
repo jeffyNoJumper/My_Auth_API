@@ -152,13 +152,13 @@ function buildResetActionRows(requests) {
             {
                 type: 2,
                 custom_id: `approve_reset:${reqDoc._id}`,
-                label: `Approve ${String(reqDoc.license_key || '').slice(0, 10) || 'Request'}`,
+                label: `Approve ${formatTicketNumber(reqDoc?.ticket_number) || String(reqDoc.license_key || '').slice(0, 10) || 'Request'}`,
                 style: 3
             },
             {
                 type: 2,
                 custom_id: `deny_reset:${reqDoc._id}`,
-                label: `Deny ${String(reqDoc.license_key || '').slice(0, 10) || 'Request'}`,
+                label: `Deny ${formatTicketNumber(reqDoc?.ticket_number) || String(reqDoc.license_key || '').slice(0, 10) || 'Request'}`,
                 style: 4
             }
         ]
@@ -173,6 +173,68 @@ function parseTicketNumber(rawValue) {
     const cleaned = normalizeResetLookupInput(rawValue).replace(/^#/, '');
     const numeric = Number.parseInt(cleaned, 10);
     return Number.isFinite(numeric) && numeric > 0 ? numeric : null;
+}
+
+function formatTicketNumber(ticketNumber) {
+    const normalized = Number(ticketNumber);
+    if (!Number.isFinite(normalized) || normalized <= 0) {
+        return null;
+    }
+
+    return `#${String(normalized).padStart(4, '0')}`;
+}
+
+async function findRequestByTicketInput(requestsCollection, rawValue, { status } = {}) {
+    const lookupValue = normalizeResetLookupInput(rawValue).replace(/^#/, '');
+
+    if (!lookupValue) {
+        return { ok: false, message: 'Request ID is required.' };
+    }
+
+    const numeric = parseTicketNumber(lookupValue);
+    if (!numeric) {
+        return { ok: false, message: 'Invalid request ID.' };
+    }
+
+    const baseQuery = {};
+    if (status) {
+        baseQuery.status = status;
+    }
+
+    if (lookupValue.length >= 4) {
+        const exactDoc = await requestsCollection.findOne({
+            ...baseQuery,
+            ticket_number: numeric
+        });
+
+        if (!exactDoc) {
+            return { ok: false, message: `Request ${formatTicketNumber(numeric) || `#${numeric}`} was not found.` };
+        }
+
+        return { ok: true, requestDoc: exactDoc };
+    }
+
+    const prefix = lookupValue.slice(0, 2);
+    const candidates = await requestsCollection
+        .find(baseQuery)
+        .sort({ date: -1 })
+        .limit(100)
+        .toArray();
+
+    const matches = candidates.filter(reqDoc => {
+        const formatted = formatTicketNumber(reqDoc?.ticket_number);
+        return formatted ? formatted.slice(1).startsWith(prefix) : false;
+    });
+
+    if (matches.length === 0) {
+        return { ok: false, message: `No request found for prefix #${prefix}.` };
+    }
+
+    if (matches.length > 1) {
+        return { ok: false, message: `Multiple requests match #${prefix}. Use the full 4-digit request number.` };
+    }
+
+    return { ok: true, requestDoc: matches[0] };
 }
 
 function getCommandOption(interaction, optionName) {
@@ -363,13 +425,13 @@ function buildCommandDefinitions() {
             name: 'approve',
             description: 'Admin: approve a pending HWID reset request.',
             type: 1,
-            options: [{ type: 3, name: 'request_id', description: 'MongoDB request ID', required: true }]
+            options: [{ type: 3, name: 'request_id', description: '4-digit ticket, first 2 digits, or MongoDB request ID', required: true }]
         },
         {
             name: 'deny',
             description: 'Admin: deny a pending HWID reset request.',
             type: 1,
-            options: [{ type: 3, name: 'request_id', description: 'MongoDB request ID', required: true }]
+            options: [{ type: 3, name: 'request_id', description: '4-digit ticket, first 2 digits, or MongoDB request ID', required: true }]
         }
     ];
 }
@@ -463,11 +525,15 @@ async function ensureHwidTicketNumber(mongoose, requestDoc) {
 async function processResetRequest(mongoose, User, requestId, status) {
     const requestsCollection = mongoose.connection.collection('requests');
     const lookupValue = normalizeResetLookupInput(requestId);
-    const ticketNumber = parseTicketNumber(lookupValue);
 
     let query;
-    if (ticketNumber) {
-        query = { ticket_number: ticketNumber, status: 'PENDING' };
+    if (/^#?\d{1,4}$/.test(lookupValue)) {
+        const ticketLookup = await findRequestByTicketInput(requestsCollection, lookupValue, { status: 'PENDING' });
+        if (!ticketLookup.ok) {
+            return { ok: false, message: ticketLookup.message };
+        }
+
+        query = { _id: ticketLookup.requestDoc._id, status: 'PENDING' };
     } else {
         let objectId;
         try {
@@ -512,23 +578,21 @@ function getModalTextValue(interaction, customId) {
 
 async function resolveResetLicenseKey(mongoose, rawInput) {
     const lookupValue = normalizeResetLookupInput(rawInput);
-    const ticketNumber = parseTicketNumber(lookupValue);
-
-    if (ticketNumber) {
-        const requestDoc = await mongoose.connection.collection('requests').findOne(
-            { ticket_number: ticketNumber },
-            { sort: { date: -1 } }
+    if (/^#?\d{1,4}$/.test(lookupValue)) {
+        const requestLookup = await findRequestByTicketInput(
+            mongoose.connection.collection('requests'),
+            lookupValue
         );
 
-        if (!requestDoc?.license_key) {
-            return { ok: false, message: `Request ${lookupValue.startsWith('#') ? lookupValue : `#${ticketNumber}`} was not found.` };
+        if (!requestLookup.ok || !requestLookup.requestDoc?.license_key) {
+            return { ok: false, message: requestLookup.message || `Request ${lookupValue} was not found.` };
         }
 
         return {
             ok: true,
-            licenseKey: String(requestDoc.license_key).toUpperCase(),
-            ticketNumber: requestDoc.ticket_number || ticketNumber,
-            requestDoc
+            licenseKey: String(requestLookup.requestDoc.license_key).toUpperCase(),
+            ticketNumber: requestLookup.requestDoc.ticket_number || null,
+            requestDoc: requestLookup.requestDoc
         };
     }
 
@@ -909,12 +973,12 @@ function createDiscordInteractionsHandler({ User, mongoose }) {
 
                 const lines = pending.map((reqDoc, index) => {
                     const when = formatExpiry(reqDoc?.date);
-                    const ticketLabel = reqDoc?.ticket_number ? `#${reqDoc.ticket_number}` : String(reqDoc._id);
+                    const ticketLabel = formatTicketNumber(reqDoc?.ticket_number) || String(reqDoc._id);
                     return `${index + 1}. \`${ticketLabel}\` | \`${reqDoc.license_key || 'N/A'}\` | ${when}`;
                 }).join('\n');
 
                 return jsonResponse(res, 200, interactionMessageResponse({
-                    content: `Pending HWID reset requests:\n${lines}\nUse /approve or /deny with the ticket number (for example \`#32\`) or the raw request ID, or use the buttons below for the first 5.`,
+                    content: `Pending HWID reset requests:\n${lines}\nUse /approve or /deny with the 4-digit ticket number, or just the first 2 digits if that prefix matches only one pending request.`,
                     components: buildResetActionRows(pending)
                 }));
             }
@@ -955,7 +1019,7 @@ function createDiscordInteractionsHandler({ User, mongoose }) {
                     customId: 'hwid_reset_modal',
                     title: 'HWID Reset Request',
                     label: 'Enter Request # or License Key',
-                    placeholder: '#32 or CS2X-XXXX-XXXX-XXXX'
+                    placeholder: '#0032, 00, or CS2X-XXXX-XXXX-XXXX'
                 }));
             }
 
@@ -1023,9 +1087,7 @@ function createDiscordInteractionsHandler({ User, mongoose }) {
 
                 if (existingPending) {
                     const ticketNumber = await ensureHwidTicketNumber(mongoose, existingPending);
-                    const ticketLabel = existingPending.ticket_number
-                        ? ` #${existingPending.ticket_number}`
-                        : (ticketNumber ? ` #${ticketNumber}` : '');
+                    const ticketLabel = formatTicketNumber(existingPending.ticket_number || ticketNumber);
 
                     await User.updateOne(
                         { _id: userData._id },
@@ -1033,7 +1095,7 @@ function createDiscordInteractionsHandler({ User, mongoose }) {
                     );
 
                     return jsonResponse(res, 200, interactionMessageResponse({
-                        content: `A reset request is already pending for \`${resolvedKey}\`${ticketLabel}.`
+                        content: `A reset request is already pending for \`${resolvedKey}\`${ticketLabel ? ` as ${ticketLabel}` : ''}.`
                     }));
                 }
 
@@ -1054,7 +1116,7 @@ function createDiscordInteractionsHandler({ User, mongoose }) {
                 );
 
                 return jsonResponse(res, 200, interactionMessageResponse({
-                    content: `Reset request created for \`${resolvedKey}\` as #${ticketNumber}. An admin can now approve it.`
+                    content: `Reset request created for \`${resolvedKey}\` as ${formatTicketNumber(ticketNumber) || `#${ticketNumber}`}. An admin can now approve it.`
                 }));
             }
         }
@@ -1077,5 +1139,7 @@ module.exports = {
     buildCommandDefinitions,
     createDiscordInteractionsHandler,
     getDiscordBotStatus,
-    initDiscordBot
+    initDiscordBot,
+    refreshStartupPanels,
+    syncCommands
 };
