@@ -2466,21 +2466,6 @@ async function handleRegister() {
         return;
     }
 
-    // ---------- OPTIONAL: FRONTEND EMAIL VERIFICATION ----------
-    try {
-        // Kickbox / similar service API example
-        const verifyRes = await fetch(`https://open.kickbox.com/v1/disposable/${email}`);
-        const verifyData = await verifyRes.json();
-
-        if (verifyData.disposable) {
-            await showErrorDialog("Disposable Email Blocked", "Disposable or fake emails are not allowed. Use a real email address.");
-            return;
-        }
-    } catch (err) {
-        console.warn("[EMAIL VERIFY] Could not verify email, proceeding anyway.", err);
-        // optional: continue registration or block
-    }
-
     btn.innerHTML = `<div class="spinner"></div> CREATING...`;
     btn.disabled = true;
 
@@ -2504,9 +2489,9 @@ async function handleRegister() {
             await showSuccessDialog("Account Ready", data.message || "Account created successfully. You can now log in.");
             closeModal('register-modal');
         } else if (data.error === "invalid_email") {
-            await showErrorDialog("Registration Failed", "Email is invalid or disposable.");
+            await showErrorDialog("Registration Failed", data.message || "Email is invalid or disposable.");
         } else {
-            await showErrorDialog("Registration Failed", data.error || "Unknown error");
+            await showErrorDialog("Registration Failed", data.message || data.error || "Unknown error");
         }
 
     } catch (err) {
