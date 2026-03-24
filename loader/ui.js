@@ -1435,6 +1435,10 @@ async function initializeLoader() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    if (document.body.classList.contains('login-active') && window.api?.setAuthWindow) {
+        window.api.setAuthWindow();
+    }
+
     hoistModalToBody('register-modal');
     hoistModalToBody('auto-login-modal');
     hoistModalToBody('game-launch-modal');
@@ -3933,7 +3937,13 @@ async function requestHWIDReset() {
             window.api.toggleDiscord(false);
         }
 
-        location.reload();
+        if (window.api?.setAuthWindow) {
+            window.api.setAuthWindow();
+        }
+
+        setTimeout(() => {
+            location.reload();
+        }, 40);
     }
 
     function refreshExpiryModal(expiryDate) {
