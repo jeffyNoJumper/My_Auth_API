@@ -34,7 +34,7 @@
 
         .panel {
             background: var(--bg-main);
-            padding: 40px 25px 25px 25px;
+            padding: 22px 25px 25px 25px;
             border-radius: 12px;
             width: 95vw;
             margin: auto;
@@ -46,47 +46,27 @@
             backdrop-filter: blur(10px);
         }
 
+        .panel.auth-card-mode {
+            width: auto;
+            padding: 0;
+            border-color: transparent;
+            background: transparent;
+            box-shadow: none;
+            backdrop-filter: none;
+        }
+
+        .panel.auth-card-mode > :not(#admin-auth-screen) {
+            display: none !important;
+        }
+
         /* --- INTERACTIVE ELEMENT FIX (NO-DRAG) --- */
-        input, select, button, .control-btn, .column, .time-input, .spinner {
+        input, select, button, .column, .time-input, .spinner {
             -webkit-app-region: no-drag;
             user-select: text;
         }
 
-        /* Titlebar */
         .titlebar {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 35px;
-            display: flex;
-            justify-content: flex-end;
-            align-items: center;
-            padding-right: 5px;
-            box-sizing: border-box;
-        }
-
-        .window-controls {
-            display: flex;
-            flex-direction: row;
-        }
-
-        .control-btn {
-            padding: 8px 15px;
-            cursor: pointer;
-            color: #666;
-            font-size: 12px;
-            transition: 0.2s;
-        }
-
-            .control-btn:hover {
-                background: rgba(255, 255, 255, 0.05);
-                color: var(--text);
-            }
-
-        .close-btn:hover {
-            background: var(--red) !important;
-            color: white !important;
+            display: none !important;
         }
 
         /* Layout Grid */
@@ -330,20 +310,34 @@
 
         .admin-auth-screen {
             position: absolute;
-            inset: 40px 0 10px 0;
+            inset: 0;
             z-index: 50;
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 10px 22px 14px;
+            padding: 12px 22px;
             background:
                 radial-gradient(circle at top, rgba(0, 149, 255, 0.12), transparent 45%),
                 linear-gradient(180deg, rgba(8, 10, 15, 0.94), rgba(6, 8, 12, 0.98));
-            border-radius: 0 0 12px 12px;
+            border-radius: 12px;
             backdrop-filter: blur(12px);
             -webkit-app-region: no-drag;
             box-sizing: border-box;
             overflow: hidden;
+        }
+
+        .panel.auth-card-mode .admin-auth-screen {
+            position: static;
+            padding: 0;
+            background: transparent;
+            border-radius: 0;
+            overflow: visible;
+            backdrop-filter: none;
+            -webkit-app-region: drag;
+        }
+
+        .panel.auth-card-mode .admin-auth-card {
+            -webkit-app-region: drag;
         }
 
         .admin-auth-screen.hidden {
@@ -355,6 +349,7 @@
             max-width: 404px;
             padding: 20px 20px 14px;
             border-radius: 16px;
+            position: relative;
             background:
                 linear-gradient(145deg, rgba(17, 20, 29, 0.96), rgba(8, 10, 15, 0.96));
             border: 1px solid rgba(0, 149, 255, 0.22);
@@ -362,6 +357,32 @@
                 0 22px 48px rgba(0, 0, 0, 0.45),
                 0 0 22px rgba(0, 149, 255, 0.10);
             box-sizing: border-box;
+        }
+
+        .admin-auth-close {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            width: 30px;
+            height: 30px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 999px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            background: rgba(255, 255, 255, 0.04);
+            color: #7f98a6;
+            font-size: 14px;
+            font-weight: 900;
+            cursor: pointer;
+            transition: 0.2s ease;
+            -webkit-app-region: no-drag;
+        }
+
+        .admin-auth-close:hover {
+            background: var(--red);
+            border-color: rgba(255, 84, 84, 0.4);
+            color: #fff;
         }
 
         .admin-auth-kicker {
@@ -468,6 +489,7 @@
 
         <div id="admin-auth-screen" class="admin-auth-screen">
             <div class="admin-auth-card">
+                <button type="button" class="admin-auth-close" onclick="closeWin()">✕</button>
                 <div class="admin-auth-kicker">
                     <span>VEXION AUTH</span>
                     <span>ADMIN CONSOLE</span>
@@ -858,9 +880,14 @@
             isAdminAuthenticated = Boolean(authenticated);
             const overlay = document.getElementById('admin-auth-screen');
             const chip = document.getElementById('admin-session-chip');
+            const panel = document.querySelector('.panel');
 
             if (overlay) {
                 overlay.classList.toggle('hidden', isAdminAuthenticated);
+            }
+
+            if (panel) {
+                panel.classList.toggle('auth-card-mode', !isAdminAuthenticated);
             }
 
             if (chip) {
@@ -870,6 +897,7 @@
                 chip.style.color = isAdminAuthenticated ? '#63f3b1' : '#8fa8b8';
             }
 
+            ipcRenderer.send(isAdminAuthenticated ? 'admin-expand' : 'admin-collapse');
             setOwnerToolsVisibility();
         }
 
