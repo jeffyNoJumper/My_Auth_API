@@ -1061,12 +1061,18 @@
 
         async function postJson(path, payload = {}) {
             const bodyPayload = { ...(payload || {}) };
+            const sessionToken = getAdminSessionToken();
 
-            if (path.startsWith('/admin') && !path.startsWith('/admin-auth') && !bodyPayload.admin_password) {
-                const sessionToken = getAdminSessionToken();
-                if (sessionToken) {
-                    bodyPayload.admin_session_token = sessionToken;
-                }
+            const shouldAttachAdminSession =
+                Boolean(sessionToken) &&
+                !bodyPayload.admin_password &&
+                (
+                    (path.startsWith('/admin') && !path.startsWith('/admin-auth')) ||
+                    path === '/admin-auth/create-admin'
+                );
+
+            if (shouldAttachAdminSession) {
+                bodyPayload.admin_session_token = sessionToken;
             }
 
             const response = await fetch(`${API}${path}`, {
