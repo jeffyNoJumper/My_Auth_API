@@ -12,7 +12,7 @@ const STORE_URL = process.env.STORE_URL || 'https://whosthesource.mysellauth.com
 const APPLICATION_ID = process.env.DISCORD_APPLICATION_ID || process.env.APPLICATION_ID || process.env.CLIENT_ID || '1476724607485743277';
 const PUBLIC_KEY = process.env.DISCORD_PUBLIC_KEY || '';
 
-const PRODUCT_CHOICES = ['CS2', 'FiveM', 'GTAV', 'Warzone', 'All-Access'];
+const PRODUCT_CHOICES = ['CS2', 'CS2 Skin Changer', 'FiveM', 'GTAV', 'Warzone', 'All-Access'];
 const EPHEMERAL_FLAG = 64;
 const DISCORD_API_MAX_RETRIES = 5;
 
@@ -40,6 +40,7 @@ function normalizeGameName(value) {
     const normalized = cleaned.toUpperCase();
 
     if (normalized === 'CS2' || normalized === 'COUNTER-STRIKE 2') return 'CS2';
+    if (normalized === 'CS2 SKIN CHANGER' || normalized === 'CS2 SKIN' || normalized === 'SKIN CHANGER') return 'CS2 Skin Changer';
     if (normalized === 'FIVEM' || normalized === 'FIVE M') return 'FiveM';
     if (normalized === 'GTAV' || normalized === 'GTA V' || normalized === 'GTA5') return 'GTAV';
     if (normalized === 'WARZONE' || normalized === 'COD') return 'Warzone';
@@ -50,6 +51,7 @@ function normalizeGameName(value) {
 function generateLicenseKey(gameName) {
     const gamePrefixMap = {
         CS2: 'CS2X',
+        'CS2 Skin Changer': 'CS2S',
         FiveM: 'FIVM',
         GTAV: 'GTAV',
         Warzone: 'WARZ',
