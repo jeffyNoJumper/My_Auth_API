@@ -299,6 +299,15 @@ function interactionMessageResponse({ content = '', embeds = [], components = []
     };
 }
 
+function interactionDeferredResponse({ ephemeral = true } = {}) {
+    return {
+        type: 5,
+        data: {
+            flags: ephemeral ? EPHEMERAL_FLAG : undefined
+        }
+    };
+}
+
 function interactionModalResponse({ customId, title, label, placeholder, fieldId = 'license_key', maxLength = 64 }) {
     return {
         type: 9,
@@ -327,6 +336,14 @@ function interactionModalResponse({ customId, title, label, placeholder, fieldId
 
 function jsonResponse(res, statusCode, payload) {
     res.status(statusCode).json(payload);
+}
+
+function buildWebhookMessagePayload({ content = '', embeds = [], components = [] } = {}) {
+    return {
+        content,
+        embeds,
+        components
+    };
 }
 
 function sleep(ms) {
@@ -399,6 +416,84 @@ async function requestDiscordApi(method, path, token, body, attempt = 0) {
     }
 
     return response.json();
+}
+
+async function requestDiscordWebhook(method, path, body, attempt = 0) {
+    const response = await fetch(`https://discord.com/api/v10${path}`, {
+        method,
+        headers: {
+            'Content-Type': 'application/json',
+            'User-Agent': 'VEXION-Interactions/1.0'
+        },
+        body: body ? JSON.stringify(body) : undefined
+    });
+
+    if (response.status === 429) {
+        const retryAfterHeader = response.headers.get('retry-after') || response.headers.get('x-ratelimit-reset-after');
+        const retryAfterSeconds = Number.parseFloat(retryAfterHeader || '');
+        const fallbackSeconds = Math.min(5 * (attempt + 1), 20);
+        const waitMs = Math.ceil((Number.isFinite(retryAfterSeconds) ? retryAfterSeconds : fallbackSeconds) * 1000);
+        const errorText = await response.text();
+        const rateLimitMessage = `Discord webhook 429 on ${method} ${path}; retrying in ${waitMs}ms`;
+        discordBotState.lastWarn = rateLimitMessage;
+        console.warn(`[DISCORD INTERACTIONS] ${rateLimitMessage}`);
+
+        if (attempt >= DISCORD_API_MAX_RETRIES) {
+            throw new Error(`Discord webhook 429: ${errorText.slice(0, 300)}`);
+        }
+
+        await sleep(waitMs);
+        return requestDiscordWebhook(method, path, body, attempt + 1);
+    }
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Discord webhook ${response.status}: ${errorText.slice(0, 300)}`);
+    }
+
+    if (response.status === 204) {
+        return null;
+    }
+
+    return response.json();
+}
+
+async function editDeferredInteractionResponse(interaction, payload) {
+    const applicationId = interaction?.application_id || APPLICATION_ID;
+    const interactionToken = interaction?.token;
+
+    if (!applicationId || !interactionToken) {
+        throw new Error('Missing interaction webhook identifiers.');
+    }
+
+    return requestDiscordWebhook(
+        'PATCH',
+        `/webhooks/${applicationId}/${interactionToken}/messages/@original`,
+        buildWebhookMessagePayload(payload)
+    );
+}
+
+function queueDeferredInteraction(res, interaction, work, { ephemeral = true } = {}) {
+    jsonResponse(res, 200, interactionDeferredResponse({ ephemeral }));
+
+    setTimeout(() => {
+        void Promise.resolve()
+            .then(work)
+            .then((payload) => editDeferredInteractionResponse(interaction, payload || { content: 'Done.' }))
+            .catch(async (error) => {
+                discordBotState.lastError = error?.message || String(error);
+                console.error('[DISCORD INTERACTIONS] Deferred interaction failure:', error);
+
+                try {
+                    await editDeferredInteractionResponse(interaction, {
+                        content: `Command failed: ${error?.message || 'Unknown error'}`
+                    });
+                } catch (followupError) {
+                    discordBotState.lastWarn = followupError?.message || String(followupError);
+                    console.warn('[DISCORD INTERACTIONS] Failed to edit deferred response:', followupError?.message || followupError);
+                }
+            });
+    }, 0);
 }
 
 async function fetchTextChannelMessages(channelId, token, limit = 25) {
@@ -810,43 +905,47 @@ function createDiscordInteractionsHandler({ User, mongoose }) {
             }
 
             if (commandName === 'status') {
-                const userData = await User.findOne({ discord_id: String(discordUser.id) }).lean();
+                return queueDeferredInteraction(res, interaction, async () => {
+                    const userData = await User.findOne({ discord_id: String(discordUser.id) }).lean();
 
-                if (!userData) {
-                    return jsonResponse(res, 200, interactionMessageResponse({
-                        embeds: [{
-                            title: 'No Account Linked',
-                            description: 'Your Discord account is not linked to any current key.\nUse `/redeem_key` or the panel button first.',
-                            color: 0xEF4444
-                        }]
-                    }));
-                }
+                    if (!userData) {
+                        return {
+                            embeds: [{
+                                title: 'No Account Linked',
+                                description: 'Your Discord account is not linked to any current key.\nUse `/redeem_key` or the panel button first.',
+                                color: 0xEF4444
+                            }]
+                        };
+                    }
 
-                return jsonResponse(res, 200, interactionMessageResponse({
-                    embeds: [buildStatusEmbed(userData, discordUser)]
-                }));
+                    return {
+                        embeds: [buildStatusEmbed(userData, discordUser)]
+                    };
+                });
             }
 
             if (commandName === 'redeem_key' || commandName === 'link') {
-                const cleanKey = String(getCommandOption(interaction, 'key') || '').trim().toUpperCase();
-                const result = await linkLicenseToDiscord(User, cleanKey, discordUser.id);
+                return queueDeferredInteraction(res, interaction, async () => {
+                    const cleanKey = String(getCommandOption(interaction, 'key') || '').trim().toUpperCase();
+                    const result = await linkLicenseToDiscord(User, cleanKey, discordUser.id);
 
-                if (!result.ok) {
-                    return jsonResponse(res, 200, interactionMessageResponse({ content: result.message }));
-                }
+                    if (!result.ok) {
+                        return { content: result.message };
+                    }
 
-                if (result.pending) {
-                    return jsonResponse(res, 200, interactionMessageResponse({
-                        content:
-                            `Voucher linked to your Discord.\n` +
-                            `License: \`${cleanKey}\`\n` +
-                            `Use the loader to finish redemption and activate the voucher.`
-                    }));
-                }
+                    if (result.pending) {
+                        return {
+                            content:
+                                `Voucher linked to your Discord.\n` +
+                                `License: \`${cleanKey}\`\n` +
+                                `Use the loader to finish redemption and activate the voucher.`
+                        };
+                    }
 
-                return jsonResponse(res, 200, interactionMessageResponse({
-                    embeds: [buildStatusEmbed(result.user, discordUser)]
-                }));
+                    return {
+                        embeds: [buildStatusEmbed(result.user, discordUser)]
+                    };
+                });
             }
 
             if (commandName === 'genkey') {
@@ -854,78 +953,80 @@ function createDiscordInteractionsHandler({ User, mongoose }) {
                     return jsonResponse(res, 200, interactionMessageResponse({ content: 'Admin access required.' }));
                 }
 
-                const game = normalizeGameName(getCommandOption(interaction, 'game'));
-                const days = Number(getCommandOption(interaction, 'days') ?? 30);
-                const email = String(getCommandOption(interaction, 'email') || '').trim().toLowerCase();
-                const password = String(getCommandOption(interaction, 'password') || '').trim();
-                const shouldPreRegister = Boolean(getCommandOption(interaction, 'pre_register'));
+                return queueDeferredInteraction(res, interaction, async () => {
+                    const game = normalizeGameName(getCommandOption(interaction, 'game'));
+                    const days = Number(getCommandOption(interaction, 'days') ?? 30);
+                    const email = String(getCommandOption(interaction, 'email') || '').trim().toLowerCase();
+                    const password = String(getCommandOption(interaction, 'password') || '').trim();
+                    const shouldPreRegister = Boolean(getCommandOption(interaction, 'pre_register'));
 
-                if (shouldPreRegister && !email) {
-                    return jsonResponse(res, 200, interactionMessageResponse({
-                        content: 'Email is required when `pre_register` is enabled.'
-                    }));
-                }
-
-                const newKey = generateLicenseKey(game);
-                const voucherDoc = new User({
-                    license_key: newKey,
-                    duration_days: days,
-                    games: [game],
-                    email: buildPendingVoucherEmail(newKey),
-                    password: null,
-                    hwid: null,
-                    expiry_date: null,
-                    reserved_email: email || null
-                });
-
-                let existingUser = null;
-                let accountCreated = false;
-
-                if (email) {
-                    existingUser = await User.findOne({ email });
-                }
-
-                if (shouldPreRegister) {
-                    if (existingUser) {
-                        if (!existingUser.password && password) {
-                            existingUser.password = password;
-                            await existingUser.save();
-                        }
-                    } else {
-                        await new User({
-                            email,
-                            password: password || null,
-                            hwid: null,
-                            games: [],
-                            expiry_date: null,
-                            license_key: null,
-                            duration_days: days
-                        }).save();
-                        accountCreated = true;
+                    if (shouldPreRegister && !email) {
+                        return {
+                            content: 'Email is required when `pre_register` is enabled.'
+                        };
                     }
-                }
 
-                await voucherDoc.save();
+                    const newKey = generateLicenseKey(game);
+                    const voucherDoc = new User({
+                        license_key: newKey,
+                        duration_days: days,
+                        games: [game],
+                        email: buildPendingVoucherEmail(newKey),
+                        password: null,
+                        hwid: null,
+                        expiry_date: null,
+                        reserved_email: email || null
+                    });
 
-                const mode = shouldPreRegister
-                    ? (accountCreated ? 'pre-registered-new-user' : 'pre-registered-existing-user')
-                    : (email ? 'reserved-key' : 'standalone-key');
+                    let existingUser = null;
+                    let accountCreated = false;
 
-                return jsonResponse(res, 200, interactionMessageResponse({
-                    embeds: [{
-                        title: 'Key Generated',
-                        color: 0x22C55E,
-                        fields: [
-                            embedField('License', `\`${newKey}\``, false),
-                            embedField('Game', `\`${game}\``, true),
-                            embedField('Duration', `\`${days}\` days`, true),
-                            embedField('Mode', `\`${mode}\``, false),
-                            ...(email ? [embedField('Email', `\`${email}\``, false)] : []),
-                            ...(password ? [embedField('Password', `\`${password}\``, false)] : [])
-                        ],
-                        timestamp: new Date().toISOString()
-                    }]
-                }));
+                    if (email) {
+                        existingUser = await User.findOne({ email });
+                    }
+
+                    if (shouldPreRegister) {
+                        if (existingUser) {
+                            if (!existingUser.password && password) {
+                                existingUser.password = password;
+                                await existingUser.save();
+                            }
+                        } else {
+                            await new User({
+                                email,
+                                password: password || null,
+                                hwid: null,
+                                games: [],
+                                expiry_date: null,
+                                license_key: null,
+                                duration_days: days
+                            }).save();
+                            accountCreated = true;
+                        }
+                    }
+
+                    await voucherDoc.save();
+
+                    const mode = shouldPreRegister
+                        ? (accountCreated ? 'pre-registered-new-user' : 'pre-registered-existing-user')
+                        : (email ? 'reserved-key' : 'standalone-key');
+
+                    return {
+                        embeds: [{
+                            title: 'Key Generated',
+                            color: 0x22C55E,
+                            fields: [
+                                embedField('License', `\`${newKey}\``, false),
+                                embedField('Game', `\`${game}\``, true),
+                                embedField('Duration', `\`${days}\` days`, true),
+                                embedField('Mode', `\`${mode}\``, false),
+                                ...(email ? [embedField('Email', `\`${email}\``, false)] : []),
+                                ...(password ? [embedField('Password', `\`${password}\``, false)] : [])
+                            ],
+                            timestamp: new Date().toISOString()
+                        }]
+                    };
+                });
             }
 
             if (commandName === 'announce_loader') {
@@ -1010,26 +1111,28 @@ function createDiscordInteractionsHandler({ User, mongoose }) {
                     return jsonResponse(res, 200, interactionMessageResponse({ content: 'Admin access required.' }));
                 }
 
-                const pending = await mongoose.connection.collection('requests')
-                    .find({ status: 'PENDING' })
-                    .sort({ date: -1 })
-                    .limit(10)
-                    .toArray();
+                return queueDeferredInteraction(res, interaction, async () => {
+                    const pending = await mongoose.connection.collection('requests')
+                        .find({ status: 'PENDING' })
+                        .sort({ date: -1 })
+                        .limit(10)
+                        .toArray();
 
-                if (pending.length === 0) {
-                    return jsonResponse(res, 200, interactionMessageResponse({ content: 'No pending HWID reset requests.' }));
-                }
+                    if (pending.length === 0) {
+                        return { content: 'No pending HWID reset requests.' };
+                    }
 
-                const lines = pending.map((reqDoc, index) => {
-                    const when = formatExpiry(reqDoc?.date);
-                    const ticketLabel = formatTicketNumber(reqDoc?.ticket_number) || String(reqDoc._id);
-                    return `${index + 1}. \`${ticketLabel}\` | \`${reqDoc.license_key || 'N/A'}\` | ${when}`;
-                }).join('\n');
+                    const lines = pending.map((reqDoc, index) => {
+                        const when = formatExpiry(reqDoc?.date);
+                        const ticketLabel = formatTicketNumber(reqDoc?.ticket_number) || String(reqDoc._id);
+                        return `${index + 1}. \`${ticketLabel}\` | \`${reqDoc.license_key || 'N/A'}\` | ${when}`;
+                    }).join('\n');
 
-                return jsonResponse(res, 200, interactionMessageResponse({
-                    content: `Pending HWID reset requests:\n${lines}\nUse /approve or /deny with the 4-digit ticket number, or just the first 2 digits if that prefix matches only one pending request.`,
-                    components: buildResetActionRows(pending)
-                }));
+                    return {
+                        content: `Pending HWID reset requests:\n${lines}\nUse /approve or /deny with the 4-digit ticket number, or just the first 2 digits if that prefix matches only one pending request.`,
+                        components: buildResetActionRows(pending)
+                    };
+                });
             }
 
             if (commandName === 'approve' || commandName === 'deny') {
@@ -1037,11 +1140,13 @@ function createDiscordInteractionsHandler({ User, mongoose }) {
                     return jsonResponse(res, 200, interactionMessageResponse({ content: 'Admin access required.' }));
                 }
 
-                const requestId = String(getCommandOption(interaction, 'request_id') || '').trim();
-                const status = commandName === 'approve' ? 'APPROVED' : 'DENIED';
-                const result = await processResetRequest(mongoose, User, requestId, status);
+                return queueDeferredInteraction(res, interaction, async () => {
+                    const requestId = String(getCommandOption(interaction, 'request_id') || '').trim();
+                    const status = commandName === 'approve' ? 'APPROVED' : 'DENIED';
+                    const result = await processResetRequest(mongoose, User, requestId, status);
 
-                return jsonResponse(res, 200, interactionMessageResponse({ content: result.message }));
+                    return { content: result.message };
+                });
             }
 
             return jsonResponse(res, 200, interactionMessageResponse({ content: 'Unknown command.' }));
@@ -1077,11 +1182,13 @@ function createDiscordInteractionsHandler({ User, mongoose }) {
                     return jsonResponse(res, 200, interactionMessageResponse({ content: 'Admin access required.' }));
                 }
 
-                const [, requestId] = customId.split(':');
-                const status = customId.startsWith('approve_reset:') ? 'APPROVED' : 'DENIED';
-                const result = await processResetRequest(mongoose, User, requestId, status);
+                return queueDeferredInteraction(res, interaction, async () => {
+                    const [, requestId] = customId.split(':');
+                    const status = customId.startsWith('approve_reset:') ? 'APPROVED' : 'DENIED';
+                    const result = await processResetRequest(mongoose, User, requestId, status);
 
-                return jsonResponse(res, 200, interactionMessageResponse({ content: result.message }));
+                    return { content: result.message };
+                });
             }
 
             return jsonResponse(res, 200, interactionMessageResponse({ content: 'Unknown button action.' }));
@@ -1094,79 +1201,83 @@ function createDiscordInteractionsHandler({ User, mongoose }) {
             const discordUser = interaction?.member?.user || interaction?.user || {};
 
             if (modalId === 'redeem_key_modal') {
-                const result = await linkLicenseToDiscord(User, cleanKey, discordUser.id);
+                return queueDeferredInteraction(res, interaction, async () => {
+                    const result = await linkLicenseToDiscord(User, cleanKey, discordUser.id);
 
-                if (!result.ok) {
-                    return jsonResponse(res, 200, interactionMessageResponse({ content: result.message }));
-                }
+                    if (!result.ok) {
+                        return { content: result.message };
+                    }
 
-                if (result.pending) {
-                    return jsonResponse(res, 200, interactionMessageResponse({
-                        content:
-                            `Voucher linked to your Discord.\n` +
-                            `License: \`${cleanKey}\`\n` +
-                            `Use the loader to finish redemption and activate the voucher.`
-                    }));
-                }
+                    if (result.pending) {
+                        return {
+                            content:
+                                `Voucher linked to your Discord.\n` +
+                                `License: \`${cleanKey}\`\n` +
+                                `Use the loader to finish redemption and activate the voucher.`
+                        };
+                    }
 
-                return jsonResponse(res, 200, interactionMessageResponse({
-                    embeds: [buildStatusEmbed(result.user, discordUser)]
-                }));
+                    return {
+                        embeds: [buildStatusEmbed(result.user, discordUser)]
+                    };
+                });
             }
 
             if (modalId === 'hwid_reset_modal') {
-                const requestsCollection = mongoose.connection.collection('requests');
-                const resolvedTarget = await resolveResetLicenseKey(mongoose, modalInput);
+                return queueDeferredInteraction(res, interaction, async () => {
+                    const requestsCollection = mongoose.connection.collection('requests');
+                    const resolvedTarget = await resolveResetLicenseKey(mongoose, modalInput);
 
-                if (!resolvedTarget.ok) {
-                    return jsonResponse(res, 200, interactionMessageResponse({ content: resolvedTarget.message }));
-                }
+                    if (!resolvedTarget.ok) {
+                        return { content: resolvedTarget.message };
+                    }
 
-                const resolvedKey = resolvedTarget.licenseKey;
-                const userData = await User.findOne({ license_key: resolvedKey }).lean();
+                    const resolvedKey = resolvedTarget.licenseKey;
+                    const userData = await User.findOne({ license_key: resolvedKey }).lean();
 
-                if (!userData) {
-                    return jsonResponse(res, 200, interactionMessageResponse({ content: `Key \`${resolvedKey}\` was not found.` }));
-                }
+                    if (!userData) {
+                        return { content: `Key \`${resolvedKey}\` was not found.` };
+                    }
 
-                const existingPending = await requestsCollection.findOne(
-                    { license_key: resolvedKey, status: 'PENDING' },
-                    { sort: { date: -1 } }
-                );
+                    const existingPending = await requestsCollection.findOne(
+                        { license_key: resolvedKey, status: 'PENDING' },
+                        { sort: { date: -1 } }
+                    );
 
-                if (existingPending) {
-                    const ticketNumber = await ensureHwidTicketNumber(mongoose, existingPending);
-                    const ticketLabel = formatTicketNumber(existingPending.ticket_number || ticketNumber);
+                    if (existingPending) {
+                        const ticketNumber = await ensureHwidTicketNumber(mongoose, existingPending);
+                        const ticketLabel = formatTicketNumber(existingPending.ticket_number || ticketNumber);
+
+                        await User.updateOne(
+                            { _id: userData._id },
+                            { $set: { discord_id: String(discordUser.id) } }
+                        );
+
+                        return {
+                            content: `A reset request is already pending for \`${resolvedKey}\`${ticketLabel ? ` as ${ticketLabel}` : ''}.`
+                        };
+                    }
+
+                    const ticketNumber = await getNextHwidTicketNumber(mongoose);
+                    await requestsCollection.insertOne({
+                        hwid: userData.hwid || 'N/A',
+                        license_key: resolvedKey,
+                        type: 'ADMIN-PANEL_RESET',
+                        status: 'PENDING',
+                        ticket_number: ticketNumber,
+                        date: new Date(),
+                        discord_id: String(discordUser.id)
+                    });
 
                     await User.updateOne(
                         { _id: userData._id },
                         { $set: { discord_id: String(discordUser.id) } }
                     );
 
-                    return jsonResponse(res, 200, interactionMessageResponse({
-                        content: `A reset request is already pending for \`${resolvedKey}\`${ticketLabel ? ` as ${ticketLabel}` : ''}.`
-                    }));
-                }
-
-                const ticketNumber = await getNextHwidTicketNumber(mongoose);
-                await requestsCollection.insertOne({
-                    hwid: userData.hwid || 'N/A',
-                    license_key: resolvedKey,
-                    type: 'ADMIN-PANEL_RESET',
-                    status: 'PENDING',
-                    ticket_number: ticketNumber,
-                    date: new Date(),
-                    discord_id: String(discordUser.id)
+                    return {
+                        content: `Reset request created for \`${resolvedKey}\` as ${formatTicketNumber(ticketNumber) || `#${ticketNumber}`}. An admin can now approve it.`
+                    };
                 });
-
-                await User.updateOne(
-                    { _id: userData._id },
-                    { $set: { discord_id: String(discordUser.id) } }
-                );
-
-                return jsonResponse(res, 200, interactionMessageResponse({
-                    content: `Reset request created for \`${resolvedKey}\` as ${formatTicketNumber(ticketNumber) || `#${ticketNumber}`}. An admin can now approve it.`
-                }));
             }
         }
 
