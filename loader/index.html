@@ -1118,16 +1118,44 @@
         </div>
 
         <div id="game-launch-modal" class="modal-overlay hidden">
-            <div class="modal-content glass-card game-launch-modal-card">
-                <div class="game-launch-hero">
-                    <div>
-                        <span id="game-launch-kicker" class="game-launch-kicker">MODULE SELECT</span>
-                        <h3 id="game-launch-title" class="game-launch-title">GAME MODULE SELECT</h3>
-                    </div>
-                    <span id="game-launch-status" class="game-launch-status">ACCESS VERIFIED</span>
+            <div id="game-launch-modal-card" class="modal-content glass-card game-launch-modal-card" data-game-theme="default" data-launch-state="locked">
+                <div class="game-launch-ambient" aria-hidden="true">
+                    <span class="game-launch-orb game-launch-orb-primary"></span>
+                    <span class="game-launch-orb game-launch-orb-secondary"></span>
+                    <span class="game-launch-grid-glow"></span>
                 </div>
 
-                <p id="game-launch-copy" class="game-launch-copy">Choose the module route you want to use for this title.</p>
+                <div class="game-launch-hero">
+                    <div class="game-launch-hero-copy-wrap">
+                        <span id="game-launch-kicker" class="game-launch-kicker">MODULE SELECT</span>
+                        <h3 id="game-launch-title" class="game-launch-title">GAME MODULE SELECT</h3>
+                        <p id="game-launch-copy" class="game-launch-copy">Choose the module route you want to use for this title.</p>
+                    </div>
+                    <div class="game-launch-hero-side">
+                        <span id="game-launch-status" class="game-launch-status">ACCESS VERIFIED</span>
+                        <span id="game-launch-side-note" class="game-launch-side-note">Route status</span>
+                    </div>
+                </div>
+
+                <div class="game-launch-meta-row">
+                    <div class="game-launch-meta-card">
+                        <span class="game-launch-meta-label">Launcher</span>
+                        <strong id="game-launch-launcher" class="game-launch-meta-value">Launcher</strong>
+                    </div>
+                    <div class="game-launch-meta-card">
+                        <span class="game-launch-meta-label">Access</span>
+                        <strong id="game-launch-entitlement" class="game-launch-meta-value">Pending</strong>
+                    </div>
+                    <div class="game-launch-meta-card">
+                        <span class="game-launch-meta-label">Routes</span>
+                        <strong id="game-launch-route-count" class="game-launch-meta-value">0 / 0 ONLINE</strong>
+                    </div>
+                    <div class="game-launch-meta-card">
+                        <span class="game-launch-meta-label">Assets</span>
+                        <strong id="game-launch-assets" class="game-launch-meta-value">assets/</strong>
+                    </div>
+                </div>
+
                 <p id="game-launch-update" class="game-launch-update">Module availability is checked against the assets folder before launch.</p>
 
                 <div id="game-launch-choice-grid" class="game-launch-choice-grid"></div>
