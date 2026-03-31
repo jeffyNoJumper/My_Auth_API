@@ -118,43 +118,94 @@ const externalLinkConfigs = {
 };
 
 let currentUserPrefix = localStorage.getItem('user_prefix') || "";
+let currentUserGames = new Set();
+
+const entitlementPrefixMap = {
+    ALLX: "All-Access",
+    LIFE: "All-Access",
+    CS2X: "CS2",
+    CS2S: "CS2 Skin Changer",
+    FIVM: "FiveM",
+    GTAV: "GTAV",
+    WARZ: "Warzone"
+};
 
 const gameModuleConfigs = {
     CS2: {
         key: "CS2",
         displayName: "CS2",
         prefix: "CS2X",
+        accessGame: "CS2",
+        accessRequirementLabel: "CS2X / CS2S",
         launcher: "Steam",
-        modalCopy: "Choose the CS2 route you want to use before the Steam handoff begins.",
-        internalNote: "Uses the CS2 DLL injector path from assets.",
-        externalNote: "Uses the CS2 external EXE route from assets."
+        modalCopy: "Choose the CS2 route you want to use before the Steam handoff begins. The skin changer uses its own entitlement and route.",
+        internalNote: "Uses the CS2 DLL injector.",
+        externalNote: "Uses the CS2 external EXE.",
+        routes: [
+            {
+                id: "internal",
+                choiceLabel: "INTERNAL",
+                choiceIcon: "INT",
+                note: "Uses the CS2 DLL injector path from assets.",
+                foot: "Best when you want the in-game route.",
+                requiredPrefixes: ["CS2X"],
+                requiredGames: ["CS2"],
+                requirementLabel: "CS2X"
+            },
+            {
+                id: "external",
+                choiceLabel: "EXTERNAL",
+                choiceIcon: "EXT",
+                note: "Uses the CS2 external EXE route from assets.",
+                foot: "Best when you want the standalone route.",
+                requiredPrefixes: ["CS2X"],
+                requiredGames: ["CS2"],
+                requirementLabel: "CS2X"
+            },
+            {
+                id: "skin-changer",
+                choiceLabel: "SKIN CHANGER",
+                choiceIcon: "SKN",
+                note: "Launches the dedicated VEX CS2 skin changer from assets/cs2.",
+                foot: "Requires the dedicated CS2S entitlement or All Access.",
+                requiredPrefixes: ["CS2S"],
+                requiredGames: ["CS2 Skin Changer"],
+                requirementLabel: "CS2S"
+            }
+        ]
     },
     FIVEM: {
         key: "FIVEM",
         displayName: "FiveM",
         prefix: "FIVM",
+        accessGame: "FiveM",
+        accessRequirementLabel: "FIVM",
         launcher: "CFX Launcher",
         modalCopy: "FiveM launch routing is ready now. Its internal and external slots will light up when you add the FiveM binaries.",
-        internalNote: "Requires a FiveM DLL module in assets.",
-        externalNote: "Requires a FiveM EXE module in assets."
+        internalNote: "Requires a FiveM DLL module.",
+        externalNote: "Requires a FiveM EXE module."
     },
     GTAV: {
         key: "GTAV",
         displayName: "GTA V",
         prefix: "GTAV",
+        accessGame: "GTAV",
+        accessRequirementLabel: "GTAV",
         launcher: "Rockstar",
         modalCopy: "GTA V is prepared for a dedicated internal and external route as soon as the GTA module files are added.",
-        internalNote: "Requires a GTA V DLL module in assets.",
-        externalNote: "Requires a GTA V EXE module in assets."
+        internalNote: "Requires a GTA V DLL module.",
+        externalNote: "Requires a GTA V EXE module."
     },
     WARZONE: {
         key: "WARZONE",
         displayName: "Warzone",
         prefix: "WARZ",
+        accessGame: "Warzone",
+        accessRequirementLabel: "WARZ",
         launcher: "Battle.net / Xbox",
         modalCopy: "Warzone now uses the same module select flow, and its buttons will go live once the Warzone assets are present.",
-        internalNote: "Requires a Warzone DLL module in assets.",
-        externalNote: "Requires a Warzone EXE module in assets."
+        internalNote: "Requires a Warzone DLL module.",
+        externalNote: "Requires a Warzone EXE module."
     }
 };
 
@@ -176,18 +227,164 @@ function normalizeGameName(gameName = "") {
     }
 }
 
+function normalizeOwnedGameName(gameName = "") {
+    const value = String(gameName || "").trim().toUpperCase();
+
+    switch (value) {
+        case "CS2":
+        case "COUNTER-STRIKE 2":
+            return "CS2";
+        case "CS2 SKIN CHANGER":
+        case "CS2 SKIN":
+        case "SKIN CHANGER":
+            return "CS2 Skin Changer";
+        case "FIVEM":
+        case "FIVE M":
+            return "FiveM";
+        case "GTAV":
+        case "GTA V":
+        case "GTA5":
+            return "GTAV";
+        case "WARZONE":
+        case "COD":
+            return "Warzone";
+        case "ALL-ACCESS":
+        case "ALL ACCESS":
+        case "ALL":
+        case "ALLX":
+            return "All-Access";
+        default:
+            return String(gameName || "").trim();
+    }
+}
+
+function readStoredUserGames() {
+    try {
+        const raw = JSON.parse(localStorage.getItem('user_games') || '[]');
+        return Array.isArray(raw)
+            ? raw.map(normalizeOwnedGameName).filter(Boolean)
+            : [];
+    } catch {
+        return [];
+    }
+}
+
+function syncUserGames(games = readStoredUserGames(), key = localStorage.getItem('license_key')) {
+    const normalizedGames = new Set(
+        (Array.isArray(games) ? games : [])
+            .map(normalizeOwnedGameName)
+            .filter(Boolean)
+    );
+    const prefix = String(key || currentUserPrefix || "").trim().toUpperCase();
+    const prefixEntitlement = entitlementPrefixMap[prefix];
+
+    if (prefixEntitlement) {
+        normalizedGames.add(prefixEntitlement);
+    }
+
+    currentUserGames = normalizedGames;
+
+    if (normalizedGames.size) {
+        localStorage.setItem('user_games', JSON.stringify(Array.from(normalizedGames)));
+    } else {
+        localStorage.removeItem('user_games');
+    }
+
+    return currentUserGames;
+}
+
+function getOwnedGameEntitlements() {
+    if (!currentUserGames.size) {
+        syncUserGames();
+    }
+
+    return currentUserGames;
+}
+
 function getGameModuleConfig(gameName) {
     const normalized = normalizeGameName(gameName);
     return gameModuleConfigs[normalized] || {
         key: normalized,
         displayName: String(gameName || normalized),
         prefix: normalized,
+        accessGame: String(gameName || normalized),
+        accessRequirementLabel: normalized,
         launcher: "Launcher",
         modalCopy: "Choose the module route you want to use for this title.",
         internalNote: "Internal route requires a matching DLL module in assets.",
         externalNote: "External route requires a matching EXE module in assets."
     };
 }
+
+function getGameRouteAvailability(availability, routeId) {
+    if (availability?.routes && Object.prototype.hasOwnProperty.call(availability.routes, routeId)) {
+        return Boolean(availability.routes[routeId]);
+    }
+
+    if (routeId === "internal") {
+        return Boolean(availability?.hasInternal);
+    }
+
+    if (routeId === "external") {
+        return Boolean(availability?.hasExternal);
+    }
+
+    return false;
+}
+
+function getGameRoutes(gameName) {
+    const config = getGameModuleConfig(gameName);
+
+    if (Array.isArray(config.routes) && config.routes.length) {
+        return config.routes;
+    }
+
+    return [
+        {
+            id: "internal",
+            choiceLabel: "INTERNAL",
+            choiceIcon: "INT",
+            note: config.internalNote,
+            foot: "Best when you want the in-game route.",
+            requiredPrefixes: [config.prefix],
+            requiredGames: [config.accessGame],
+            requirementLabel: config.accessRequirementLabel || config.prefix
+        },
+        {
+            id: "external",
+            choiceLabel: "EXTERNAL",
+            choiceIcon: "EXT",
+            note: config.externalNote,
+            foot: "Best when you want the standalone route.",
+            requiredPrefixes: [config.prefix],
+            requiredGames: [config.accessGame],
+            requirementLabel: config.accessRequirementLabel || config.prefix
+        }
+    ];
+}
+
+function hasRouteAccess(route) {
+    const prefix = currentUserPrefix || localStorage.getItem('user_prefix');
+    const ownedGames = getOwnedGameEntitlements();
+
+    if (prefix === "ALLX" || ownedGames.has("All-Access")) {
+        return true;
+    }
+
+    if (Array.isArray(route.requiredPrefixes) && route.requiredPrefixes.includes(prefix)) {
+        return true;
+    }
+
+    return (route.requiredGames || [])
+        .map(normalizeOwnedGameName)
+        .some((game) => ownedGames.has(game));
+}
+
+function hasGameRouteAccess(gameName) {
+    return getGameRoutes(gameName).some((route) => hasRouteAccess(route));
+}
+
+syncUserGames();
 
 function getGameAssetFolderName(gameName) {
     return normalizeGameName(gameName).toLowerCase().replace(/\s+/g, '-');
@@ -264,33 +461,68 @@ function applyModuleAvailabilityToChoice(button, isAvailable) {
     button.classList.toggle("is-unavailable", !isAvailable);
 }
 
+function renderGameLaunchChoices(gameName, availability) {
+    const choiceGrid = document.getElementById("game-launch-choice-grid");
+    if (!choiceGrid) {
+        return;
+    }
+
+    const routes = getGameRoutes(gameName);
+
+    choiceGrid.innerHTML = routes.map((route) => {
+        const routeAvailable = getGameRouteAvailability(availability, route.id);
+        const routeAccessible = hasRouteAccess(route);
+        const disabledClass = (!routeAvailable || !routeAccessible) ? " is-unavailable" : "";
+        const note = routeAccessible
+            ? route.note
+            : `Requires ${route.requirementLabel || "matching access"}.`;
+        const foot = routeAccessible
+            ? route.foot
+            : "Unlock this route with the matching key.";
+
+        return `
+            <button type="button"
+                    class="game-launch-choice${disabledClass}"
+                    data-launch-choice="${route.id}"
+                    onclick="submitGameLaunchChoice('${route.id}')"
+                    ${(!routeAvailable || !routeAccessible) ? 'disabled' : ''}>
+                <span class="game-launch-choice-icon">${route.choiceIcon || "MOD"}</span>
+                <span class="game-launch-choice-title">${route.choiceLabel || route.id.toUpperCase()}</span>
+                <small class="game-launch-choice-note">${note}</small>
+                <span class="game-launch-choice-foot">${foot}</span>
+            </button>
+        `;
+    }).join("");
+}
+
 function updateGameLaunchModal(gameName, availability) {
     const config = getGameModuleConfig(gameName);
     const assetFolder = `assets/${getGameAssetFolderName(gameName)}/`;
-    const hasInternal = Boolean(availability?.hasInternal);
-    const hasExternal = Boolean(availability?.hasExternal);
-    const hasAnyModule = hasInternal || hasExternal;
+    const routes = getGameRoutes(gameName);
+    const accessibleRoutes = routes.filter((route) => hasRouteAccess(route));
+    const availableAccessibleRoutes = accessibleRoutes.filter((route) => getGameRouteAvailability(availability, route.id));
+    const hasAnyAccessibleRoute = accessibleRoutes.length > 0;
+    const hasAnyModule = availableAccessibleRoutes.length > 0;
     const title = document.getElementById("game-launch-title");
     const kicker = document.getElementById("game-launch-kicker");
     const status = document.getElementById("game-launch-status");
     const copy = document.getElementById("game-launch-copy");
     const update = document.getElementById("game-launch-update");
-    const internalNote = document.getElementById("game-launch-internal-note");
-    const externalNote = document.getElementById("game-launch-external-note");
-    const internalButton = document.getElementById("game-launch-internal");
-    const externalButton = document.getElementById("game-launch-external");
 
     if (title) title.textContent = `${config.displayName.toUpperCase()} MODULE SELECT`;
     if (kicker) kicker.textContent = `${config.launcher.toUpperCase()} ROUTE`;
     if (copy) copy.textContent = config.modalCopy;
-    if (internalNote) internalNote.textContent = config.internalNote;
-    if (externalNote) externalNote.textContent = config.externalNote;
 
     if (status) {
-        status.classList.toggle("is-pending", !hasAnyModule || !hasInternal || !hasExternal);
-        if (!hasAnyModule) {
+        status.classList.toggle(
+            "is-pending",
+            hasAnyAccessibleRoute && (!hasAnyModule || availableAccessibleRoutes.length !== accessibleRoutes.length)
+        );
+        if (!hasAnyAccessibleRoute) {
+            status.textContent = "LOCKED";
+        } else if (!hasAnyModule) {
             status.textContent = "AWAITING BINARIES";
-        } else if (hasInternal && hasExternal) {
+        } else if (availableAccessibleRoutes.length === accessibleRoutes.length) {
             status.textContent = "READY";
         } else {
             status.textContent = "PARTIAL";
@@ -298,17 +530,18 @@ function updateGameLaunchModal(gameName, availability) {
     }
 
     if (update) {
-        if (!hasAnyModule) {
-            update.textContent = `${config.displayName} does not have module binaries yet. Drop its DLL and EXE into ${assetFolder} and these buttons will enable automatically.`;
-        } else if (!hasInternal || !hasExternal) {
-            update.textContent = `${config.displayName} has only one launch route available right now. Add the missing binary into ${assetFolder} to unlock the full selector.`;
+        if (!hasAnyAccessibleRoute) {
+            update.textContent = `${config.displayName} requires ${config.accessRequirementLabel || config.prefix} before any launch route can be used.`;
+        } else if (!hasAnyModule) {
+            update.textContent = `${config.displayName} does not have all required binaries yet. Drop the matching files into ${assetFolder} and the available routes will enable automatically.`;
+        } else if (availableAccessibleRoutes.length !== accessibleRoutes.length) {
+            update.textContent = `${config.displayName} has only part of your entitled launch routes available right now. Add the missing binary into ${assetFolder} to unlock the rest of the selector.`;
         } else {
             update.textContent = `${config.displayName} binaries are present. The loader will use the matching file from ${assetFolder} for the option you pick.`;
         }
     }
 
-    applyModuleAvailabilityToChoice(internalButton, hasInternal);
-    applyModuleAvailabilityToChoice(externalButton, hasExternal);
+    renderGameLaunchChoices(gameName, availability);
 }
 
 async function openGameLaunchModal(gameName, availability) {
@@ -321,14 +554,8 @@ async function openGameLaunchModal(gameName, availability) {
 }
 
 function submitGameLaunchChoice(choice) {
-    const internalButton = document.getElementById("game-launch-internal");
-    const externalButton = document.getElementById("game-launch-external");
-
-    if (choice === "internal" && internalButton?.disabled) {
-        return;
-    }
-
-    if (choice === "external" && externalButton?.disabled) {
+    const targetButton = document.querySelector(`[data-launch-choice="${choice}"]`);
+    if (choice !== "cancel" && targetButton?.disabled) {
         return;
     }
 
@@ -1039,6 +1266,7 @@ function getAccessPlanLabel(prefix) {
         ALLX: "ALL ACCESS",
         LIFE: "LIFETIME",
         CS2X: "CS2 ACCESS",
+        CS2S: "CS2 SKIN ACCESS",
         FIVM: "FIVEM ACCESS",
         GTAV: "GTAV ACCESS",
         WARZ: "WARZONE ACCESS"
@@ -2372,7 +2600,7 @@ async function handleLogin(isAutoLogin = false, creds = {}) {
                 localStorage.setItem("remembered_password", password);
             }
 
-            setSessionAccess(data.license_key || '');
+            setSessionAccess(data.license_key || '', data.games || []);
 
             // ---------- PROFILE ----------
             const profilePic = isRealProfileImage(data.profile_pic)
@@ -2675,19 +2903,20 @@ function updateSubscriptionStatus(expiryDate) {
 }
 function hasAccess(gameName) {
     const config = getGameModuleConfig(gameName);
-    const prefix = currentUserPrefix || localStorage.getItem('user_prefix');
+    const prefix = currentUserPrefix || localStorage.getItem('user_prefix') || 'NONE';
 
-    if (prefix === "ALLX") return true;
-
-    if (prefix === config.prefix) {
+    if (hasGameRouteAccess(gameName)) {
         return true;
     }
 
-    void showErrorDialog("Access Denied", `Your current key (${prefix}) is not valid for ${config.displayName}.`);
+    void showErrorDialog(
+        "Access Denied",
+        `Your current key (${prefix}) is not valid for ${config.displayName}. Required access: ${config.accessRequirementLabel || config.prefix}.`
+    );
     return false;
 }
 
-function setSessionAccess(key) {
+function setSessionAccess(key, games = readStoredUserGames()) {
     // If no key exists yet (User just logged in with email/pass)
     if (!key || !key.includes('-')) {
         console.log("[AUTH] No active license. Access restricted until redemption.");
@@ -2695,6 +2924,7 @@ function setSessionAccess(key) {
         currentUserPrefix = "";
         localStorage.setItem('user_prefix', "NULL");
         localStorage.removeItem('license_key');
+        syncUserGames([], '');
         return;
     }
 
@@ -2702,17 +2932,14 @@ function setSessionAccess(key) {
     currentUserPrefix = key.split('-')[0].toUpperCase();
     localStorage.setItem('user_prefix', currentUserPrefix);
     localStorage.setItem('license_key', key.toUpperCase());
+    syncUserGames(games, key);
 
     console.log(`[AUTH] License Active. Session Prefix: ${currentUserPrefix}`);
 }
 
 
 function hasAccessQuietly(gameName) {
-    const config = getGameModuleConfig(gameName);
-    const prefix = currentUserPrefix || localStorage.getItem('user_prefix');
-    if (prefix === "ALLX") return true;
-
-    return config.prefix === prefix;
+    return hasGameRouteAccess(gameName);
 }
 
 async function refreshGameCardsForAvailability(currentPrefix = getCurrentPrefix()) {
@@ -2722,15 +2949,18 @@ async function refreshGameCardsForAvailability(currentPrefix = getCurrentPrefix(
     await Promise.all(cards.map(async (card) => {
         const gameName = card.dataset.game || "";
         const config = getGameModuleConfig(gameName);
-        const hasModuleAccess = !subscriptionExpired && ((currentPrefix === "ALLX") || hasAccessQuietly(gameName));
+        const routes = getGameRoutes(gameName);
+        const accessibleRoutes = !subscriptionExpired
+            ? routes.filter((route) => hasRouteAccess(route))
+            : [];
+        const hasModuleAccess = accessibleRoutes.length > 0;
         const availability = await getGameModuleAvailability(gameName);
-        const hasInternal = Boolean(availability?.hasInternal);
-        const hasExternal = Boolean(availability?.hasExternal);
+        const readyAccessibleRoutes = accessibleRoutes.filter((route) => getGameRouteAvailability(availability, route.id));
         let accessState = "locked";
 
-        if (hasModuleAccess && hasInternal && hasExternal) {
+        if (hasModuleAccess && readyAccessibleRoutes.length === accessibleRoutes.length) {
             accessState = "ready";
-        } else if (hasModuleAccess && (hasInternal || hasExternal)) {
+        } else if (hasModuleAccess && readyAccessibleRoutes.length > 0) {
             accessState = "partial";
         } else if (hasModuleAccess) {
             accessState = "pending";
@@ -2758,12 +2988,13 @@ async function refreshGameCardsForAvailability(currentPrefix = getCurrentPrefix(
                     : accessState === "partial"
                         ? "Partial Build"
                         : "Awaiting Assets"
-                : `Requires ${config.prefix}`;
+                : `Requires ${config.accessRequirementLabel || config.prefix}`;
         }
 
         card.querySelectorAll('[data-module-type]').forEach((pill) => {
-            const isInternal = pill.dataset.moduleType === "internal";
-            const isReady = isInternal ? hasInternal : hasExternal;
+            const routeId = pill.dataset.moduleType || "";
+            const isReady = accessibleRoutes.some((route) => route.id === routeId)
+                && getGameRouteAvailability(availability, routeId);
             pill.classList.toggle('is-ready', isReady);
             pill.classList.toggle('is-missing', !isReady);
         });
@@ -2855,7 +3086,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     if (rememberCheckbox) rememberCheckbox.checked = rememberEnabled;
 
     if (savedKey) {
-        setSessionAccess(savedKey); // Sets currentUserPrefix in memory
+        setSessionAccess(savedKey, readStoredUserGames()); // Sets currentUserPrefix in memory
         updateUIForAccess();       // Grays out locked games
     }
 
@@ -2946,7 +3177,7 @@ async function redeemNewKey() {
             localStorage.setItem('expiry_date', data.new_expiry);
 
             // 2. CRITICAL: Update the prefix (e.g., change from CS2X to ALLX)
-            setSessionAccess(newKey);
+            setSessionAccess(newKey, data.games || readStoredUserGames());
 
             // 3. Refresh UI & Heartbeat
             expirySequenceTriggered = false;
@@ -3989,9 +4220,12 @@ async function requestHWIDReset() {
         closeModal('exit-modal');
         hideUserDropdown();
         stopHwidResetPolling();
+        currentUserPrefix = "";
+        currentUserGames = new Set();
         localStorage.removeItem('user_prefix');
         localStorage.removeItem('user_email');
         localStorage.removeItem('license_key');
+        localStorage.removeItem('user_games');
         localStorage.removeItem('expiry_date');
         localStorage.removeItem('remembered_password');
         localStorage.setItem('remember-me', 'false');
@@ -4126,8 +4360,12 @@ function forceLogout() {
         stopHwidResetPolling();
         closeModal('expiry-modal');
         expirySequenceTriggered = false;
+        currentUserPrefix = "";
+        currentUserGames = new Set();
+        localStorage.removeItem('user_prefix');
         localStorage.removeItem('user_email');
         localStorage.removeItem('license_key');
+        localStorage.removeItem('user_games');
         localStorage.removeItem('expiry_date');
         localStorage.removeItem('remembered_password');
         localStorage.removeItem('remembered-password');
