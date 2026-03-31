@@ -627,6 +627,28 @@ const gameAssetDirectories = {
     WARZONE: ['warzone']
 };
 
+const gameRouteConfigs = {
+    CS2: {
+        internal: {
+            assetType: 'internal',
+            aliases: [...gameAssetAliases.CS2, 'vexion menu'],
+            preferredFileNames: ['vexion menu.dll']
+        },
+        external: {
+            assetType: 'external',
+            aliases: [...gameAssetAliases.CS2, 'vexion menu'],
+            preferredFileNames: ['vexion menu.exe'],
+            excludeTokens: ['skin-changer', 'skin changer', 'skinchanger']
+        },
+        'skin-changer': {
+            assetType: 'external',
+            aliases: ['skin-changer', 'skin changer', 'skinchanger', 'vex-cs2-skin-changer'],
+            preferredFileNames: ['vex-cs2-skin-changer.exe'],
+            passLaunchData: false
+        }
+    }
+};
+
 function normalizeLaunchGameName(gameName = "") {
     const value = String(gameName || "").trim().toUpperCase();
 
@@ -662,8 +684,54 @@ function getLaunchGameLabel(gameName) {
     }
 }
 
-function getModuleExtension(injectionType) {
-    return injectionType === "internal" || injectionType === "dll" ? ".dll" : ".exe";
+function normalizeLaunchRoute(route = "") {
+    const value = String(route || "").trim().toLowerCase();
+
+    if (!value) {
+        return "external";
+    }
+
+    if (value === "dll") {
+        return "internal";
+    }
+
+    if (value === "skin" || value === "skinchanger" || value === "skin-changer") {
+        return "skin-changer";
+    }
+
+    return value;
+}
+
+function getRouteConfig(gameName, route) {
+    const normalizedGame = normalizeLaunchGameName(gameName);
+    const normalizedRoute = normalizeLaunchRoute(route);
+    const configuredRoutes = gameRouteConfigs[normalizedGame] || {};
+    const defaultConfig = {
+        assetType: normalizedRoute === "internal" ? "internal" : "external",
+        aliases: gameAssetAliases[normalizedGame] || [normalizedGame.toLowerCase()],
+        preferredFileNames: normalizedGame === "CS2"
+            ? [normalizedRoute === "internal" ? "vexion menu.dll" : "vexion menu.exe"]
+            : [],
+        excludeTokens: [],
+        passLaunchData: true
+    };
+
+    return {
+        id: normalizedRoute,
+        ...defaultConfig,
+        ...(configuredRoutes[normalizedRoute] || {})
+    };
+}
+
+function getLaunchRoutesForGame(gameName) {
+    const normalizedGame = normalizeLaunchGameName(gameName);
+    const configuredRoutes = Object.keys(gameRouteConfigs[normalizedGame] || {});
+    return configuredRoutes.length ? configuredRoutes : ['internal', 'external'];
+}
+
+function getModuleExtension(route, gameName) {
+    const routeConfig = getRouteConfig(gameName, route);
+    return routeConfig.assetType === "internal" ? ".dll" : ".exe";
 }
 
 function isUsableModuleAsset(fileName, targetExt) {
@@ -698,8 +766,8 @@ function getGameAssetSearchPaths(assetsPath, gameName) {
     });
 }
 
-function collectModuleCandidates(assetsPath, gameName, injectionType) {
-    const targetExt = getModuleExtension(injectionType);
+function collectModuleCandidates(assetsPath, gameName, route) {
+    const targetExt = getModuleExtension(route, gameName);
     const searchPaths = getGameAssetSearchPaths(assetsPath, gameName);
     const candidates = [];
 
@@ -721,33 +789,46 @@ function collectModuleCandidates(assetsPath, gameName, injectionType) {
     return candidates;
 }
 
-function resolveModuleAsset(assetsPath, gameName, injectionType) {
-    const normalized = normalizeLaunchGameName(gameName);
-    const aliases = gameAssetAliases[normalized] || [normalized.toLowerCase()];
-    const candidates = collectModuleCandidates(assetsPath, gameName, injectionType);
-
-    const aliasMatch = candidates.find((file) => {
+function resolveModuleAsset(assetsPath, gameName, route) {
+    const routeConfig = getRouteConfig(gameName, route);
+    const candidates = collectModuleCandidates(assetsPath, gameName, routeConfig.id);
+    const filteredCandidates = candidates.filter((file) => {
         const lower = file.fileName.toLowerCase();
-        return aliases.some((alias) => lower.includes(alias));
+        return !(routeConfig.excludeTokens || []).some((token) => lower.includes(token));
+    });
+
+    const preferredMatch = (routeConfig.preferredFileNames || [])
+        .map((fileName) => String(fileName).toLowerCase())
+        .map((fileName) => filteredCandidates.find((candidate) => candidate.fileName.toLowerCase() === fileName))
+        .find(Boolean);
+
+    if (preferredMatch) {
+        return preferredMatch;
+    }
+
+    const aliasMatch = filteredCandidates.find((file) => {
+        const lower = file.fileName.toLowerCase();
+        return (routeConfig.aliases || []).some((alias) => lower.includes(String(alias).toLowerCase()));
     });
 
     if (aliasMatch) {
         return aliasMatch;
     }
 
-    if (normalized === "CS2") {
-        const fallbackName = getModuleExtension(injectionType) === ".dll" ? "vexion menu.dll" : "vexion menu.exe";
-        return candidates.find((file) => file.fileName.toLowerCase() === fallbackName) || null;
-    }
-
     return null;
 }
 
 function getModuleAvailability(assetsPath, gameName) {
+    const routeAvailability = {};
+    getLaunchRoutesForGame(gameName).forEach((route) => {
+        routeAvailability[route] = Boolean(resolveModuleAsset(assetsPath, gameName, route));
+    });
+
     return {
         game: normalizeLaunchGameName(gameName),
-        hasInternal: Boolean(resolveModuleAsset(assetsPath, gameName, "internal")),
-        hasExternal: Boolean(resolveModuleAsset(assetsPath, gameName, "external"))
+        hasInternal: Boolean(routeAvailability.internal),
+        hasExternal: Boolean(routeAvailability.external),
+        routes: routeAvailability
     };
 }
 
@@ -808,14 +889,36 @@ async function fetchSteamNewsFeed(appId, gameLabel) {
 }
 
 async function fetchFiveMStatusFeed() {
-    const res = await fetch('https://status.cfx.re/api/v2/summary.json', { headers: { 'User-Agent': 'VEXION-Loader/1.0' } });
+    const statusUrls = [
+        'https://ntfwm21l4wbw.statuspage.io/api/v2/summary.json',
+        'https://status.cfx.re/api/v2/summary.json'
+    ];
 
-    if (!res.ok) {
-        throw new Error(`FiveM status feed failed (${res.status})`);
+    let data = null;
+    let lastError = null;
+
+    for (const url of statusUrls) {
+        try {
+            const res = await fetch(url, { headers: { 'User-Agent': 'VEXION-Loader/1.0' } });
+
+            if (!res.ok) {
+                lastError = new Error(`FiveM status feed failed (${res.status})`);
+                continue;
+            }
+
+            data = await res.json();
+            break;
+        } catch (error) {
+            lastError = error;
+        }
     }
 
-    const data = await res.json();
-    const component = data?.components?.find((entry) => entry.name === 'Games')
+    if (!data) {
+        throw lastError || new Error('FiveM status feed unavailable');
+    }
+
+    const component = data?.components?.find((entry) => entry.name === 'FiveM')
+        || data?.components?.find((entry) => entry.name === 'Games')
         || data?.components?.find((entry) => entry.name === 'CnL')
         || data?.components?.[0];
 
@@ -920,10 +1023,11 @@ ipcMain.handle('launch-game', async (event, gameName, autoClose, licenseKey, inj
 
     console.log("[LAUNCH] Received userData:", userData);
 
-    const finalType = injectionType === "dll" ? "internal" : (injectionType || "external");
+    const finalRoute = normalizeLaunchRoute(injectionType || "external");
     const normalizedGame = normalizeLaunchGameName(gameName);
     const gameLabel = getLaunchGameLabel(gameName);
     const assetsPath = getBundledAssetsPath();
+    const routeConfig = getRouteConfig(gameName, finalRoute);
 
     function getDaysRemaining(expiry) {
         if (!expiry) return "Unknown";
@@ -945,10 +1049,14 @@ ipcMain.handle('launch-game', async (event, gameName, autoClose, licenseKey, inj
             return { status: "Error", message: "Assets folder missing!" };
         }
 
-        const moduleAsset = resolveModuleAsset(assetsPath, gameName, finalType);
+        const moduleAsset = resolveModuleAsset(assetsPath, gameName, finalRoute);
 
         if (!moduleAsset) {
-            const missingType = finalType === "internal" ? "internal DLL" : "external EXE";
+            const missingType = routeConfig.assetType === "internal"
+                ? "internal DLL"
+                : finalRoute === "skin-changer"
+                    ? "skin changer EXE"
+                    : "external EXE";
             const folderName = normalizeLaunchGameName(gameName).toLowerCase().replace(/\s+/g, '-');
             return { status: "Error", message: `No ${gameLabel} ${missingType} module was found in assets/${folderName}.` };
         }
@@ -958,7 +1066,7 @@ ipcMain.handle('launch-game', async (event, gameName, autoClose, licenseKey, inj
 
         const { spawn, exec } = require("child_process");
 
-        if (finalType === "internal") {
+        if (routeConfig.assetType === "internal") {
             if (!fs.existsSync(injectorPath)) {
                 return { status: "Error", message: "Extreme Injector v3.exe is missing from assets." };
             }
@@ -989,19 +1097,28 @@ ipcMain.handle('launch-game', async (event, gameName, autoClose, licenseKey, inj
             };
         }
 
-        if (finalType === "external") {
+        if (routeConfig.assetType === "external") {
 
             const uName = userData?.username ?? "Unknown";
             const uSub = userData?.subscription ?? "Unknown";
             const uExp = getDaysRemaining(userData?.expiry);
 
-            const launchData = `${uName}|${uSub}|${uExp}`;
+            const launchArgs = routeConfig.passLaunchData === false
+                ? []
+                : [`${uName}|${uSub}|${uExp}`];
 
-            const externalCmd = `powershell -Command "& '${cheatPath}' '${launchData}'"`;
-
-            require('child_process').exec(externalCmd, { shell: true }, (err) => {
-                if (err) console.error("[EXTERNAL ERROR]", err.message);
+            const externalProcess = spawn(cheatPath, launchArgs, {
+                cwd: path.dirname(cheatPath),
+                detached: true,
+                stdio: "ignore",
+                windowsHide: true
             });
+
+            externalProcess.on('error', (error) => {
+                console.error("[EXTERNAL ERROR]", error.message);
+            });
+
+            externalProcess.unref();
 
             if (rpcClient) {
                 rpcClient.setActivity({
@@ -1016,7 +1133,12 @@ ipcMain.handle('launch-game', async (event, gameName, autoClose, licenseKey, inj
                 setTimeout(() => { app.quit(); }, 3000);
             }
 
-            return { status: "Success", message: `${gameLabel} external module (${moduleAsset.relativePath}) launched successfully!` };
+            return {
+                status: "Success",
+                message: finalRoute === "skin-changer"
+                    ? `${gameLabel} skin changer (${moduleAsset.relativePath}) launched successfully!`
+                    : `${gameLabel} external module (${moduleAsset.relativePath}) launched successfully!`
+            };
         }
 
         return { status: "Error", message: `Unknown launch type requested for ${gameLabel}.` };
