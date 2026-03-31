@@ -249,16 +249,38 @@ function applyDuration(baseDate, daysValue) {
     return targetDate;
 }
 
+function normalizeGameProduct(value) {
+    const cleaned = String(value || '').trim();
+    const normalized = cleaned.toUpperCase();
+
+    if (!cleaned) {
+        return '';
+    }
+
+    if (normalized === 'CS2' || normalized === 'COUNTER-STRIKE 2') return 'CS2';
+    if (normalized === 'CS2 SKIN CHANGER' || normalized === 'CS2 SKIN' || normalized === 'SKIN CHANGER') return 'CS2 Skin Changer';
+    if (normalized === 'FIVEM' || normalized === 'FIVE M') return 'FiveM';
+    if (normalized === 'GTAV' || normalized === 'GTA V' || normalized === 'GTA5') return 'GTAV';
+    if (normalized === 'WARZONE' || normalized === 'COD') return 'Warzone';
+    if (normalized === 'ALL-ACCESS' || normalized === 'ALL ACCESS' || normalized === 'ALL' || normalized === 'ALLX') return 'All-Access';
+
+    return cleaned;
+}
+
 function normalizeGamesInput(games) {
-    if (Array.isArray(games)) {
-        return games.filter(Boolean);
-    }
+    const rawValues = Array.isArray(games)
+        ? games
+        : (typeof games === 'string' && games.trim())
+            ? [games]
+            : [];
 
-    if (typeof games === 'string' && games.trim()) {
-        return [games.trim()];
-    }
-
-    return [];
+    return Array.from(
+        new Set(
+            rawValues
+                .map(normalizeGameProduct)
+                .filter(Boolean)
+        )
+    );
 }
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -347,6 +369,7 @@ function getEmailValidationMessage(reason) {
 function generateLicenseKey(games) {
     const gamePrefixMap = {
         "CS2": "CS2X",
+        "CS2 Skin Changer": "CS2S",
         "FiveM": "FIVM",
         "GTAV": "GTAV",
         "Warzone": "WARZ",
@@ -1633,7 +1656,8 @@ app.post('/redeem', async (req, res) => {
             status: "Success",
             message: `Successfully added ${daysToAdd} days!`,
             new_expiry: user.expiry_date,
-            license_key: user.license_key
+            license_key: user.license_key,
+            games: user.games || []
         });
 
     } catch (err) {
