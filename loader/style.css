@@ -732,7 +732,12 @@ body.logged-in .main-content {
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 0;
+}
+
+.home-hero-badge > span {
+    line-height: 1;
+    margin: 0;
 }
 
 .home-hero-badge span,
@@ -748,8 +753,8 @@ body.logged-in .main-content {
 
 .home-hero-badge strong {
     display: block;
-    margin-top: 0;
-    line-height: 1.05;
+    margin-top: -1px;
+    line-height: 1;
     font-size: 1.15rem;
     color: var(--panel-text-strong);
 }
@@ -1763,7 +1768,7 @@ body.logged-in .main-content {
 
 .game-launch-choice-grid {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
     gap: 12px;
     margin-top: 18px;
 }
