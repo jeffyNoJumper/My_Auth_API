@@ -135,19 +135,20 @@ const gameModuleConfigs = {
         key: "CS2",
         displayName: "CS2",
         prefix: "CS2X",
+        theme: "cs2",
         accessGame: "CS2",
         accessRequirementLabel: "CS2X / CS2S",
         launcher: "Steam",
-        modalCopy: "Choose the CS2 route you want to use before the Steam handoff begins. The skin changer uses its own entitlement and route.",
-        internalNote: "Uses the CS2 DLL injector.",
-        externalNote: "Uses the CS2 external EXE.",
+        modalCopy: "Pick the CS2 route you want to launch. Internal and external use the main CS2 key. The skin changer uses its own key.",
+        internalNote: "Starts the injector and uses the CS2 DLL in your assets folder.",
+        externalNote: "Starts the CS2 EXE in your assets folder.",
         routes: [
             {
                 id: "internal",
                 choiceLabel: "INTERNAL",
                 choiceIcon: "INT",
-                note: "Uses the CS2 DLL injector path from assets.",
-                foot: "Best when you want the in-game route.",
+                note: "Starts the injector and loads your CS2 DLL.",
+                foot: "Use this for the DLL route.",
                 requiredPrefixes: ["CS2X"],
                 requiredGames: ["CS2"],
                 requirementLabel: "CS2X"
@@ -156,8 +157,8 @@ const gameModuleConfigs = {
                 id: "external",
                 choiceLabel: "EXTERNAL",
                 choiceIcon: "EXT",
-                note: "Uses the CS2 external EXE route from assets.",
-                foot: "Best when you want the standalone route.",
+                note: "Starts the standalone CS2 EXE.",
+                foot: "Use this for the EXE route.",
                 requiredPrefixes: ["CS2X"],
                 requiredGames: ["CS2"],
                 requirementLabel: "CS2X"
@@ -166,8 +167,8 @@ const gameModuleConfigs = {
                 id: "skin-changer",
                 choiceLabel: "SKIN CHANGER",
                 choiceIcon: "SKN",
-                note: "Launches the dedicated VEX CS2 skin changer from assets/cs2.",
-                foot: "Requires the dedicated CS2S entitlement or All Access.",
+                note: "Starts the dedicated skin changer from assets/cs2.",
+                foot: "Needs a CS2S or All Access key.",
                 requiredPrefixes: ["CS2S"],
                 requiredGames: ["CS2 Skin Changer"],
                 requirementLabel: "CS2S"
@@ -178,34 +179,37 @@ const gameModuleConfigs = {
         key: "FIVEM",
         displayName: "FiveM",
         prefix: "FIVM",
+        theme: "fivem",
         accessGame: "FiveM",
         accessRequirementLabel: "FIVM",
         launcher: "CFX Launcher",
-        modalCopy: "FiveM launch routing is ready now. Its internal and external slots will light up when you add the FiveM binaries.",
-        internalNote: "Requires a FiveM DLL module.",
-        externalNote: "Requires a FiveM EXE module."
+        modalCopy: "Pick the FiveM route you want. The buttons turn on as soon as the matching files are in your assets folder.",
+        internalNote: "Looks for a FiveM DLL.",
+        externalNote: "Looks for a FiveM EXE."
     },
     GTAV: {
         key: "GTAV",
         displayName: "GTA V",
         prefix: "GTAV",
+        theme: "gtav",
         accessGame: "GTAV",
         accessRequirementLabel: "GTAV",
         launcher: "Rockstar",
-        modalCopy: "GTA V is prepared for a dedicated internal and external route as soon as the GTA module files are added.",
-        internalNote: "Requires a GTA V DLL module.",
-        externalNote: "Requires a GTA V EXE module."
+        modalCopy: "Pick the GTA V route you want. Add the matching files to your assets folder to turn each option on.",
+        internalNote: "Looks for a GTA V DLL.",
+        externalNote: "Looks for a GTA V EXE."
     },
     WARZONE: {
         key: "WARZONE",
         displayName: "Warzone",
         prefix: "WARZ",
+        theme: "warzone",
         accessGame: "Warzone",
         accessRequirementLabel: "WARZ",
         launcher: "Battle.net / Xbox",
-        modalCopy: "Warzone now uses the same module select flow, and its buttons will go live once the Warzone assets are present.",
-        internalNote: "Requires a Warzone DLL module.",
-        externalNote: "Requires a Warzone EXE module."
+        modalCopy: "Pick the Warzone route you want. Add the matching files to your assets folder to unlock each option.",
+        internalNote: "Looks for a Warzone DLL.",
+        externalNote: "Looks for a Warzone EXE."
     }
 };
 
@@ -472,22 +476,44 @@ function renderGameLaunchChoices(gameName, availability) {
     choiceGrid.innerHTML = routes.map((route) => {
         const routeAvailable = getGameRouteAvailability(availability, route.id);
         const routeAccessible = hasRouteAccess(route);
+        const routeVisibleAsFound = routeAccessible && routeAvailable;
+        const routeState = routeAccessible
+            ? (routeAvailable ? "ready" : "missing")
+            : "locked";
         const disabledClass = (!routeAvailable || !routeAccessible) ? " is-unavailable" : "";
         const note = routeAccessible
             ? route.note
             : `Requires ${route.requirementLabel || "matching access"}.`;
         const foot = routeAccessible
             ? route.foot
-            : "Unlock this route with the matching key.";
+            : "Buy or redeem the matching key first.";
+        const availabilityLabel = routeVisibleAsFound ? "File Found" : "File Not Found";
+        const accessLabel = routeAccessible ? "Access OK" : "Locked";
+        const stateLabel = routeState === "ready"
+            ? "Ready"
+            : routeState === "missing"
+                ? "Missing File"
+                : "Locked";
 
         return `
             <button type="button"
                     class="game-launch-choice${disabledClass}"
+                    data-route-state="${routeState}"
+                    data-route-accessible="${routeAccessible ? 'true' : 'false'}"
+                    data-route-available="${routeAvailable ? 'true' : 'false'}"
                     data-launch-choice="${route.id}"
-                    onclick="submitGameLaunchChoice('${route.id}')"
-                    ${(!routeAvailable || !routeAccessible) ? 'disabled' : ''}>
-                <span class="game-launch-choice-icon">${route.choiceIcon || "MOD"}</span>
-                <span class="game-launch-choice-title">${route.choiceLabel || route.id.toUpperCase()}</span>
+                    onclick="handleGameLaunchChoiceClick('${normalizeGameName(gameName)}', '${route.id}')">
+                <span class="game-launch-choice-top">
+                    <span class="game-launch-choice-icon">${route.choiceIcon || "MOD"}</span>
+                    <span class="game-launch-choice-badge-row">
+                        <span class="game-launch-choice-badge ${routeVisibleAsFound ? 'is-good' : 'is-muted'}">${availabilityLabel}</span>
+                        <span class="game-launch-choice-badge ${routeAccessible ? 'is-good-soft' : 'is-locked'}">${accessLabel}</span>
+                    </span>
+                </span>
+                <span class="game-launch-choice-title-row">
+                    <span class="game-launch-choice-title">${route.choiceLabel || route.id.toUpperCase()}</span>
+                    <span class="game-launch-choice-state">${stateLabel}</span>
+                </span>
                 <small class="game-launch-choice-note">${note}</small>
                 <span class="game-launch-choice-foot">${foot}</span>
             </button>
@@ -508,10 +534,33 @@ function updateGameLaunchModal(gameName, availability) {
     const status = document.getElementById("game-launch-status");
     const copy = document.getElementById("game-launch-copy");
     const update = document.getElementById("game-launch-update");
+    const launcher = document.getElementById("game-launch-launcher");
+    const entitlement = document.getElementById("game-launch-entitlement");
+    const routeCount = document.getElementById("game-launch-route-count");
+    const assets = document.getElementById("game-launch-assets");
+    const sideNote = document.getElementById("game-launch-side-note");
+    const modalCard = document.getElementById("game-launch-modal-card");
 
     if (title) title.textContent = `${config.displayName.toUpperCase()} MODULE SELECT`;
-    if (kicker) kicker.textContent = `${config.launcher.toUpperCase()} ROUTE`;
+    if (kicker) kicker.textContent = `${config.displayName.toUpperCase()} MODULES`;
     if (copy) copy.textContent = config.modalCopy;
+    if (launcher) launcher.textContent = config.launcher;
+    if (entitlement) entitlement.textContent = config.accessRequirementLabel || config.prefix;
+    if (routeCount) {
+        const routeTotal = hasAnyAccessibleRoute ? accessibleRoutes.length : routes.length;
+        routeCount.textContent = `${availableAccessibleRoutes.length} / ${routeTotal} READY`;
+    }
+    if (assets) assets.textContent = assetFolder;
+    if (sideNote) {
+        sideNote.textContent = !hasAnyAccessibleRoute
+            ? "No access"
+            : hasAnyModule
+                ? `${availableAccessibleRoutes.length} route${availableAccessibleRoutes.length === 1 ? '' : 's'} ready`
+                : "Waiting on files";
+    }
+    if (modalCard) {
+        modalCard.dataset.gameTheme = config.theme || normalizeGameName(gameName).toLowerCase() || "default";
+    }
 
     if (status) {
         status.classList.toggle(
@@ -520,24 +569,28 @@ function updateGameLaunchModal(gameName, availability) {
         );
         if (!hasAnyAccessibleRoute) {
             status.textContent = "LOCKED";
+            if (modalCard) modalCard.dataset.launchState = "locked";
         } else if (!hasAnyModule) {
-            status.textContent = "AWAITING BINARIES";
+            status.textContent = "WAITING ON FILES";
+            if (modalCard) modalCard.dataset.launchState = "waiting";
         } else if (availableAccessibleRoutes.length === accessibleRoutes.length) {
             status.textContent = "READY";
+            if (modalCard) modalCard.dataset.launchState = "ready";
         } else {
             status.textContent = "PARTIAL";
+            if (modalCard) modalCard.dataset.launchState = "partial";
         }
     }
 
     if (update) {
         if (!hasAnyAccessibleRoute) {
-            update.textContent = `${config.displayName} requires ${config.accessRequirementLabel || config.prefix} before any launch route can be used.`;
+            update.textContent = `You need ${config.accessRequirementLabel || config.prefix} access before you can launch ${config.displayName}.`;
         } else if (!hasAnyModule) {
-            update.textContent = `${config.displayName} does not have all required binaries yet. Drop the matching files into ${assetFolder} and the available routes will enable automatically.`;
+            update.textContent = `No matching files were found yet. Put the right files in ${assetFolder} and the buttons will turn on automatically.`;
         } else if (availableAccessibleRoutes.length !== accessibleRoutes.length) {
-            update.textContent = `${config.displayName} has only part of your entitled launch routes available right now. Add the missing binary into ${assetFolder} to unlock the rest of the selector.`;
+            update.textContent = `Some of your routes are ready. Add the missing file to ${assetFolder} if you want the rest.`;
         } else {
-            update.textContent = `${config.displayName} binaries are present. The loader will use the matching file from ${assetFolder} for the option you pick.`;
+            update.textContent = `Everything needed for your available routes is in place. Pick one and launch.`;
         }
     }
 
@@ -553,12 +606,7 @@ async function openGameLaunchModal(gameName, availability) {
     });
 }
 
-function submitGameLaunchChoice(choice) {
-    const targetButton = document.querySelector(`[data-launch-choice="${choice}"]`);
-    if (choice !== "cancel" && targetButton?.disabled) {
-        return;
-    }
-
+function resolveActiveGameLaunchChoice(choice) {
     const resolver = activeGameLaunchResolver;
     activeGameLaunchResolver = null;
     closeModal("game-launch-modal");
@@ -568,6 +616,69 @@ function submitGameLaunchChoice(choice) {
     }
 }
 
+async function promptLockedRouteAccess(gameName, routeId) {
+    const config = getGameModuleConfig(gameName);
+    const route = getGameRoutes(gameName).find((entry) => entry.id === routeId);
+    const selectedAction = await showAppDialog({
+        title: `${config.displayName} Locked`,
+        message: `${route?.choiceLabel || 'This route'} needs ${route?.requirementLabel || config.accessRequirementLabel || config.prefix}.`,
+        detail: "Redeem the right key from your profile, or open the store if you need to buy access.",
+        tone: "warning",
+        kicker: "MODULE LOCKED",
+        actions: [
+            { label: "Cancel", value: "cancel", variant: "secondary" },
+            { label: "Redeem Key", value: "redeem", variant: "primary" },
+            { label: "Buy Access", value: "buy", variant: "primary" }
+        ]
+    });
+
+    if (selectedAction === "redeem") {
+        resolveActiveGameLaunchChoice("cancel");
+        openModal("settings-modal");
+        return;
+    }
+
+    if (selectedAction === "buy") {
+        resolveActiveGameLaunchChoice("cancel");
+        showExternalActionModal('support');
+    }
+}
+
+async function handleGameLaunchChoiceClick(gameName, choice) {
+    const targetButton = document.querySelector(`[data-launch-choice="${choice}"]`);
+    if (!targetButton) {
+        return;
+    }
+
+    const routeAccessible = targetButton.dataset.routeAccessible === "true";
+    const routeAvailable = targetButton.dataset.routeAvailable === "true";
+
+    if (!routeAccessible) {
+        await promptLockedRouteAccess(gameName, choice);
+        return;
+    }
+
+    if (!routeAvailable) {
+        const config = getGameModuleConfig(gameName);
+        await showAppDialog({
+            title: `${config.displayName} File Missing`,
+            message: `No file was found for ${choice.replace(/-/g, ' ')}.`,
+            detail: `Drop the matching file into assets/${getGameAssetFolderName(gameName)}/ and try again.`,
+            tone: "warning",
+            kicker: "MODULE MISSING",
+            actions: [{ label: "OK", value: true, variant: "secondary" }]
+        });
+        return;
+    }
+
+    submitGameLaunchChoice(choice);
+}
+
+function submitGameLaunchChoice(choice) {
+    resolveActiveGameLaunchChoice(choice);
+}
+
+window.handleGameLaunchChoiceClick = handleGameLaunchChoiceClick;
 window.submitGameLaunchChoice = submitGameLaunchChoice;
 
 function showAutoLoginModal() {
