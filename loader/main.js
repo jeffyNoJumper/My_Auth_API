@@ -14,6 +14,10 @@ let spoofer
 const RPC = require('discord-rpc');
 const CLIENT_ID = '1476724607485743277';
 let rpcClient = null;
+let rpcReady = false;
+let rpcPresencePayload = { type: 'login', mode: 'manual' };
+let rpcPresenceKey = 'login|manual';
+let rpcPresenceStartedAt = new Date();
 const execFileAsync = promisify(execFile);
 let hardwareSnapshotCache = null;
 let hardwareSnapshotPromise = null;
@@ -56,6 +60,10 @@ app.on('will-quit', async () => {
             console.log("💀 Ghost Status Purged on Exit");
         } catch (e) { }
     }
+});
+
+app.on('will-quit', () => {
+    rpcReady = false;
 });
 
 async function changeVolumeID() {
@@ -702,6 +710,163 @@ function normalizeLaunchRoute(route = "") {
     return value;
 }
 
+function truncateRpcText(value, fallback = "") {
+    const resolved = String(value || fallback || "").trim();
+    return resolved.slice(0, 128);
+}
+
+function formatRpcRouteLabel(route = "") {
+    const normalized = normalizeLaunchRoute(route);
+
+    switch (normalized) {
+        case "internal":
+            return "Internal";
+        case "external":
+            return "External";
+        case "skin-changer":
+            return "Skin Changer";
+        default:
+            return normalized
+                .split(/[\s_-]+/)
+                .filter(Boolean)
+                .map((chunk) => chunk.charAt(0).toUpperCase() + chunk.slice(1))
+                .join(" ") || "Module";
+    }
+}
+
+function normalizeRpcTabName(tabName = "") {
+    const normalized = String(tabName || "").trim().toLowerCase();
+    const allowedTabs = new Set(["home", "games", "hwid", "spoofing", "settings"]);
+    return allowedTabs.has(normalized) ? normalized : "home";
+}
+
+function normalizeRpcPresencePayload(payload = {}) {
+    const normalized = payload && typeof payload === "object" ? payload : {};
+
+    return {
+        type: String(normalized.type || "loader").trim().toLowerCase(),
+        mode: String(normalized.mode || "").trim().toLowerCase(),
+        tab: normalizeRpcTabName(normalized.tab),
+        username: String(normalized.username || "").trim(),
+        gameName: String(normalized.gameName || "").trim(),
+        route: normalizeLaunchRoute(normalized.route || "external")
+    };
+}
+
+function createRpcPresenceKey(payload = {}) {
+    return [
+        payload.type,
+        payload.mode,
+        payload.tab,
+        payload.username.toLowerCase(),
+        normalizeLaunchGameName(payload.gameName),
+        payload.route
+    ].join("|");
+}
+
+function buildRpcActivity(payload = {}) {
+    const normalized = normalizeRpcPresencePayload(payload);
+    const usernameState = normalized.username ? `Signed in as ${normalized.username}` : "VEXION Loader";
+    const routeLabel = formatRpcRouteLabel(normalized.route);
+    const gameLabel = normalized.gameName ? getLaunchGameLabel(normalized.gameName) : "";
+    let details = "Managing Modules";
+    let state = usernameState;
+
+    switch (normalized.type) {
+        case "login":
+            details = "At Login Screen";
+            state = normalized.mode === "auto"
+                ? "Restoring saved session"
+                : "Waiting for sign-in";
+            break;
+        case "auth":
+            details = normalized.mode === "auto"
+                ? "Authenticating Saved Session"
+                : "Authenticating Login";
+            state = normalized.username
+                ? `Verifying access for ${normalized.username}`
+                : "Verifying loader access";
+            break;
+        case "startup":
+            details = "Starting Loader";
+            state = normalized.username
+                ? `Running startup checks for ${normalized.username}`
+                : "Running startup checks";
+            break;
+        case "launching":
+            details = gameLabel ? `Launching ${gameLabel}` : "Launching Module";
+            state = `${routeLabel} route preparing`;
+            break;
+        case "game":
+            details = gameLabel ? `Playing ${gameLabel}` : "Module Active";
+            state = `${routeLabel} route active`;
+            break;
+        case "loader":
+        default:
+            switch (normalized.tab) {
+                case "games":
+                    details = "Browsing Games";
+                    state = "Selecting module routes";
+                    break;
+                case "hwid":
+                    details = "Checking HWID";
+                    state = "Reviewing device identity";
+                    break;
+                case "spoofing":
+                    details = "Using Spoofer";
+                    state = "Preparing hardware changes";
+                    break;
+                case "settings":
+                    details = "Adjusting Settings";
+                    state = "Tuning loader preferences";
+                    break;
+                case "home":
+                default:
+                    details = "Viewing Home";
+                    state = usernameState;
+                    break;
+            }
+            break;
+    }
+
+    return {
+        details: truncateRpcText(details, "Managing Modules"),
+        state: truncateRpcText(state, "VEXION Loader"),
+        startTimestamp: rpcPresenceStartedAt,
+        largeImageKey: "logo",
+        largeImageText: truncateRpcText(gameLabel ? `VEXION - ${gameLabel}` : "VEXION Loader", "VEXION Loader"),
+        instance: false
+    };
+}
+
+async function applyRpcActivity(options = {}) {
+    if (!rpcClient || !rpcReady) {
+        return;
+    }
+
+    try {
+        await rpcClient.setActivity(buildRpcActivity(rpcPresencePayload));
+    } catch (error) {
+        if (!options.silent) {
+            console.warn("[DISCORD] Failed to apply activity:", error?.message || error);
+        }
+    }
+}
+
+function rememberRpcActivity(payload = {}, options = {}) {
+    const normalized = normalizeRpcPresencePayload(payload);
+    const nextKey = createRpcPresenceKey(normalized);
+
+    rpcPresencePayload = normalized;
+
+    if (options.force || nextKey !== rpcPresenceKey) {
+        rpcPresenceKey = nextKey;
+        rpcPresenceStartedAt = new Date();
+    }
+
+    void applyRpcActivity(options);
+}
+
 function getRouteConfig(gameName, route) {
     const normalizedGame = normalizeLaunchGameName(gameName);
     const normalizedRoute = normalizeLaunchRoute(route);
@@ -1089,6 +1254,13 @@ ipcMain.handle('launch-game', async (event, gameName, autoClose, licenseKey, inj
                 windowsHide: true
             }).unref();
 
+            rememberRpcActivity({
+                type: "launching",
+                gameName: normalizedGame,
+                route: finalRoute,
+                username: userData?.username || ""
+            });
+
             return {
                 status: "Success",
                 message: normalizedGame === "CS2"
@@ -1120,7 +1292,7 @@ ipcMain.handle('launch-game', async (event, gameName, autoClose, licenseKey, inj
 
             externalProcess.unref();
 
-            if (rpcClient) {
+            if (false && rpcClient) {
                 rpcClient.setActivity({
                     details: `Playing ${gameLabel.toUpperCase()}`,
                     state: '🛡️ [STATUS_UNDETECTED]',
@@ -1128,6 +1300,13 @@ ipcMain.handle('launch-game', async (event, gameName, autoClose, licenseKey, inj
                     largeImageKey: 'logo',
                 }).catch(() => { });
             }
+
+            rememberRpcActivity({
+                type: "game",
+                gameName: normalizedGame,
+                route: finalRoute,
+                username: userData?.username || ""
+            });
 
             if (autoClose) {
                 setTimeout(() => { app.quit(); }, 3000);
@@ -1162,6 +1341,11 @@ ipcMain.on('toggle-stream-proof', (event, enabled) => {
 
 
 
+ipcMain.on('set-discord-activity', (event, payload = {}) => {
+    rememberRpcActivity(payload);
+});
+
+
 // Add 'gameName' as a second parameter (it will be null when toggling from settings)
 ipcMain.on('toggle-discord', async (event, enabled, gameName = null) => {
 
@@ -1174,6 +1358,12 @@ ipcMain.on('toggle-discord', async (event, enabled, gameName = null) => {
             await rpcClient.destroy().catch(() => { });
             rpcClient = null;
         }
+        rpcReady = false;
+        return;
+    }
+
+    if (rpcClient) {
+        await applyRpcActivity({ silent: true });
         return;
     }
 
@@ -1192,19 +1382,18 @@ ipcMain.on('toggle-discord', async (event, enabled, gameName = null) => {
     // 3. If turning ON (First Connection)
     if (enabled && !rpcClient) {
         rpcClient = new RPC.Client({ transport: 'ipc' });
+        rpcReady = false;
 
         rpcClient.on('ready', () => {
             if (!rpcClient) return;
-            rpcClient.setActivity({
-                details: 'Managing Modules',
-                state: 'Status: Undetected',
-                startTimestamp: new Date(),
-                largeImageKey: 'logo',
-                instance: false,
-            }).catch(() => { });
+            rpcReady = true;
+            void applyRpcActivity();
         });
 
-        rpcClient.login({ clientId: CLIENT_ID }).catch(() => { rpcClient = null; });
+        rpcClient.login({ clientId: CLIENT_ID }).catch(() => {
+            rpcReady = false;
+            rpcClient = null;
+        });
     }
 });
 
