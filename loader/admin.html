@@ -490,6 +490,127 @@
             letter-spacing: 1px;
             text-transform: uppercase;
         }
+
+        .admin-panel-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin: 0 0 12px 0;
+        }
+
+        .admin-panel-head h2 {
+            margin: 0;
+        }
+
+        .panel-head-btn {
+            width: auto;
+            margin: 0;
+            padding: 10px 14px;
+            background: rgba(0, 149, 255, 0.08);
+            color: var(--accent);
+            border: 1px solid rgba(0, 149, 255, 0.2);
+            font-size: 10px;
+            letter-spacing: 1.1px;
+        }
+
+        .panel-head-btn:hover {
+            background: rgba(0, 149, 255, 0.14);
+        }
+
+        .admin-choice-overlay {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(3, 8, 18, 0.78);
+            backdrop-filter: blur(10px);
+            z-index: 60;
+        }
+
+        .admin-choice-overlay.hidden {
+            display: none;
+        }
+
+        .admin-choice-card {
+            width: min(420px, calc(100vw - 40px));
+            padding: 24px;
+            border-radius: 16px;
+            background: linear-gradient(145deg, rgba(13, 22, 38, 0.98), rgba(8, 12, 20, 0.96));
+            border: 1px solid rgba(0, 149, 255, 0.22);
+            box-shadow: 0 24px 48px rgba(0, 0, 0, 0.42), 0 0 24px rgba(0, 149, 255, 0.12);
+        }
+
+        .admin-choice-kicker {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--accent);
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 1.8px;
+            text-transform: uppercase;
+        }
+
+        .admin-choice-card h3 {
+            margin: 12px 0 10px;
+            color: #fff;
+            font-size: 24px;
+            line-height: 1.15;
+        }
+
+        .admin-choice-card p {
+            margin: 0;
+            color: #9eb0be;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .admin-choice-meta {
+            display: grid;
+            gap: 6px;
+            margin: 16px 0 18px;
+            padding: 14px;
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .admin-choice-label {
+            color: #fff;
+            font-size: 15px;
+            font-weight: 700;
+            letter-spacing: 0.3px;
+        }
+
+        .admin-choice-identity {
+            color: #8fa8b8;
+            font-size: 10px;
+            letter-spacing: 1.2px;
+            text-transform: uppercase;
+        }
+
+        .admin-choice-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .admin-choice-actions button {
+            margin: 0;
+        }
+
+        .admin-choice-secondary {
+            background: rgba(255, 255, 255, 0.04);
+            color: #d9e3ea;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .admin-choice-secondary:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: rgba(255, 255, 255, 0.16);
+        }
     </style>
 </head>
 <body>
@@ -533,7 +654,28 @@
             </div>
         </div>
 
-        <h2 style="color:var(--accent); letter-spacing:3px; margin: 0 0 10px 0;">VEXION ADMIN PANEL</h2>
+        <div id="admin-session-choice" class="admin-choice-overlay hidden">
+            <div class="admin-choice-card">
+                <span class="admin-choice-kicker">Saved Admin Session</span>
+                <h3>Continue With Remembered Access?</h3>
+                <p id="admin-choice-copy">This PC has a remembered admin session. Continue with the saved admin or switch to another login.</p>
+
+                <div class="admin-choice-meta">
+                    <span id="admin-choice-label" class="admin-choice-label">VEXION Admin</span>
+                    <span id="admin-choice-identity" class="admin-choice-identity">Saved session detected</span>
+                </div>
+
+                <div class="admin-choice-actions">
+                    <button type="button" id="admin-choice-continue" onclick="restoreRememberedAdminSession()">Use Saved Login</button>
+                    <button type="button" id="admin-choice-other" class="admin-choice-secondary" onclick="useAnotherAdminLogin()">Use Another Login</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="admin-panel-head">
+            <h2 style="color:var(--accent); letter-spacing:3px;">VEXION ADMIN PANEL</h2>
+            <button type="button" class="panel-head-btn" onclick="minWin()">MINIMIZE PANEL</button>
+        </div>
 
         <!-- Admin Auth Row -->
         <div style="display:flex; align-items:center; gap:10px; margin-bottom:15px;">
@@ -758,7 +900,10 @@
         const ADMIN_SESSION_TOKEN_STORAGE_KEY = 'vexion_admin_session_token';
         const ADMIN_LABEL_STORAGE_KEY = 'vexion_admin_session_label';
         const ADMIN_REMEMBER_STORAGE_KEY = 'vexion_admin_remember_session';
+        const ADMIN_EMAIL_STORAGE_KEY = 'vexion_admin_email';
+        const ADMIN_LOGIN_STORAGE_KEY = 'vexion_admin_login_name';
         const ADMIN_AUTH_NOTICE_STORAGE_KEY = 'vexion_admin_auth_notice';
+        let pendingRememberedAdmin = null;
 
         function closeWin() {
             ipcRenderer.send('admin-close');
@@ -896,17 +1041,145 @@
             return String(adminSessionToken || '').trim();
         }
 
-        function persistAdminSession(sessionToken, adminLabel) {
+        function persistAdminSession(sessionToken, adminLabel, metadata = {}) {
             const remember = shouldRememberAdminSession();
             localStorage.setItem(ADMIN_REMEMBER_STORAGE_KEY, remember ? 'true' : 'false');
 
             if (remember && sessionToken) {
                 localStorage.setItem(ADMIN_SESSION_TOKEN_STORAGE_KEY, sessionToken);
                 localStorage.setItem(ADMIN_LABEL_STORAGE_KEY, adminLabel || activeAdminLabel || getDefaultAdminLabel());
+                localStorage.setItem(ADMIN_EMAIL_STORAGE_KEY, String(metadata.email || '').trim().toLowerCase());
+                localStorage.setItem(ADMIN_LOGIN_STORAGE_KEY, String(metadata.loginName || '').trim().toLowerCase());
             } else {
                 localStorage.removeItem(ADMIN_SESSION_TOKEN_STORAGE_KEY);
                 localStorage.removeItem(ADMIN_LABEL_STORAGE_KEY);
+                localStorage.removeItem(ADMIN_EMAIL_STORAGE_KEY);
+                localStorage.removeItem(ADMIN_LOGIN_STORAGE_KEY);
             }
+        }
+
+        function clearRememberedAdminSessionLocally(clearRememberFlag = true) {
+            adminSessionToken = '';
+            activeAdminLabel = '';
+            activeAdminRole = '';
+            activeAdminLoginName = '';
+            pendingRememberedAdmin = null;
+            hideRememberedAdminChoice();
+
+            localStorage.removeItem(ADMIN_SESSION_TOKEN_STORAGE_KEY);
+            localStorage.removeItem(ADMIN_LABEL_STORAGE_KEY);
+            localStorage.removeItem(ADMIN_EMAIL_STORAGE_KEY);
+            localStorage.removeItem(ADMIN_LOGIN_STORAGE_KEY);
+
+            if (clearRememberFlag) {
+                localStorage.setItem(ADMIN_REMEMBER_STORAGE_KEY, 'false');
+                syncAdminRememberInputs(false);
+            }
+        }
+
+        function hideRememberedAdminChoice() {
+            const modal = document.getElementById('admin-session-choice');
+            if (modal) {
+                modal.classList.add('hidden');
+            }
+        }
+
+        function showRememberedAdminChoice(remembered = pendingRememberedAdmin) {
+            const modal = document.getElementById('admin-session-choice');
+            if (!modal || !remembered?.sessionToken) {
+                return;
+            }
+
+            const choiceLabel = document.getElementById('admin-choice-label');
+            const choiceIdentity = document.getElementById('admin-choice-identity');
+            const choiceCopy = document.getElementById('admin-choice-copy');
+            const savedIdentity = remembered.email || remembered.loginName || 'Saved admin session on this PC';
+
+            if (choiceLabel) {
+                choiceLabel.textContent = remembered.label || getDefaultAdminLabel();
+            }
+
+            if (choiceIdentity) {
+                choiceIdentity.textContent = savedIdentity;
+            }
+
+            if (choiceCopy) {
+                choiceCopy.textContent = `Continue with ${remembered.label || 'the saved admin'} on this machine, or switch to another login without deleting the saved session.`;
+            }
+
+            modal.classList.remove('hidden');
+        }
+
+        async function restoreRememberedAdminSession() {
+            const remembered = pendingRememberedAdmin;
+            if (!remembered?.sessionToken) {
+                useAnotherAdminLogin();
+                return false;
+            }
+
+            const continueBtn = document.getElementById('admin-choice-continue');
+            const otherBtn = document.getElementById('admin-choice-other');
+
+            if (continueBtn) continueBtn.disabled = true;
+            if (otherBtn) otherBtn.disabled = true;
+
+            try {
+                setAdminAuthStatus(`Restoring saved admin session for ${remembered.label || 'Admin'}...`, 'info');
+
+                const data = await postJson('/admin-auth/restore', { admin_session_token: remembered.sessionToken });
+                adminSessionToken = remembered.sessionToken;
+                activeAdminLabel = data.admin_label || remembered.label || getDefaultAdminLabel();
+                activeAdminRole = data.admin_role || '';
+                activeAdminLoginName = data.admin_login_name || remembered.loginName || '';
+                pendingRememberedAdmin = {
+                    ...remembered,
+                    label: activeAdminLabel,
+                    email: data.admin_email || remembered.email || '',
+                    loginName: activeAdminLoginName
+                };
+
+                persistAdminSession(adminSessionToken, activeAdminLabel, {
+                    email: pendingRememberedAdmin.email,
+                    loginName: pendingRememberedAdmin.loginName
+                });
+
+                syncAdminEmailInput(pendingRememberedAdmin.email || '');
+                syncAdminUsernameInput(pendingRememberedAdmin.loginName || '');
+                hideRememberedAdminChoice();
+                setAdminAuthState(true);
+                setAdminAuthStatus(`Restored admin session as ${activeAdminLabel}.`, 'success');
+                await loadKeysDropdown('', { silent: true });
+                return true;
+            } catch (error) {
+                console.warn('[ADMIN] Saved session restore failed:', error);
+                clearRememberedAdminSessionLocally();
+                syncAdminPasswordInputs('');
+                syncAdminPinInput('');
+                syncAdminEmailInput('');
+                syncAdminUsernameInput('');
+                hideRememberedAdminChoice();
+                setAdminAuthState(false);
+                setAdminAuthStatus('Saved admin session expired. Sign in again with email/password or quick login.', 'error');
+                return false;
+            } finally {
+                if (continueBtn) continueBtn.disabled = false;
+                if (otherBtn) otherBtn.disabled = false;
+            }
+        }
+
+        function useAnotherAdminLogin() {
+            hideRememberedAdminChoice();
+            setAdminAuthState(false);
+            setAdminAuthStatus('Saved admin session found. Sign in with another admin or continue manually.', 'info');
+            syncAdminEmailInput(pendingRememberedAdmin?.email || '');
+            syncAdminUsernameInput(pendingRememberedAdmin?.loginName || '');
+            syncAdminPasswordInputs('');
+            syncAdminPinInput('');
+
+            const preferredField = pendingRememberedAdmin?.loginName
+                ? 'admin-auth-user'
+                : 'admin-auth-email';
+            document.getElementById(preferredField)?.focus();
         }
 
         function setOwnerToolsVisibility() {
@@ -992,14 +1265,7 @@
                 }).catch(() => { });
             }
 
-            adminSessionToken = '';
-            activeAdminLabel = '';
-            activeAdminRole = '';
-            activeAdminLoginName = '';
-            localStorage.removeItem(ADMIN_SESSION_TOKEN_STORAGE_KEY);
-            localStorage.removeItem(ADMIN_LABEL_STORAGE_KEY);
-            localStorage.setItem(ADMIN_REMEMBER_STORAGE_KEY, 'false');
-            syncAdminRememberInputs(false);
+            clearRememberedAdminSessionLocally();
             syncAdminPasswordInputs('');
             syncAdminEmailInput('');
             syncAdminUsernameInput('');
@@ -1082,6 +1348,30 @@
             }
 
             return parsedDate.toLocaleString();
+        }
+
+        function formatRemainingDuration(ms) {
+            const safeMs = Number(ms);
+            if (!Number.isFinite(safeMs) || safeMs < 0) {
+                return 'Pending Activation';
+            }
+
+            const totalSeconds = Math.max(0, Math.floor(safeMs / 1000));
+            const days = Math.floor(totalSeconds / 86400);
+            const hours = Math.floor((totalSeconds % 86400) / 3600);
+            const minutes = Math.floor((totalSeconds % 3600) / 60);
+            const seconds = totalSeconds % 60;
+
+            return `${days}d ${hours}h ${minutes}m ${seconds}s`;
+        }
+
+        function formatPausedExpiry(remainingMs) {
+            const safeMs = Number(remainingMs);
+            if (!Number.isFinite(safeMs) || safeMs < 0) {
+                return 'Paused Before Activation';
+            }
+
+            return `Paused | ${formatRemainingDuration(safeMs)} frozen`;
         }
 
         function formatLinkedEmail(email, reservedEmail = '') {
@@ -1467,7 +1757,10 @@
                 activeAdminLabel = login.admin_label || login.admin_email || login.admin_login_name || email || loginName;
                 activeAdminRole = login.admin_role || '';
                 activeAdminLoginName = login.admin_login_name || loginName || '';
-                persistAdminSession(adminSessionToken, activeAdminLabel);
+                persistAdminSession(adminSessionToken, activeAdminLabel, {
+                    email: login.admin_email || email,
+                    loginName: login.admin_login_name || activeAdminLoginName
+                });
                 syncAdminEmailInput(login.admin_email || email);
                 syncAdminUsernameInput(login.admin_login_name || activeAdminLoginName);
                 syncAdminPasswordInputs('');
@@ -1598,6 +1891,9 @@
                 hwid: data.hwid || '',
                 is_banned: Boolean(data.is_banned),
                 is_paused: Boolean(data.is_paused),
+                paused_remaining_ms: Number.isFinite(Number(data.paused_remaining_ms))
+                    ? Number(data.paused_remaining_ms)
+                    : null,
                 pending_request: data.pending_request || null
             };
 
@@ -1605,7 +1901,12 @@
             setFieldValue('info-license', loadedUser.license_key || 'Not Assigned');
             setFieldValue('info-email', formatLinkedEmail(loadedUser.email, loadedUser.reserved_email));
             setFieldValue('info-games', formatGames(loadedUser.games));
-            setFieldValue('info-expiry', formatExpiry(loadedUser.expiry));
+            setFieldValue(
+                'info-expiry',
+                loadedUser.is_paused
+                    ? formatPausedExpiry(loadedUser.paused_remaining_ms)
+                    : formatExpiry(loadedUser.expiry)
+            );
             setFieldValue('info-hwid', loadedUser.hwid || 'NOT CAPTURED', loadedUser.hwid || 'NOT CAPTURED');
 
             const statusElement = document.getElementById('manage-status');
@@ -1616,7 +1917,9 @@
                 statusElement.style.color = statusMeta.color;
             }
 
-            if (loadedUser.expiry) {
+            if (loadedUser.is_paused) {
+                renderPausedCountdown(loadedUser.paused_remaining_ms);
+            } else if (loadedUser.expiry) {
                 startCountdown(loadedUser.expiry);
             } else {
                 resetCountdown();
@@ -1832,6 +2135,21 @@
             }
         }
 
+        function renderPausedCountdown(remainingMs) {
+            const timerDisplay = document.getElementById('info-timer');
+            if (!timerDisplay) {
+                return;
+            }
+
+            resetCountdown();
+            const safeMs = Number(remainingMs);
+
+            timerDisplay.textContent = Number.isFinite(safeMs) && safeMs >= 0
+                ? `FROZEN ${formatRemainingDuration(safeMs)}`
+                : 'PAUSED';
+            timerDisplay.style.color = 'var(--gold)';
+        }
+
         function startCountdown(expiryDate) {
             const timerDisplay = document.getElementById('info-timer');
             if (!timerDisplay) {
@@ -1890,6 +2208,8 @@
             const rememberEnabled = localStorage.getItem(ADMIN_REMEMBER_STORAGE_KEY) === 'true';
             const rememberedSession = rememberEnabled ? (localStorage.getItem(ADMIN_SESSION_TOKEN_STORAGE_KEY) || '') : '';
             const rememberedLabel = localStorage.getItem(ADMIN_LABEL_STORAGE_KEY) || getDefaultAdminLabel();
+            const rememberedEmail = localStorage.getItem(ADMIN_EMAIL_STORAGE_KEY) || '';
+            const rememberedLoginName = localStorage.getItem(ADMIN_LOGIN_STORAGE_KEY) || '';
             const queuedAuthNotice = consumeAdminAuthNotice();
 
             syncAdminRememberInputs(rememberEnabled);
@@ -1900,14 +2220,20 @@
                 queuedAuthNotice?.message
                     ? queuedAuthNotice.message
                     : rememberEnabled && rememberedSession
-                    ? 'Saved admin session found. Restoring automatically...'
+                    ? 'Saved admin session found. Choose how you want to continue.'
                     : 'Use email + password the first time, then username + PIN can be used later.',
                 queuedAuthNotice?.tone || 'info'
             );
             activeAdminLabel = rememberedLabel;
-            if (rememberEnabled && rememberedSession) {
-                adminSessionToken = rememberedSession;
-            }
+            activeAdminLoginName = rememberedLoginName;
+            pendingRememberedAdmin = rememberEnabled && rememberedSession
+                ? {
+                    sessionToken: rememberedSession,
+                    label: rememberedLabel,
+                    email: rememberedEmail,
+                    loginName: rememberedLoginName
+                }
+                : null;
 
             generatedKey?.addEventListener('click', async () => {
                 if (!generatedKey.textContent || generatedKey.textContent === '---') {
@@ -1988,22 +2314,10 @@
             });
 
             if (rememberEnabled && rememberedSession) {
+                syncAdminEmailInput(rememberedEmail);
+                syncAdminUsernameInput(rememberedLoginName);
                 setTimeout(() => {
-                    postJson('/admin-auth/restore', { admin_session_token: rememberedSession })
-                        .then(async (data) => {
-                            adminSessionToken = rememberedSession;
-                            activeAdminLabel = data.admin_label || rememberedLabel;
-                            activeAdminRole = data.admin_role || '';
-                            activeAdminLoginName = data.admin_login_name || '';
-                            syncAdminEmailInput(data.admin_email || '');
-                            syncAdminUsernameInput(data.admin_login_name || '');
-                            setAdminAuthState(true);
-                            setAdminAuthStatus(`Restored admin session as ${activeAdminLabel}.`, 'success');
-                            await loadKeysDropdown('', { silent: true });
-                        })
-                        .catch(() => {
-                            forgetRememberedAdmin().catch(() => { });
-                        });
+                    showRememberedAdminChoice();
                 }, 180);
             } else {
                 syncAdminEmailInput('');
