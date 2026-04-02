@@ -261,6 +261,10 @@ function toValidDate(value) {
 }
 
 function clampDurationMs(value) {
+    if (value === null || value === undefined || value === "") {
+        return null;
+    }
+
     const parsedValue = Number(value);
     if (!Number.isFinite(parsedValue)) {
         return null;
@@ -273,6 +277,13 @@ function getPausedRemainingMs(user) {
     const storedDuration = clampDurationMs(user?.paused_remaining_ms);
     if (storedDuration !== null) {
         return storedDuration;
+    }
+
+    const pausedSnapshot = toValidDate(user?.paused_expiry_snapshot);
+    const pausedAt = toValidDate(user?.paused_at);
+    if (pausedSnapshot) {
+        const anchorTime = pausedAt ? pausedAt.getTime() : Date.now();
+        return Math.max(0, pausedSnapshot.getTime() - anchorTime);
     }
 
     const expiryDate = toValidDate(user?.expiry_date);
@@ -1088,9 +1099,11 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                 }
 
                 const nextRemainingMs = Math.max(0, (pausedRemainingMs || 0) + durationDeltaMs);
+                const pausedAt = toValidDate(user.paused_at) || new Date();
 
                 user.paused_remaining_ms = nextRemainingMs;
-                user.paused_at = user.paused_at || new Date();
+                user.paused_at = pausedAt;
+                user.paused_expiry_snapshot = new Date(pausedAt.getTime() + nextRemainingMs);
                 user.expiry_date = null;
                 await user.save();
 
@@ -1308,6 +1321,7 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                 user.is_paused = true;
                 user.paused_at = new Date();
                 user.paused_remaining_ms = getPausedRemainingMs(user);
+                user.paused_expiry_snapshot = toValidDate(user.expiry_date);
 
                 if (user.paused_remaining_ms !== null) {
                     user.expiry_date = null;
@@ -1342,6 +1356,7 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
 
                     if (pausedRemainingMs === null) {
                         user.paused_remaining_ms = null;
+                        user.paused_expiry_snapshot = null;
                         await user.save();
 
                         return safeJson({
@@ -1355,6 +1370,7 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
 
                     user.expiry_date = new Date(Date.now() + pausedRemainingMs);
                     user.paused_remaining_ms = null;
+                    user.paused_expiry_snapshot = null;
                     await user.save();
 
                     return safeJson({
