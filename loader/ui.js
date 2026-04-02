@@ -29,6 +29,8 @@ let activeGameLaunchResolver = null;
 let gameFeedRefreshInterval = null;
 let discordAnnouncementPollInterval = null;
 let latestDiscordAnnouncementId = localStorage.getItem('last_seen_discord_loader_notification_id') || "";
+let currentLoaderTab = "home";
+let lastDiscordPresencePayload = { type: "login", mode: "manual" };
 const AUTH_STARTUP_COMPLETE_MS = 220;
 const AUTH_FAILURE_DISPLAY_MS = 1000;
 const expiryLockedTabs = new Set(['games', 'hwid', 'spoofing', 'settings']);
@@ -132,6 +134,73 @@ const entitlementPrefixMap = {
     GTAV: "GTAV",
     WARZ: "Warzone"
 };
+
+function getDiscordUsername(email = localStorage.getItem("user_email")) {
+    const resolvedEmail = String(email || "").trim();
+    return resolvedEmail ? resolvedEmail.split("@")[0] : "";
+}
+
+function normalizeDiscordPresencePayload(payload = {}) {
+    const normalized = payload && typeof payload === "object" ? payload : {};
+
+    return {
+        type: String(normalized.type || "loader").trim().toLowerCase(),
+        mode: String(normalized.mode || "").trim().toLowerCase(),
+        tab: String(normalized.tab || currentLoaderTab || "home").trim().toLowerCase() || "home",
+        username: String(normalized.username || "").trim(),
+        gameName: String(normalized.gameName || "").trim(),
+        route: String(normalized.route || "").trim().toLowerCase()
+    };
+}
+
+function sendDiscordPresence(payload, options = {}) {
+    const normalized = normalizeDiscordPresencePayload(payload);
+
+    if (options.remember !== false) {
+        lastDiscordPresencePayload = normalized;
+    }
+
+    if (window.api?.setDiscordActivity) {
+        window.api.setDiscordActivity(normalized);
+    }
+
+    return normalized;
+}
+
+function buildUiDiscordPresence(overrides = {}) {
+    const normalizedOverrides = overrides && typeof overrides === "object" ? overrides : {};
+    const loggedIn = document.body.classList.contains("logged-in");
+    const username = normalizedOverrides.username || getDiscordUsername();
+
+    if (!loggedIn) {
+        return {
+            type: "login",
+            mode: normalizedOverrides.mode || "manual",
+            username
+        };
+    }
+
+    return {
+        type: normalizedOverrides.type || "loader",
+        tab: normalizedOverrides.tab || currentLoaderTab || "home",
+        username,
+        gameName: normalizedOverrides.gameName || "",
+        route: normalizedOverrides.route || ""
+    };
+}
+
+function syncDiscordPresenceWithUI(overrides = {}) {
+    return sendDiscordPresence(buildUiDiscordPresence(overrides));
+}
+
+function replayDiscordPresence() {
+    if (lastDiscordPresencePayload) {
+        sendDiscordPresence(lastDiscordPresencePayload, { remember: false });
+        return;
+    }
+
+    syncDiscordPresenceWithUI();
+}
 
 const gameModuleConfigs = {
     CS2: {
@@ -747,6 +816,7 @@ function showManualLoginState(noticeText = null, keepAutoLoginModal = false) {
     const loginScreen = document.getElementById("login-screen");
     const dashboard = document.getElementById("dashboard-wrapper");
     const sidebar = document.getElementById("sidebar");
+    currentLoaderTab = "home";
 
     if (!keepAutoLoginModal) {
         hideAutoLoginModal();
@@ -767,6 +837,7 @@ function showManualLoginState(noticeText = null, keepAutoLoginModal = false) {
     }
 
     setLoginNotice(noticeText, noticeText ? "info" : "error");
+    syncDiscordPresenceWithUI({ type: "login", mode: "manual" });
 }
 
 function hoistModalToBody(id) {
@@ -2201,8 +2272,16 @@ async function launchGame(gameName) {
 
     if (injectionType === 'cancel') {
         addTerminalLine(`> [SYSTEM] ${gameConfig.displayName.toUpperCase()} launch cancelled.`);
+        syncDiscordPresenceWithUI();
         return;
     }
+
+    sendDiscordPresence({
+        type: "launching",
+        username: getDiscordUsername(),
+        gameName: gameConfig.displayName,
+        route: injectionType
+    });
 
     // --- START INJECTION OVERLAY ---
     if (injectionModal) {
@@ -2242,6 +2321,12 @@ async function launchGame(gameName) {
     const result = await window.api.launchCheat(gameConfig.displayName, autoCloseActive, key, injectionType, userData);
 
     if (result.status === "Success") {
+        sendDiscordPresence({
+            type: "game",
+            username: getDiscordUsername(),
+            gameName: gameConfig.displayName,
+            route: injectionType
+        });
         stopInjectionProgressAnimation();
         setInjectionProgress(
             100,
@@ -2257,6 +2342,7 @@ async function launchGame(gameName) {
             resetInjectionProgressUI();
         }, 3000);
     } else {
+        syncDiscordPresenceWithUI();
         stopInjectionProgressAnimation();
         setInjectionProgress(
             100,
@@ -2298,6 +2384,11 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
+    if (localStorage.getItem('discord-rpc') === 'true' && window.api?.toggleDiscord) {
+        window.api.toggleDiscord(true);
+        replayDiscordPresence();
+    }
+
     ['theme-accent-picker', 'theme-panel-picker', 'theme-sidebar-picker', 'theme-background-picker'].forEach((id) => {
         const input = document.getElementById(id);
         if (!input) {
@@ -2336,6 +2427,9 @@ function handleSettingChange(id, value) {
             if (rpcCheckbox) rpcCheckbox.disabled = true;
 
             window.api.toggleDiscord(value);
+            if (value) {
+                replayDiscordPresence();
+            }
             addTerminalLine(`> [SYSTEM] Synchronizing Discord RPC...`);
             setSettingsStatus(value ? "RPC ENABLED" : "RPC DISABLED");
 
@@ -2861,6 +2955,7 @@ function showTab(tabName, options = {}) {
     }
 
     // ---------- HIDE ALL TABS ----------
+    currentLoaderTab = String(tabName || "home").toLowerCase();
     document.querySelectorAll('.tab-content').forEach(tab => {
         tab.classList.remove('active');
         tab.style.display = 'none';
@@ -2889,12 +2984,6 @@ function showTab(tabName, options = {}) {
         if (typeof updateHomeTabUI === "function") {
             updateHomeTabUI();
         }
-
-        const rpcEnabled = localStorage.getItem("discord-rpc") === "true";
-
-        if (rpcEnabled && window.api?.toggleDiscord) {
-            window.api.toggleDiscord(true);
-        }
     }
 
     // HWID TAB
@@ -2919,6 +3008,7 @@ function showTab(tabName, options = {}) {
     if (dropdown) dropdown.classList.add("hidden");
 
     updateProtectedTabLocks();
+    syncDiscordPresenceWithUI();
     console.log(`[UI] Switched to ${tabName.toUpperCase()} module.`);
 }
 
@@ -2994,6 +3084,11 @@ async function handleLogin(isAutoLogin = false, creds = {}) {
     }
 
     startAuthProgressAnimation(authProgressScope);
+    sendDiscordPresence({
+        type: "auth",
+        mode: isAutoLogin ? "auto" : "manual",
+        username: getDiscordUsername(email)
+    });
 
     try {
         const hwid = await loadMachineId();
@@ -3094,6 +3189,10 @@ async function handleLogin(isAutoLogin = false, creds = {}) {
                 kicker: "Session Sync"
             });
 
+            sendDiscordPresence({
+                type: "startup",
+                username
+            });
             await runAuthStartupSequence(authProgressScope);
 
             // ---------- SWITCH UI ----------
@@ -3148,6 +3247,11 @@ async function handleLogin(isAutoLogin = false, creds = {}) {
                 setLoginNotice(errorMessage);
                 focusLoginField(shouldEditEmail ? emailInput : passwordInput);
             }
+
+            sendDiscordPresence({
+                type: "login",
+                mode: isAutoLogin ? "auto" : "manual"
+            });
         }
     } catch (err) {
         console.error("[AUTH ERROR]", err);
@@ -3176,6 +3280,11 @@ async function handleLogin(isAutoLogin = false, creds = {}) {
             setLoginNotice("API connection error. Check the server and try again.");
             focusLoginField(passwordInput || emailInput);
         }
+
+        sendDiscordPresence({
+            type: "login",
+            mode: isAutoLogin ? "auto" : "manual"
+        });
     } finally {
         isAuthProcessActive = false;
 
