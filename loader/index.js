@@ -294,6 +294,24 @@ function getPausedRemainingMs(user) {
     return Math.max(0, expiryDate.getTime() - Date.now());
 }
 
+function hasBrokenPauseSnapshot(user) {
+    return Boolean(
+        user?.is_paused &&
+        clampDurationMs(user?.paused_remaining_ms) === 0 &&
+        !toValidDate(user?.paused_expiry_snapshot) &&
+        !toValidDate(user?.expiry_date)
+    );
+}
+
+function getDurationDaysForRecovery(user) {
+    const parsedDays = Number(user?.duration_days);
+    if (Number.isFinite(parsedDays) && parsedDays > 0) {
+        return parsedDays;
+    }
+
+    return 30;
+}
+
 function formatRemainingDuration(ms) {
     const safeDuration = clampDurationMs(ms);
     if (safeDuration === null) {
@@ -1025,6 +1043,7 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                         is_banned: k.is_banned || false,
                         is_paused: k.is_paused || false,
                         paused_remaining_ms: clampDurationMs(k.paused_remaining_ms),
+                        pause_state_broken: hasBrokenPauseSnapshot(k),
                         games: k.games || []
                     }))
                 });
@@ -1172,6 +1191,7 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                     is_banned: user.is_banned || false,
                     is_paused: user.is_paused || false,
                     paused_remaining_ms: clampDurationMs(user.paused_remaining_ms),
+                    pause_state_broken: hasBrokenPauseSnapshot(user),
                     hwid: user.hwid || "NOT CAPTURED",
                     expiry: user.expiry_date,
                     games: user.games || [],
@@ -1309,11 +1329,14 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                 if (user.is_paused) {
                     return safeJson({
                         success: true,
-                        message: user.paused_remaining_ms !== null
+                        message: hasBrokenPauseSnapshot(user)
+                            ? "Key is paused, but the frozen-time snapshot is missing. Use unpause recovery or manually restore time."
+                            : user.paused_remaining_ms !== null
                             ? `Key already paused. Frozen time left: ${formatRemainingDuration(user.paused_remaining_ms)}.`
                             : "Key already paused.",
                         is_paused: true,
                         paused_remaining_ms: getPausedRemainingMs(user),
+                        pause_state_broken: hasBrokenPauseSnapshot(user),
                         expiry: null
                     });
                 }
@@ -1345,13 +1368,35 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                         message: "Key is already active.",
                         is_paused: false,
                         paused_remaining_ms: null,
+                        pause_state_broken: false,
                         expiry: user.expiry_date
                     });
                 }
 
                 {
+                    const brokenPauseState = hasBrokenPauseSnapshot(user);
                     const pausedRemainingMs = getPausedRemainingMs(user);
                     user.is_paused = false;
+
+                    if (brokenPauseState) {
+                        const recoveryDays = getDurationDaysForRecovery(user);
+                        user.expiry_date = applyDuration(new Date(), recoveryDays);
+                        user.paused_remaining_ms = null;
+                        user.paused_expiry_snapshot = null;
+                        user.paused_at = null;
+                        await user.save();
+
+                        return safeJson({
+                            success: true,
+                            message: `Pause snapshot was missing, so the key was recovered using the stored ${recoveryDays}-day duration. New expiry: ${user.expiry_date.toLocaleString()}`,
+                            is_paused: false,
+                            paused_remaining_ms: null,
+                            pause_state_broken: false,
+                            expiry: user.expiry_date,
+                            recovered_from_broken_pause: true
+                        });
+                    }
+
                     user.paused_at = null;
 
                     if (pausedRemainingMs === null) {
@@ -1364,6 +1409,7 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                             message: "Key unpaused. Timer will begin on first login.",
                             is_paused: false,
                             paused_remaining_ms: null,
+                            pause_state_broken: false,
                             expiry: user.expiry_date
                         });
                     }
@@ -1378,6 +1424,7 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                         message: `Key unpaused. New expiry: ${user.expiry_date.toLocaleString()}`,
                         is_paused: false,
                         paused_remaining_ms: null,
+                        pause_state_broken: false,
                         expiry: user.expiry_date
                     });
                 }
