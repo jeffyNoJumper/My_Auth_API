@@ -29,6 +29,8 @@ let activeGameLaunchResolver = null;
 let gameFeedRefreshInterval = null;
 let discordAnnouncementPollInterval = null;
 let latestDiscordAnnouncementId = localStorage.getItem('last_seen_discord_loader_notification_id') || "";
+const AUTH_STARTUP_COMPLETE_MS = 220;
+const AUTH_FAILURE_DISPLAY_MS = 1000;
 const expiryLockedTabs = new Set(['games', 'hwid', 'spoofing', 'settings']);
 
 const themePresets = {
@@ -1751,57 +1753,82 @@ function resetAuthProgressUI(scope = "login") {
 
 function startAuthProgressAnimation(scope = "login") {
     const isAutoScope = scope === "auto";
-    const steps = [
-        {
-            percent: 14,
-            title: isAutoScope ? "Restoring encrypted session" : "Encrypting credentials",
-            copy: isAutoScope
-                ? "Loading your remembered session token and validating the saved session state."
-                : "Packaging your sign-in request for the secure auth endpoint.",
-            stage: 0,
-            kicker: isAutoScope ? "Saved Session" : "Secure Auth"
-        },
-        {
-            percent: 39,
-            title: "Verifying device identity",
-            copy: "Matching this device fingerprint against the active entitlement state.",
-            stage: 1,
-            kicker: isAutoScope ? "Saved Session" : "Secure Auth"
-        },
-        {
-            percent: 67,
-            title: "Opening secure channel",
-            copy: "Auth is confirming access and preparing the loader session state.",
-            stage: 2,
-            kicker: isAutoScope ? "Session Link" : "Secure Auth"
-        },
-        {
-            percent: 86,
-            title: "Syncing dashboard state",
-            copy: "Finalizing profile, license, and module visibility before entry.",
-            stage: 3,
-            kicker: isAutoScope ? "Session Ready" : "Dashboard Sync"
-        }
-    ];
 
     if (scope === "login") {
         toggleLoaderProgress('login', true);
     }
 
     stopAuthProgressAnimation();
-    setLoaderProgress(scope, steps[0]);
+    setLoaderProgress(scope, {
+        percent: 10,
+        title: isAutoScope ? "Loading saved session" : "Preparing secure sign-in",
+        copy: isAutoScope
+            ? "Reading the remembered session and preparing a fresh auth request."
+            : "Packaging your credentials and initializing the auth request.",
+        stage: 0,
+        kicker: isAutoScope ? "Saved Session" : "Secure Auth"
+    });
+}
 
-    let stepIndex = 0;
-    authProgressTimer = setInterval(() => {
-        stepIndex += 1;
-
-        if (stepIndex >= steps.length) {
-            stopAuthProgressAnimation();
-            return;
+async function runAuthStartupSequence(scope = "login") {
+    const startupSteps = [
+        {
+            percent: 86,
+            title: "Loading hardware profile",
+            copy: "Refreshing HWID, disk, and GPU identity for this session.",
+            stage: 3,
+            kicker: "HWID Check",
+            run: async () => {
+                await updateHWIDDisplay();
+            }
+        },
+        {
+            percent: 92,
+            title: "Checking service health",
+            copy: "Verifying the auth API and current loader service status.",
+            stage: 3,
+            kicker: "Health Check",
+            run: async () => {
+                await checkServer();
+            }
+        },
+        {
+            percent: 97,
+            title: "Syncing access controls",
+            copy: "Refreshing module access, live cards, and HWID reset state.",
+            stage: 3,
+            kicker: "Access Sync",
+            run: async () => {
+                await Promise.allSettled([
+                    refreshGameCardsForAvailability(getCurrentPrefix()),
+                    refreshGameCardFeeds(),
+                    syncHwidResetApprovalState(false)
+                ]);
+            }
+        },
+        {
+            percent: 100,
+            title: "Starting dashboard",
+            copy: "Startup checks complete. Opening the loader now.",
+            tone: "success",
+            stage: 3,
+            kicker: "Startup Complete"
         }
+    ];
 
-        setLoaderProgress(scope, steps[stepIndex]);
-    }, 520);
+    for (const step of startupSteps) {
+        setLoaderProgress(scope, step);
+
+        if (typeof step.run === "function") {
+            try {
+                await step.run();
+            } catch (error) {
+                console.warn("[AUTH STARTUP CHECK FAILED]", step.kicker, error);
+            }
+        }
+    }
+
+    await wait(AUTH_STARTUP_COMPLETE_MS);
 }
 
 function setInjectionProgress(
@@ -2930,6 +2957,7 @@ async function handleLogin(isAutoLogin = false, creds = {}) {
     const requestToken = isAutoLogin ? creds.requestToken : null;
     const rememberMe = document.getElementById('remember-me')?.checked;
     const btn = document.getElementById('login-btn');
+    const loginForm = document.getElementById('login-form');
     const autoLoginModal = document.getElementById("auto-login-modal");
     const autoLoginUser = document.getElementById("auto-login-user");
     const authProgressScope = isAutoLogin ? 'auto' : 'login';
@@ -2957,6 +2985,10 @@ async function handleLogin(isAutoLogin = false, creds = {}) {
         btn.classList.add('is-loading');
     }
 
+    if (!isAutoLogin) {
+        loginForm?.classList.add('is-auth-loading');
+    }
+
     if (isAutoLogin && autoLoginUser) {
         autoLoginUser.innerText = email || "Authenticating User...";
     }
@@ -2965,6 +2997,13 @@ async function handleLogin(isAutoLogin = false, creds = {}) {
 
     try {
         const hwid = await loadMachineId();
+        setLoaderProgress(authProgressScope, {
+            percent: 28,
+            title: "Device identity verified",
+            copy: "This device fingerprint is ready and attached to the auth request.",
+            stage: 1,
+            kicker: "HWID Ready"
+        });
 
         const res = await fetch(`${API}/login`, {
             method: "POST",
@@ -2978,24 +3017,30 @@ async function handleLogin(isAutoLogin = false, creds = {}) {
             return;
         }
 
+        setLoaderProgress(authProgressScope, {
+            percent: 46,
+            title: isAutoLogin ? "Saved session response received" : "Auth response received",
+            copy: "The auth service responded. Validating access and session payload now.",
+            stage: 2,
+            kicker: "Auth Response"
+        });
+
         if (data.token === "VALID") {
             console.log("[AUTH] LOGIN SUCCESS");
 
             stopAuthProgressAnimation();
             setLoaderProgress(authProgressScope, {
-                percent: 100,
+                percent: 78,
                 title: "Access granted",
-                copy: "Dashboard unlocked. Syncing profile, license, and module state.",
-                tone: "success",
+                copy: "Credentials verified. Running startup checks before the dashboard opens.",
+                tone: "active",
                 stage: 3,
                 kicker: isAutoLogin ? "Session Ready" : "Access Granted"
             });
 
             if (isAutoLogin && autoLoginUser) {
-                autoLoginUser.innerText = "Session verified. Opening dashboard...";
+                autoLoginUser.innerText = "Session verified. Running startup checks...";
             }
-
-            await wait(320);
 
             const username = email.split("@")[0];
 
@@ -3040,6 +3085,17 @@ async function handleLogin(isAutoLogin = false, creds = {}) {
             const homeExpiry = document.getElementById("home-exp");
             if (homeExpiry) homeExpiry.innerText = new Date(data.expiry).toLocaleDateString();
 
+            setLoaderProgress(authProgressScope, {
+                percent: 64,
+                title: "Session synchronized",
+                copy: "Profile, license, and local session data are ready. Running startup checks now.",
+                tone: "active",
+                stage: 3,
+                kicker: "Session Sync"
+            });
+
+            await runAuthStartupSequence(authProgressScope);
+
             // ---------- SWITCH UI ----------
             document.body.classList.remove("login-active");
             document.body.classList.add("logged-in");
@@ -3081,7 +3137,7 @@ async function handleLogin(isAutoLogin = false, creds = {}) {
                 autoLoginUser.innerText = "Saved session expired. Manual login required.";
             }
 
-            await wait(380);
+            await wait(AUTH_FAILURE_DISPLAY_MS);
             if (autoLoginModal) hideAutoLoginModal();
 
             if (isAutoLogin) {
@@ -3109,7 +3165,7 @@ async function handleLogin(isAutoLogin = false, creds = {}) {
             autoLoginUser.innerText = "API unreachable. Manual login required.";
         }
 
-        await wait(380);
+        await wait(AUTH_FAILURE_DISPLAY_MS);
 
         if (isAutoLogin && autoLoginModal) {
             hideAutoLoginModal();
@@ -3127,6 +3183,7 @@ async function handleLogin(isAutoLogin = false, creds = {}) {
             btn.textContent = "LOGIN";
             btn.disabled = false;
             btn.classList.remove('is-loading');
+            loginForm?.classList.remove('is-auth-loading');
             resetAuthProgressUI('login');
         }
 
