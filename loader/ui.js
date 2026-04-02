@@ -20,6 +20,7 @@ let hwidResetPollInterval = null;
 let hwidResetApprovalStatus = "idle";
 let latestHwidResetRequestId = null;
 let latestHwidResetTicketNumber = null;
+let authProgressTimer = null;
 let injectionProgressTimer = null;
 let autoLoginRequestToken = 0;
 let activeExternalLink = null;
@@ -183,7 +184,7 @@ const gameModuleConfigs = {
         accessGame: "FiveM",
         accessRequirementLabel: "FIVM",
         launcher: "CFX Launcher",
-        modalCopy: "Pick the FiveM route you want. The buttons turn on as soon as the matching files are in your assets folder.",
+        modalCopy: "Pick the FiveM route you want.",
         internalNote: "Looks for a FiveM DLL.",
         externalNote: "Looks for a FiveM EXE."
     },
@@ -195,7 +196,7 @@ const gameModuleConfigs = {
         accessGame: "GTAV",
         accessRequirementLabel: "GTAV",
         launcher: "Rockstar",
-        modalCopy: "Pick the GTA V route you want. Add the matching files to your assets folder to turn each option on.",
+        modalCopy: "Pick the GTA V route you want.",
         internalNote: "Looks for a GTA V DLL.",
         externalNote: "Looks for a GTA V EXE."
     },
@@ -207,7 +208,7 @@ const gameModuleConfigs = {
         accessGame: "Warzone",
         accessRequirementLabel: "WARZ",
         launcher: "Battle.net / Xbox",
-        modalCopy: "Pick the Warzone route you want. Add the matching files to your assets folder to unlock each option.",
+        modalCopy: "Pick the Warzone route you want.",
         internalNote: "Looks for a Warzone DLL.",
         externalNote: "Looks for a Warzone EXE."
     }
@@ -685,6 +686,11 @@ function showAutoLoginModal() {
     const modal = document.getElementById('auto-login-modal');
     if (!modal) return;
     modal.style.removeProperty('display');
+    resetAuthProgressUI('auto');
+    const autoLoginUser = document.getElementById('auto-login-user');
+    if (autoLoginUser) {
+        autoLoginUser.innerText = "Authenticating User...";
+    }
     modal.classList.remove('hidden');
 }
 
@@ -693,6 +699,12 @@ function hideAutoLoginModal() {
     if (!modal) return;
     modal.style.removeProperty('display');
     modal.classList.add('hidden');
+    stopAuthProgressAnimation();
+    resetAuthProgressUI('auto');
+    const autoLoginUser = document.getElementById('auto-login-user');
+    if (autoLoginUser) {
+        autoLoginUser.innerText = "Authenticating User...";
+    }
 }
 
 function setLoginNotice(message = "", state = "error") {
@@ -739,6 +751,7 @@ function showManualLoginState(noticeText = null, keepAutoLoginModal = false) {
     }
     document.body.classList.remove("logged-in");
     document.body.classList.add("login-active");
+    resetAuthProgressUI('login');
 
     if (loginScreen) loginScreen.style.display = "flex";
     if (dashboard) dashboard.style.display = "none";
@@ -1564,51 +1577,307 @@ function stopInjectionProgressAnimation() {
     }
 }
 
-function setInjectionProgress(percent, message, tone = "active") {
-    const bar = document.getElementById('main-progress-bar');
-    const text = document.getElementById('status-text');
-    const percentText = document.getElementById('status-percent');
+function wait(ms) {
+    return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
 
-    if (bar) {
-        bar.style.width = `${Math.max(0, Math.min(100, percent))}%`;
-        bar.classList.remove('is-success', 'is-error');
+function stopAuthProgressAnimation() {
+    if (authProgressTimer) {
+        clearInterval(authProgressTimer);
+        authProgressTimer = null;
+    }
+}
+
+function getLoaderProgressElements(scope) {
+    const elementMap = {
+        login: {
+            shell: 'login-progress-shell',
+            kicker: 'login-status-kicker',
+            text: 'login-status-text',
+            percent: 'login-status-percent',
+            bar: 'login-progress-bar',
+            copy: 'login-progress-copy',
+            steps: 'login-progress-steps'
+        },
+        auto: {
+            shell: 'auto-login-progress-shell',
+            kicker: 'auto-login-status-kicker',
+            text: 'auto-login-status-text',
+            percent: 'auto-login-status-percent',
+            bar: 'auto-login-progress-bar',
+            copy: 'auto-login-progress-copy',
+            steps: 'auto-login-progress-steps'
+        },
+        injection: {
+            shell: 'injection-progress-shell',
+            kicker: 'injection-status-kicker',
+            text: 'status-text',
+            percent: 'status-percent',
+            bar: 'main-progress-bar',
+            copy: 'injection-progress-copy',
+            steps: 'injection-progress-steps'
+        }
+    };
+
+    const ids = elementMap[scope];
+    if (!ids) {
+        return null;
+    }
+
+    return Object.fromEntries(
+        Object.entries(ids).map(([key, id]) => [key, document.getElementById(id)])
+    );
+}
+
+function toggleLoaderProgress(scope, visible) {
+    const refs = getLoaderProgressElements(scope);
+    if (refs?.shell) {
+        refs.shell.classList.toggle('hidden', !visible);
+    }
+}
+
+function updateLoaderProgressSteps(container, stage = 0, tone = "active") {
+    if (!container) {
+        return;
+    }
+
+    const steps = Array.from(container.querySelectorAll('.loader-progress-step'));
+    if (!steps.length) {
+        return;
+    }
+
+    const safeStage = Math.max(0, Math.min(steps.length - 1, Number(stage) || 0));
+
+    steps.forEach((step, index) => {
+        step.classList.remove('is-active', 'is-complete', 'is-error');
+
         if (tone === "success") {
-            bar.classList.add('is-success');
+            step.classList.add('is-complete');
+            return;
+        }
+
+        if (index < safeStage) {
+            step.classList.add('is-complete');
+            return;
+        }
+
+        if (index === safeStage) {
+            step.classList.add(tone === "error" ? 'is-error' : 'is-active');
+        }
+    });
+}
+
+function setLoaderProgress(scope, {
+    percent = 0,
+    title = "",
+    copy = "",
+    tone = "active",
+    stage = 0,
+    kicker = ""
+} = {}) {
+    const refs = getLoaderProgressElements(scope);
+    if (!refs) {
+        return;
+    }
+
+    const clampedPercent = Math.max(0, Math.min(100, percent));
+
+    if (refs.shell) {
+        refs.shell.classList.remove('is-success', 'is-error');
+        if (tone === "success") {
+            refs.shell.classList.add('is-success');
         } else if (tone === "error") {
-            bar.classList.add('is-error');
+            refs.shell.classList.add('is-error');
         }
     }
 
-    if (text && message) {
-        text.textContent = message;
-        text.style.color = tone === "error"
-            ? "var(--red)"
-            : tone === "success"
-                ? "#8cffde"
-                : "var(--accent)";
+    if (refs.bar) {
+        refs.bar.style.width = `${clampedPercent}%`;
     }
 
-    if (percentText) {
-        percentText.textContent = `${Math.max(0, Math.min(100, percent))}%`;
+    if (refs.text && title) {
+        refs.text.textContent = title;
+        refs.text.style.color = tone === "error"
+            ? "#ffd6dc"
+            : tone === "success"
+                ? "#d9ffea"
+                : "#ffffff";
     }
+
+    if (refs.kicker && kicker) {
+        refs.kicker.textContent = kicker;
+    }
+
+    if (refs.copy && copy) {
+        refs.copy.textContent = copy;
+    }
+
+    if (refs.percent) {
+        refs.percent.textContent = `${clampedPercent}%`;
+    }
+
+    updateLoaderProgressSteps(refs.steps, stage, tone);
+}
+
+function getAuthProgressDefaults(scope) {
+    if (scope === "auto") {
+        return {
+            percent: 0,
+            title: "Restoring remembered session",
+            copy: "Re-validating your saved access before the loader opens.",
+            tone: "active",
+            stage: 0,
+            kicker: "Saved Session"
+        };
+    }
+
+    return {
+        percent: 0,
+        title: "Awaiting credentials",
+        copy: "Your session will be verified before the dashboard unlocks.",
+        tone: "active",
+        stage: 0,
+        kicker: "Secure Auth"
+    };
+}
+
+function resetAuthProgressUI(scope = "login") {
+    stopAuthProgressAnimation();
+    setLoaderProgress(scope, getAuthProgressDefaults(scope));
+    if (scope === "login") {
+        toggleLoaderProgress('login', false);
+    }
+}
+
+function startAuthProgressAnimation(scope = "login") {
+    const isAutoScope = scope === "auto";
+    const steps = [
+        {
+            percent: 14,
+            title: isAutoScope ? "Restoring encrypted session" : "Encrypting credentials",
+            copy: isAutoScope
+                ? "Loading your remembered session token and validating the saved session state."
+                : "Packaging your sign-in request for the secure auth endpoint.",
+            stage: 0,
+            kicker: isAutoScope ? "Saved Session" : "Secure Auth"
+        },
+        {
+            percent: 39,
+            title: "Verifying device identity",
+            copy: "Matching this device fingerprint against the active entitlement state.",
+            stage: 1,
+            kicker: isAutoScope ? "Saved Session" : "Secure Auth"
+        },
+        {
+            percent: 67,
+            title: "Opening secure channel",
+            copy: "Auth is confirming access and preparing the loader session state.",
+            stage: 2,
+            kicker: isAutoScope ? "Session Link" : "Secure Auth"
+        },
+        {
+            percent: 86,
+            title: "Syncing dashboard state",
+            copy: "Finalizing profile, license, and module visibility before entry.",
+            stage: 3,
+            kicker: isAutoScope ? "Session Ready" : "Dashboard Sync"
+        }
+    ];
+
+    if (scope === "login") {
+        toggleLoaderProgress('login', true);
+    }
+
+    stopAuthProgressAnimation();
+    setLoaderProgress(scope, steps[0]);
+
+    let stepIndex = 0;
+    authProgressTimer = setInterval(() => {
+        stepIndex += 1;
+
+        if (stepIndex >= steps.length) {
+            stopAuthProgressAnimation();
+            return;
+        }
+
+        setLoaderProgress(scope, steps[stepIndex]);
+    }, 520);
+}
+
+function setInjectionProgress(
+    percent,
+    message,
+    copy = "Please wait while we secure the connection...",
+    tone = "active",
+    stage = 0,
+    kicker = "Module Launch"
+) {
+    setLoaderProgress('injection', {
+        percent,
+        title: message,
+        copy,
+        tone,
+        stage,
+        kicker
+    });
 }
 
 function resetInjectionProgressUI() {
     stopInjectionProgressAnimation();
-    setInjectionProgress(0, "INITIALIZING...");
+    setInjectionProgress(
+        0,
+        "Initializing module launch",
+        "Please wait while we secure the connection...",
+        "active",
+        0,
+        "Module Launch"
+    );
 }
 
-function startInjectionProgressAnimation(gameName) {
+function startInjectionProgressAnimation(gameName, injectionType = "internal") {
+    const routeLabel = String(injectionType || "internal").replace(/-/g, ' ').toUpperCase();
     const steps = [
-        { percent: 12, message: `AUTHENTICATING ${gameName.toUpperCase()}...` },
-        { percent: 28, message: "SECURING SESSION..." },
-        { percent: 45, message: `COMMUNICATING WITH ${gameName.toUpperCase()}...` }
+        {
+            percent: 12,
+            message: `Authorizing ${gameName.toUpperCase()}`,
+            copy: `Confirming your ${routeLabel} route and current license access.`,
+            stage: 0,
+            kicker: `${routeLabel} Route`
+        },
+        {
+            percent: 34,
+            message: "Syncing secure session",
+            copy: "Establishing a protected session between the loader and launch service.",
+            stage: 1,
+            kicker: "Session Link"
+        },
+        {
+            percent: 58,
+            message: "Validating module package",
+            copy: `Checking ${routeLabel} assets and launcher requirements before execution.`,
+            stage: 2,
+            kicker: "Module Check"
+        },
+        {
+            percent: 82,
+            message: "Preparing runtime bridge",
+            copy: "Staging the final handoff so the selected module can start cleanly.",
+            stage: 3,
+            kicker: "Runtime Prep"
+        }
     ];
 
-    let stepIndex = 0;
-    setInjectionProgress(steps[0].percent, steps[0].message);
     stopInjectionProgressAnimation();
+    setInjectionProgress(
+        steps[0].percent,
+        steps[0].message,
+        steps[0].copy,
+        "active",
+        steps[0].stage,
+        steps[0].kicker
+    );
 
+    let stepIndex = 0;
     injectionProgressTimer = setInterval(() => {
         stepIndex += 1;
         if (stepIndex >= steps.length) {
@@ -1617,8 +1886,8 @@ function startInjectionProgressAnimation(gameName) {
         }
 
         const step = steps[stepIndex];
-        setInjectionProgress(step.percent, step.message);
-    }, 420);
+        setInjectionProgress(step.percent, step.message, step.copy, "active", step.stage, step.kicker);
+    }, 520);
 }
 
 async function loadNews(forceRefresh = false) {
@@ -1901,6 +2170,7 @@ async function launchGame(gameName) {
     const injectionModal = document.getElementById('injection-modal');
     const moduleAvailability = await getGameModuleAvailability(gameName);
     const injectionType = await openGameLaunchModal(gameName, moduleAvailability);
+    const routeLabel = String(injectionType || 'internal').replace(/-/g, ' ').toUpperCase();
 
     if (injectionType === 'cancel') {
         addTerminalLine(`> [SYSTEM] ${gameConfig.displayName.toUpperCase()} launch cancelled.`);
@@ -1911,7 +2181,7 @@ async function launchGame(gameName) {
     if (injectionModal) {
         resetInjectionProgressUI();
         injectionModal.classList.remove('hidden');
-        startInjectionProgressAnimation(gameConfig.displayName);
+        startInjectionProgressAnimation(gameConfig.displayName, injectionType);
     }
 
     addTerminalLine(`> [MODULE] ${gameConfig.displayName.toUpperCase()} -> ${injectionType.toUpperCase()} selected.`);
@@ -1946,7 +2216,14 @@ async function launchGame(gameName) {
 
     if (result.status === "Success") {
         stopInjectionProgressAnimation();
-        setInjectionProgress(100, "INJECTION SUCCESSFUL!", "success");
+        setInjectionProgress(
+            100,
+            "Module live",
+            `${routeLabel} is active. The loader can return to standby once the game is ready.`,
+            "success",
+            4,
+            "Launch Complete"
+        );
 
         setTimeout(() => {
             injectionModal?.classList.add('hidden');
@@ -1954,7 +2231,14 @@ async function launchGame(gameName) {
         }, 3000);
     } else {
         stopInjectionProgressAnimation();
-        setInjectionProgress(100, "INJECTION FAILED", "error");
+        setInjectionProgress(
+            100,
+            "Launch blocked",
+            result.message || `The ${routeLabel} route could not finish preparing.`,
+            "error",
+            3,
+            "Launch Failed"
+        );
         setTimeout(() => {
             injectionModal?.classList.add('hidden');
             resetInjectionProgressUI();
@@ -2647,6 +2931,8 @@ async function handleLogin(isAutoLogin = false, creds = {}) {
     const rememberMe = document.getElementById('remember-me')?.checked;
     const btn = document.getElementById('login-btn');
     const autoLoginModal = document.getElementById("auto-login-modal");
+    const autoLoginUser = document.getElementById("auto-login-user");
+    const authProgressScope = isAutoLogin ? 'auto' : 'login';
 
     // ---------- NO CREDENTIALS FOUND ----------
     if (!email || !password) {
@@ -2665,11 +2951,17 @@ async function handleLogin(isAutoLogin = false, creds = {}) {
         setLoginNotice("");
     }
 
-    // Spinner for manual login
     if (btn && !isAutoLogin) {
-        btn.innerHTML = `<div class="spinner"></div>`;
+        btn.textContent = "VERIFYING...";
         btn.disabled = true;
+        btn.classList.add('is-loading');
     }
+
+    if (isAutoLogin && autoLoginUser) {
+        autoLoginUser.innerText = email || "Authenticating User...";
+    }
+
+    startAuthProgressAnimation(authProgressScope);
 
     try {
         const hwid = await loadMachineId();
@@ -2689,6 +2981,22 @@ async function handleLogin(isAutoLogin = false, creds = {}) {
         if (data.token === "VALID") {
             console.log("[AUTH] LOGIN SUCCESS");
 
+            stopAuthProgressAnimation();
+            setLoaderProgress(authProgressScope, {
+                percent: 100,
+                title: "Access granted",
+                copy: "Dashboard unlocked. Syncing profile, license, and module state.",
+                tone: "success",
+                stage: 3,
+                kicker: isAutoLogin ? "Session Ready" : "Access Granted"
+            });
+
+            if (isAutoLogin && autoLoginUser) {
+                autoLoginUser.innerText = "Session verified. Opening dashboard...";
+            }
+
+            await wait(320);
+
             const username = email.split("@")[0];
 
             window.currentUser = {
@@ -2697,7 +3005,6 @@ async function handleLogin(isAutoLogin = false, creds = {}) {
                 expiry: data.expiry
             };
 
-            // Hide auto-login modal
             if (autoLoginModal) hideAutoLoginModal();
             setLoginNotice("");
 
@@ -2757,13 +3064,29 @@ async function handleLogin(isAutoLogin = false, creds = {}) {
             if (typeof showTab === "function") showTab("home");
             console.log("[SYSTEM] Dashboard loaded successfully.");
         } else {
-            // Failed login
+            const errorMessage = data.error || "Invalid credentials.";
+            stopAuthProgressAnimation();
+            setLoaderProgress(authProgressScope, {
+                percent: 96,
+                title: isAutoLogin ? "Saved session rejected" : "Authentication failed",
+                copy: isAutoLogin
+                    ? "The remembered session is no longer valid. Sign in again to restore access."
+                    : errorMessage,
+                tone: "error",
+                stage: 2,
+                kicker: "Access Denied"
+            });
+
+            if (isAutoLogin && autoLoginUser) {
+                autoLoginUser.innerText = "Saved session expired. Manual login required.";
+            }
+
+            await wait(380);
             if (autoLoginModal) hideAutoLoginModal();
 
             if (isAutoLogin) {
                 setLoginNotice("No valid session found. Please login manually.", "info");
             } else {
-                const errorMessage = data.error || "Invalid credentials.";
                 const shouldEditEmail = /user not found|invalid email|email/i.test(errorMessage);
 
                 setLoginNotice(errorMessage);
@@ -2772,6 +3095,27 @@ async function handleLogin(isAutoLogin = false, creds = {}) {
         }
     } catch (err) {
         console.error("[AUTH ERROR]", err);
+        stopAuthProgressAnimation();
+        setLoaderProgress(authProgressScope, {
+            percent: 100,
+            title: isAutoLogin ? "Session unavailable" : "Connection error",
+            copy: "The auth API could not be reached. Check the server and try again.",
+            tone: "error",
+            stage: 2,
+            kicker: "Network Error"
+        });
+
+        if (isAutoLogin && autoLoginUser) {
+            autoLoginUser.innerText = "API unreachable. Manual login required.";
+        }
+
+        await wait(380);
+
+        if (isAutoLogin && autoLoginModal) {
+            hideAutoLoginModal();
+            setLoginNotice("No valid session found. Please login manually.", "info");
+        }
+
         if (!isAutoLogin) {
             setLoginNotice("API connection error. Check the server and try again.");
             focusLoginField(passwordInput || emailInput);
@@ -2780,8 +3124,17 @@ async function handleLogin(isAutoLogin = false, creds = {}) {
         isAuthProcessActive = false;
 
         if (btn && !isAutoLogin) {
-            btn.innerHTML = "LOGIN";
+            btn.textContent = "LOGIN";
             btn.disabled = false;
+            btn.classList.remove('is-loading');
+            resetAuthProgressUI('login');
+        }
+
+        if (isAutoLogin) {
+            resetAuthProgressUI('auto');
+            if (autoLoginUser) {
+                autoLoginUser.innerText = "Authenticating User...";
+            }
         }
     }
 }
