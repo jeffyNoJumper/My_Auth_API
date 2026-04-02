@@ -231,6 +231,8 @@ function requireOwner(req, res, next) {
     return next();
 }
 
+const DAY_IN_MS = 24 * 60 * 60 * 1000;
+
 function applyDuration(baseDate, daysValue) {
     const targetDate = new Date(baseDate);
     const parsedDays = parseFloat(daysValue);
@@ -247,6 +249,53 @@ function applyDuration(baseDate, daysValue) {
     const durationMs = Math.round(parsedDays * 24 * 60 * 60 * 1000);
     targetDate.setTime(targetDate.getTime() + durationMs);
     return targetDate;
+}
+
+function toValidDate(value) {
+    if (!value) {
+        return null;
+    }
+
+    const parsedDate = new Date(value);
+    return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
+}
+
+function clampDurationMs(value) {
+    const parsedValue = Number(value);
+    if (!Number.isFinite(parsedValue)) {
+        return null;
+    }
+
+    return Math.max(0, Math.round(parsedValue));
+}
+
+function getPausedRemainingMs(user) {
+    const storedDuration = clampDurationMs(user?.paused_remaining_ms);
+    if (storedDuration !== null) {
+        return storedDuration;
+    }
+
+    const expiryDate = toValidDate(user?.expiry_date);
+    if (!expiryDate) {
+        return null;
+    }
+
+    return Math.max(0, expiryDate.getTime() - Date.now());
+}
+
+function formatRemainingDuration(ms) {
+    const safeDuration = clampDurationMs(ms);
+    if (safeDuration === null) {
+        return "pending activation";
+    }
+
+    const totalSeconds = Math.max(0, Math.floor(safeDuration / 1000));
+    const days = Math.floor(totalSeconds / 86400);
+    const hours = Math.floor((totalSeconds % 86400) / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+
+    return `${days}d ${hours}h ${minutes}m ${seconds}s`;
 }
 
 function normalizeGameProduct(value) {
@@ -951,7 +1000,7 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
         if (rawAction === 'load-keys') {
             console.log("[ADMIN] Success: Running load-keys logic...");
             try {
-                const keys = await User.find({}, 'license_key email reserved_email expiry_date is_banned is_paused games')
+                const keys = await User.find({}, 'license_key email reserved_email expiry_date is_banned is_paused paused_remaining_ms games')
                     .sort({ updatedAt: -1, createdAt: -1 })
                     .lean();
                 return safeJson({
@@ -964,6 +1013,7 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                         expiry: k.expiry_date,
                         is_banned: k.is_banned || false,
                         is_paused: k.is_paused || false,
+                        paused_remaining_ms: clampDurationMs(k.paused_remaining_ms),
                         games: k.games || []
                     }))
                 });
@@ -1011,6 +1061,50 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
 
             const isRemoveAction = cleanAction === 'remove-time';
             const signedDays = isRemoveAction ? -requestedDays : requestedDays;
+            const durationDeltaMs = Math.round(signedDays * DAY_IN_MS);
+
+            if (user.is_paused) {
+                const pausedRemainingMs = getPausedRemainingMs(user);
+
+                if (pausedRemainingMs === null && !user.expiry_date) {
+                    const currentDurationDays = Number.isFinite(Number(user.duration_days))
+                        ? Number(user.duration_days)
+                        : 30;
+                    const nextDurationDays = Math.max(0, currentDurationDays + signedDays);
+
+                    user.duration_days = nextDurationDays;
+                    await user.save();
+
+                    return res.json({
+                        success: true,
+                        message: isRemoveAction
+                            ? `Removed ${requestedDays} days from the paused pending key. New stored duration: ${nextDurationDays} days.`
+                            : `Added ${requestedDays} days to the paused pending key. New stored duration: ${nextDurationDays} days.`,
+                        new_duration_days: nextDurationDays,
+                        is_paused: true,
+                        paused_remaining_ms: null,
+                        new_expiry: null
+                    });
+                }
+
+                const nextRemainingMs = Math.max(0, (pausedRemainingMs || 0) + durationDeltaMs);
+
+                user.paused_remaining_ms = nextRemainingMs;
+                user.paused_at = user.paused_at || new Date();
+                user.expiry_date = null;
+                await user.save();
+
+                return res.json({
+                    success: true,
+                    message: isRemoveAction
+                        ? `Removed ${requestedDays} days. Frozen time left: ${formatRemainingDuration(nextRemainingMs)}.`
+                        : `Added ${requestedDays} days. Frozen time left: ${formatRemainingDuration(nextRemainingMs)}.`,
+                    paused_remaining_ms: nextRemainingMs,
+                    is_paused: true,
+                    new_expiry: null
+                });
+            }
+
             const currentExpiry = user.expiry_date ? new Date(user.expiry_date) : new Date();
             const baseDate = isRemoveAction
                 ? currentExpiry
@@ -1064,6 +1158,7 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                     reserved_email: user.reserved_email || "",
                     is_banned: user.is_banned || false,
                     is_paused: user.is_paused || false,
+                    paused_remaining_ms: clampDurationMs(user.paused_remaining_ms),
                     hwid: user.hwid || "NOT CAPTURED",
                     expiry: user.expiry_date,
                     games: user.games || [],
@@ -1198,14 +1293,78 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                 }
 
             case 'pause':
+                if (user.is_paused) {
+                    return safeJson({
+                        success: true,
+                        message: user.paused_remaining_ms !== null
+                            ? `Key already paused. Frozen time left: ${formatRemainingDuration(user.paused_remaining_ms)}.`
+                            : "Key already paused.",
+                        is_paused: true,
+                        paused_remaining_ms: getPausedRemainingMs(user),
+                        expiry: null
+                    });
+                }
+
                 user.is_paused = true;
+                user.paused_at = new Date();
+                user.paused_remaining_ms = getPausedRemainingMs(user);
+
+                if (user.paused_remaining_ms !== null) {
+                    user.expiry_date = null;
+                }
+
                 await user.save();
-                return safeJson({ success: true, message: "Key paused." });
+                return safeJson({
+                    success: true,
+                    message: user.paused_remaining_ms !== null
+                        ? `Key paused. Frozen time left: ${formatRemainingDuration(user.paused_remaining_ms)}.`
+                        : "Key paused before activation.",
+                    is_paused: true,
+                    paused_remaining_ms: user.paused_remaining_ms,
+                    expiry: user.expiry_date
+                });
 
             case 'unpause':
-                user.is_paused = false;
-                await user.save();
-                return safeJson({ success: true, message: "Key unpaused." });
+                if (!user.is_paused) {
+                    return safeJson({
+                        success: true,
+                        message: "Key is already active.",
+                        is_paused: false,
+                        paused_remaining_ms: null,
+                        expiry: user.expiry_date
+                    });
+                }
+
+                {
+                    const pausedRemainingMs = getPausedRemainingMs(user);
+                    user.is_paused = false;
+                    user.paused_at = null;
+
+                    if (pausedRemainingMs === null) {
+                        user.paused_remaining_ms = null;
+                        await user.save();
+
+                        return safeJson({
+                            success: true,
+                            message: "Key unpaused. Timer will begin on first login.",
+                            is_paused: false,
+                            paused_remaining_ms: null,
+                            expiry: user.expiry_date
+                        });
+                    }
+
+                    user.expiry_date = new Date(Date.now() + pausedRemainingMs);
+                    user.paused_remaining_ms = null;
+                    await user.save();
+
+                    return safeJson({
+                        success: true,
+                        message: `Key unpaused. New expiry: ${user.expiry_date.toLocaleString()}`,
+                        is_paused: false,
+                        paused_remaining_ms: null,
+                        expiry: user.expiry_date
+                    });
+                }
 
             case 'ban':
                 user.is_banned = true;
