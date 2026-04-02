@@ -52,6 +52,16 @@ const userSchema = new mongoose.Schema({
         default: false
     },
 
+    paused_at: {
+        type: Date,
+        default: null
+    },
+
+    paused_remaining_ms: {
+        type: Number,
+        default: null
+    },
+
     games: {
         type: [String],
         default: []
