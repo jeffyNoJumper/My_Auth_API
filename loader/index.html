@@ -47,7 +47,35 @@
             </div>
 
             <button type="submit" id="login-btn">LOGIN</button>
-            <div id="login-loader" class="spinner hidden"></div>
+            <div id="login-progress-shell" class="loader-progress-shell loader-progress-shell-inline hidden" aria-live="polite">
+                <div class="loader-progress-ambient"></div>
+                <div class="loader-progress-grid">
+                    <div class="loader-progress-meta">
+                        <div class="loader-progress-copy-block">
+                            <span id="login-status-kicker" class="loader-progress-kicker">Secure Auth</span>
+                            <strong id="login-status-text" class="loader-progress-title">Awaiting credentials</strong>
+                        </div>
+                        <span id="login-status-percent" class="loader-progress-percent">0%</span>
+                    </div>
+
+                    <div class="loader-progress-track">
+                        <div id="login-progress-bar" class="loader-progress-bar">
+                            <span class="loader-progress-sheen"></span>
+                        </div>
+                    </div>
+
+                    <p id="login-progress-copy" class="loader-progress-copy">
+                        Your session will be verified before the dashboard unlocks.
+                    </p>
+
+                    <div id="login-progress-steps" class="loader-progress-steps">
+                        <span class="loader-progress-step" data-stage="0">Queue</span>
+                        <span class="loader-progress-step" data-stage="1">Identity</span>
+                        <span class="loader-progress-step" data-stage="2">Session</span>
+                        <span class="loader-progress-step" data-stage="3">Dashboard</span>
+                    </div>
+                </div>
+            </div>
             </form>
         </div>
     </div>
@@ -304,7 +332,7 @@
                                     <strong>GTA V</strong>
                                     <span class="game-card-state" data-game-state>LOCKED</span>
                                 </div>
-                                <span>Use the Rockstar path, then choose internal or external once the GTA binaries are added.</span>
+                                <span>Use the Rockstar path, then choose internal or external once the GTA game has been launched.</span>
                                 <div class="game-card-modules">
                                     <span class="game-card-module-pill" data-module-type="internal">INTERNAL</span>
                                     <span class="game-card-module-pill" data-module-type="external">EXTERNAL</span>
@@ -341,7 +369,7 @@
                                     <strong>Warzone</strong>
                                     <span class="game-card-state" data-game-state>LOCKED</span>
                                 </div>
-                                <span>Warzone now uses the same cleaner module selector with internal and external slots ready for later.</span>
+                                <span>Warzone uses Xbox or Battle.net flow choose the internal, external route before launch.</span>
                                 <div class="game-card-modules">
                                     <span class="game-card-module-pill" data-module-type="internal">INTERNAL</span>
                                     <span class="game-card-module-pill" data-module-type="external">EXTERNAL</span>
@@ -382,7 +410,7 @@
                                 <div class="game-card-modules">
                                     <span class="game-card-module-pill" data-module-type="internal">INTERNAL</span>
                                     <span class="game-card-module-pill" data-module-type="external">EXTERNAL</span>
-                                    <span class="game-card-module-pill" data-module-type="skin-changer">SKIN</span>
+                                    <span class="game-card-module-pill" data-module-type="skin-changer">INVENTORY</span>
                                 </div>
                             </div>
                             <div class="card-overlay">
@@ -1096,10 +1124,33 @@
                     </div>
                 </div>
 
-                <!-- Loading Animation -->
-                <div class="loader-container">
-                    <div class="loader-ring">
-                        <div></div><div></div><div></div><div></div>
+                <div id="auto-login-progress-shell" class="loader-progress-shell loader-progress-shell-modal" aria-live="polite">
+                    <div class="loader-progress-ambient"></div>
+                    <div class="loader-progress-grid">
+                        <div class="loader-progress-meta">
+                            <div class="loader-progress-copy-block">
+                                <span id="auto-login-status-kicker" class="loader-progress-kicker">Saved Session</span>
+                                <strong id="auto-login-status-text" class="loader-progress-title">Restoring remembered session</strong>
+                            </div>
+                            <span id="auto-login-status-percent" class="loader-progress-percent">0%</span>
+                        </div>
+
+                        <div class="loader-progress-track">
+                            <div id="auto-login-progress-bar" class="loader-progress-bar">
+                                <span class="loader-progress-sheen"></span>
+                            </div>
+                        </div>
+
+                        <p id="auto-login-progress-copy" class="loader-progress-copy">
+                            Re-validating your saved access before the loader opens.
+                        </p>
+
+                        <div id="auto-login-progress-steps" class="loader-progress-steps">
+                            <span class="loader-progress-step" data-stage="0">Queue</span>
+                            <span class="loader-progress-step" data-stage="1">Identity</span>
+                            <span class="loader-progress-step" data-stage="2">Session</span>
+                            <span class="loader-progress-step" data-stage="3">Dashboard</span>
+                        </div>
                     </div>
                 </div>
 
@@ -1169,21 +1220,36 @@
         <!-- --- INJECTION PROGRESS SECTION --- -->
         <div id="injection-modal" class="modal-overlay hidden">
             <div class="glass-card injection-progress-card">
+                <div id="injection-progress-shell" class="loader-progress-shell loader-progress-shell-modal" aria-live="polite">
+                    <div class="loader-progress-ambient"></div>
+                    <div class="loader-progress-grid">
+                        <div class="loader-progress-meta">
+                            <div class="loader-progress-copy-block">
+                                <span id="injection-status-kicker" class="loader-progress-kicker">Module Launch</span>
+                                <strong id="status-text" class="loader-progress-title">Initializing module launch</strong>
+                            </div>
+                            <span id="status-percent" class="loader-progress-percent">0%</span>
+                        </div>
 
-                <div class="injection-progress-head">
-                    <span id="status-text" class="injection-progress-label">
-                        INITIALIZING...
-                    </span>
-                    <span id="status-percent" class="injection-progress-percent">0%</span>
+                        <div class="loader-progress-track">
+                            <div id="main-progress-bar" class="loader-progress-bar">
+                                <span class="loader-progress-sheen"></span>
+                            </div>
+                        </div>
+
+                        <p id="injection-progress-copy" class="loader-progress-copy">
+                            Please wait while we secure the connection...
+                        </p>
+
+                        <div id="injection-progress-steps" class="loader-progress-steps">
+                            <span class="loader-progress-step" data-stage="0">Queue</span>
+                            <span class="loader-progress-step" data-stage="1">Session</span>
+                            <span class="loader-progress-step" data-stage="2">Module</span>
+                            <span class="loader-progress-step" data-stage="3">Runtime</span>
+                            <span class="loader-progress-step" data-stage="4">Launch</span>
+                        </div>
+                    </div>
                 </div>
-
-                <div class="progress-container injection-progress-track">
-                    <div id="main-progress-bar" class="injection-progress-bar"></div>
-                </div>
-
-                <p class="injection-progress-copy">
-                    Please wait while we secure the connection...
-                </p>
             </div>
         </div>
 
