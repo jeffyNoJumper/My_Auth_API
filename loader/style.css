@@ -276,6 +276,16 @@ body.login-active #login-screen .login-card {
     width: 100%;
 }
 
+.login-form > :not(#login-progress-shell) {
+    transition: opacity 0.2s ease, filter 0.2s ease;
+}
+
+.login-form.is-auth-loading > :not(#login-progress-shell) {
+    opacity: 0.16;
+    filter: blur(1px);
+    pointer-events: none;
+}
+
     .login-card input,
     .login-card button,
     .login-card a,
@@ -403,6 +413,16 @@ body.login-active #login-screen .login-card {
 .loader-progress-shell-inline {
     margin-top: 4px;
     padding: 18px 18px 16px;
+}
+
+#login-progress-shell.loader-progress-shell-inline {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: min(420px, calc(100% - 48px));
+    margin-top: 0;
+    transform: translate(-50%, -50%);
+    z-index: 8;
 }
 
 .loader-progress-shell-modal {
