@@ -1894,6 +1894,7 @@
                 paused_remaining_ms: Number.isFinite(Number(data.paused_remaining_ms))
                     ? Number(data.paused_remaining_ms)
                     : null,
+                pause_state_broken: Boolean(data.pause_state_broken),
                 pending_request: data.pending_request || null
             };
 
@@ -1903,7 +1904,9 @@
             setFieldValue('info-games', formatGames(loadedUser.games));
             setFieldValue(
                 'info-expiry',
-                loadedUser.is_paused
+                loadedUser.pause_state_broken
+                    ? 'Pause Snapshot Missing'
+                    : loadedUser.is_paused
                     ? formatPausedExpiry(loadedUser.paused_remaining_ms)
                     : formatExpiry(loadedUser.expiry)
             );
@@ -1917,7 +1920,9 @@
                 statusElement.style.color = statusMeta.color;
             }
 
-            if (loadedUser.is_paused) {
+            if (loadedUser.pause_state_broken) {
+                renderBrokenPauseState();
+            } else if (loadedUser.is_paused) {
                 renderPausedCountdown(loadedUser.paused_remaining_ms);
             } else if (loadedUser.expiry) {
                 startCountdown(loadedUser.expiry);
@@ -2148,6 +2153,17 @@
                 ? `FROZEN ${formatRemainingDuration(safeMs)}`
                 : 'PAUSED';
             timerDisplay.style.color = 'var(--gold)';
+        }
+
+        function renderBrokenPauseState() {
+            const timerDisplay = document.getElementById('info-timer');
+            if (!timerDisplay) {
+                return;
+            }
+
+            resetCountdown();
+            timerDisplay.textContent = 'RECOVERY NEEDED';
+            timerDisplay.style.color = 'var(--red)';
         }
 
         function startCountdown(expiryDate) {
