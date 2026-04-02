@@ -62,6 +62,11 @@ const userSchema = new mongoose.Schema({
         default: null
     },
 
+    paused_expiry_snapshot: {
+        type: Date,
+        default: null
+    },
+
     games: {
         type: [String],
         default: []
