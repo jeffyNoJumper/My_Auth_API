@@ -1,4 +1,4 @@
 {
-  "version": "1.1.5",
-  "url": https://github.com/jeffyNoJumper/My_Auth_API/releases/download/1.1.5/VEXION.ALL-IN-ONE.1.1.5.exe"
+  "version": "1.1.6",
+  "url": https://github.com/jeffyNoJumper/My_Auth_API/releases/download/1.1.6/VEXION.ALL-IN-ONE.1.1.6.exe"
 }
