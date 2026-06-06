@@ -1,4 +1,5 @@
 require('dotenv').config();
+require('dotenv').config({ path: require('path').resolve(__dirname, '.env') });
 const express = require('express');
 const mongoose = require('mongoose');
 const crypto = require('crypto');
@@ -474,6 +475,16 @@ async function getNextHwidTicketNumber() {
     return Number(counterDoc?.value || 1);
 }
 
+async function getNextKeyRequestTicketNumber() {
+    const counterDoc = await mongoose.connection.collection('counters').findOneAndUpdate(
+        { _id: 'key_request_ticket' },
+        { $inc: { value: 1 } },
+        { upsert: true, returnDocument: 'after', includeResultMetadata: false }
+    );
+
+    return Number(counterDoc?.value || 1);
+}
+
 async function ensureHwidTicketNumber(requestsCollection, requestDoc) {
     const existingTicket = Number(requestDoc?.ticket_number);
 
@@ -493,8 +504,18 @@ async function ensureHwidTicketNumber(requestsCollection, requestDoc) {
     return nextTicket;
 }
 
+function formatTicketNumber(ticketNumber) {
+    const normalized = Number(ticketNumber);
+    if (!Number.isFinite(normalized) || normalized <= 0) {
+        return null;
+    }
+
+    return `#${String(normalized).padStart(4, '0')}`;
+}
+
 const DISCORD_LOADER_ALERT_CHANNEL_ID = process.env.DISCORD_LOADER_ALERT_CHANNEL_ID || "1373760247658971256";
 const DISCORD_REDEEM_LOG_CHANNEL_ID = process.env.DISCORD_REDEEM_LOG_CHANNEL_ID || "1374477027247394866";
+const DISCORD_KEY_REQUEST_CHANNEL_ID = process.env.DISCORD_KEY_REQUEST_CHANNEL_ID || process.env.DISCORD_ADMIN_CHANNEL_ID || DISCORD_LOADER_ALERT_CHANNEL_ID;
 
 function getDiscordBotToken() {
     return process.env.DISCORD_BOT_TOKEN || process.env.DISCORD_TOKEN || process.env.TOKEN || "";
@@ -607,6 +628,200 @@ async function fetchLatestStoredLoaderAnnouncement() {
         console.error("[LOADER NOTIFICATION STORE ERROR]", error);
         return null;
     }
+}
+
+async function postKeyRequestToDiscord(requestDoc) {
+    const botToken = getDiscordBotToken();
+
+    if (!botToken || !DISCORD_KEY_REQUEST_CHANNEL_ID) {
+        return { ok: false, reason: "missing_discord_config" };
+    }
+
+    const requestId = String(requestDoc?._id || "");
+    const ticketLabel = formatTicketNumber(requestDoc?.ticket_number) || "New";
+    const maskedOldKey = maskLicenseKey(requestDoc?.old_key || "");
+    const email = String(requestDoc?.email || "unknown").slice(0, 256);
+
+    const payload = {
+        content: `🔑 **NEW KEY REQUEST** ${process.env.DISCORD_ADMIN_ROLE_ID ? `<@&${process.env.DISCORD_ADMIN_ROLE_ID}>` : ""}`.trim(),
+        embeds: [{
+            title: `New Key Request ${ticketLabel}`,
+            color: 0x38DCC8,
+            fields: [
+                { name: "Email", value: `\`${email}\``, inline: false },
+                { name: "Old Key", value: `\`${maskedOldKey || "Not provided"}\``, inline: true },
+                { name: "Requested Access", value: `\`${requestDoc?.requested_game || "All-Access"}\``, inline: true },
+                { name: "Requester Note", value: String(requestDoc?.note || "No note provided.").slice(0, 900), inline: false }
+            ],
+            footer: { text: `Request ID: ${requestId}` },
+            timestamp: new Date().toISOString()
+        }],
+        components: [{
+            type: 1,
+            components: [
+                {
+                    type: 2,
+                    custom_id: `approve_key:${requestId}`,
+                    label: `Approve ${ticketLabel}`,
+                    style: 3
+                },
+                {
+                    type: 2,
+                    custom_id: `deny_key:${requestId}`,
+                    label: `Deny ${ticketLabel}`,
+                    style: 4
+                }
+            ]
+        }]
+    };
+
+    const response = await fetch(`https://discord.com/api/v10/channels/${DISCORD_KEY_REQUEST_CHANNEL_ID}/messages`, {
+        method: 'POST',
+        headers: {
+            Authorization: `Bot ${botToken}`,
+            'Content-Type': 'application/json',
+            'User-Agent': 'VEXION-Loader/1.0'
+        },
+        body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Discord API ${response.status}: ${errorBody.slice(0, 180)}`);
+    }
+
+    const message = await response.json();
+    return { ok: true, messageId: message?.id || null };
+}
+
+function maskLicenseKey(key = "") {
+    const clean = String(key || "").trim().toUpperCase();
+    if (!clean) {
+        return "";
+    }
+
+    const [prefix = "KEY"] = clean.split("-");
+    const suffix = clean.slice(-4);
+    return `${prefix}-****-****-${suffix}`;
+}
+
+function serializeKeyRequest(requestDoc) {
+    if (!requestDoc) {
+        return null;
+    }
+
+    return {
+        id: String(requestDoc._id || ""),
+        ticketNumber: requestDoc.ticket_number || null,
+        ticketLabel: formatTicketNumber(requestDoc.ticket_number) || "",
+        status: requestDoc.status || "PENDING",
+        email: requestDoc.email || "",
+        old_key: requestDoc.old_key || "",
+        masked_old_key: maskLicenseKey(requestDoc.old_key || ""),
+        requested_game: requestDoc.requested_game || "All-Access",
+        note: requestDoc.note || "",
+        new_key: requestDoc.new_key || "",
+        denial_reason: requestDoc.denial_reason || "",
+        created_at: requestDoc.created_at || requestDoc.date || null,
+        resolved_at: requestDoc.resolved_at || null
+    };
+}
+
+async function approveKeyRequestById(requestId, { adminLabel = "Admin", source = "admin" } = {}) {
+    const keyRequests = mongoose.connection.collection('key_requests');
+    let objectId;
+
+    try {
+        objectId = new mongoose.Types.ObjectId(String(requestId));
+    } catch {
+        return { success: false, error: "Invalid key request ID." };
+    }
+
+    const requestDoc = await keyRequests.findOne({ _id: objectId });
+
+    if (!requestDoc) {
+        return { success: false, error: "Key request not found." };
+    }
+
+    if (requestDoc.status === "APPROVED" && requestDoc.new_key) {
+        return { success: true, request: serializeKeyRequest(requestDoc), key: requestDoc.new_key, message: "Request was already approved." };
+    }
+
+    if (requestDoc.status !== "PENDING") {
+        return { success: false, error: `Request is already ${requestDoc.status || "processed"}.` };
+    }
+
+    const requestedGame = normalizeGamesInput([requestDoc.requested_game || "All-Access"])[0] || "All-Access";
+    const days = Number(requestDoc.days || 30);
+    const newKey = generateLicenseKey([requestedGame]);
+
+    const voucherRecord = new User({
+        license_key: newKey,
+        duration_days: Number.isFinite(days) && days > 0 ? days : 30,
+        games: [requestedGame],
+        email: buildPendingVoucherEmail(newKey),
+        password: null,
+        hwid: null,
+        expiry_date: null,
+        reserved_email: requestDoc.email || null,
+        source_request_id: String(requestDoc._id)
+    });
+
+    await voucherRecord.save();
+
+    const resolvedAt = new Date();
+    const update = {
+        status: "APPROVED",
+        new_key: newKey,
+        resolved_at: resolvedAt,
+        resolved_by: adminLabel,
+        resolved_source: source
+    };
+
+    await keyRequests.updateOne({ _id: objectId }, { $set: update });
+    const updatedRequest = { ...requestDoc, ...update };
+
+    return {
+        success: true,
+        key: newKey,
+        request: serializeKeyRequest(updatedRequest),
+        message: `Approved ${formatTicketNumber(requestDoc.ticket_number) || "key request"} and generated ${newKey}.`
+    };
+}
+
+async function denyKeyRequestById(requestId, { adminLabel = "Admin", source = "admin", reason = "" } = {}) {
+    const keyRequests = mongoose.connection.collection('key_requests');
+    let objectId;
+
+    try {
+        objectId = new mongoose.Types.ObjectId(String(requestId));
+    } catch {
+        return { success: false, error: "Invalid key request ID." };
+    }
+
+    const requestDoc = await keyRequests.findOneAndUpdate(
+        { _id: objectId, status: "PENDING" },
+        {
+            $set: {
+                status: "DENIED",
+                denial_reason: String(reason || "Denied by admin.").slice(0, 280),
+                resolved_at: new Date(),
+                resolved_by: adminLabel,
+                resolved_source: source
+            }
+        },
+        { returnDocument: "after", includeResultMetadata: false }
+    );
+
+    if (!requestDoc) {
+        return { success: false, error: "Request not found or already processed." };
+    }
+
+    return {
+        success: true,
+        request: serializeKeyRequest(requestDoc),
+        message: `Denied ${formatTicketNumber(requestDoc.ticket_number) || "key request"}.`
+    };
 }
 
 async function fetchLatestLoaderAnnouncement() {
@@ -1015,6 +1230,57 @@ app.post('/admin/create-key', verifyAdmin, async (req, res) => {
     }
 });
 
+app.post('/admin/key-requests', verifyAdmin, async (req, res) => {
+    try {
+        const status = String(req.body?.status || "PENDING").trim().toUpperCase();
+        const query = status === "ALL" ? {} : { status };
+        const requests = await mongoose.connection.collection('key_requests')
+            .find(query)
+            .sort({ created_at: -1, date: -1 })
+            .limit(25)
+            .toArray();
+
+        return res.json({
+            success: true,
+            requests: requests.map(serializeKeyRequest)
+        });
+    } catch (error) {
+        console.error("[ADMIN KEY REQUESTS ERROR]", error);
+        return res.status(500).json({ success: false, error: "Failed to load key requests." });
+    }
+});
+
+app.post('/admin/approve-key-request', verifyAdmin, async (req, res) => {
+    try {
+        const requestId = String(req.body?.request_id || "").trim();
+        const result = await approveKeyRequestById(requestId, {
+            adminLabel: req.adminAuth?.label || req.adminAuth?.email || "Admin Panel",
+            source: "admin_panel"
+        });
+
+        return res.status(result.success ? 200 : 400).json(result);
+    } catch (error) {
+        console.error("[ADMIN APPROVE KEY REQUEST ERROR]", error);
+        return res.status(500).json({ success: false, error: "Failed to approve key request." });
+    }
+});
+
+app.post('/admin/deny-key-request', verifyAdmin, async (req, res) => {
+    try {
+        const requestId = String(req.body?.request_id || "").trim();
+        const result = await denyKeyRequestById(requestId, {
+            adminLabel: req.adminAuth?.label || req.adminAuth?.email || "Admin Panel",
+            source: "admin_panel",
+            reason: req.body?.reason || ""
+        });
+
+        return res.status(result.success ? 200 : 400).json(result);
+    } catch (error) {
+        console.error("[ADMIN DENY KEY REQUEST ERROR]", error);
+        return res.status(500).json({ success: false, error: "Failed to deny key request." });
+    }
+});
+
 // --- ADMIN: UNIFIED MANAGEMENT ---
 app.post('/admin/:action', verifyAdmin, async (req, res) => {
     const safeJson = (obj) => res.json(obj);
@@ -1245,7 +1511,7 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
-                                username: "SK SECURITY SYSTEM",
+                                username: "VEX SECURITY SYSTEM",
                                 embeds: [{
                                     title: "✅ HWID RESET & TIME RESTORED",
                                     description: `Admin has approved the reset and **restored the subscription timer** to its original duration.`,
@@ -1256,7 +1522,7 @@ app.post('/admin/:action', verifyAdmin, async (req, res) => {
                                         { name: "🔴 Old HWID", value: `\`\`\`${reqData.old_hwid || "None"}\`\`\``, inline: false },
                                         { name: "🟢 New HWID (Target)", value: `\`\`\`${reqData.new_hwid || "None"}\`\`\``, inline: false }
                                     ],
-                                    footer: { text: "SK Audit: Full time credit applied." },
+                                    footer: { text: "VEX Audit: Full time credit applied." },
                                     timestamp: new Date().toISOString()
                                 }]
                             })
@@ -1698,6 +1964,143 @@ app.get('/check-reset-status', async (req, res) => {
     } catch (err) {
         console.error("Polling Error:", err);
         res.status(500).json({ status: "ERROR" });
+    }
+});
+
+app.post('/request-new-key', async (req, res) => {
+    try {
+        const email = String(req.body?.email || "").trim().toLowerCase();
+        const oldKey = String(req.body?.old_key || req.body?.license_key || "").trim().toUpperCase();
+        const requestedGame = normalizeGamesInput([req.body?.requested_game || "All-Access"])[0] || "All-Access";
+        const note = String(req.body?.note || "").trim().slice(0, 700);
+
+        if (!email || !oldKey) {
+            return res.status(400).json({ success: false, error: "Email and old key are required." });
+        }
+
+        const emailCheck = await validateEmailAddress(email);
+        if (!emailCheck.valid) {
+            return res.status(400).json({
+                success: false,
+                error: getEmailValidationMessage(emailCheck.reason),
+                code: 'invalid_email'
+            });
+        }
+
+        const user = await User.findOne({
+            email,
+            license_key: oldKey
+        }).lean();
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                error: "No account matched that email and old key."
+            });
+        }
+
+        const keyRequests = mongoose.connection.collection('key_requests');
+        const existingPending = await keyRequests.findOne(
+            { email, old_key: oldKey, status: "PENDING" },
+            { sort: { created_at: -1, date: -1 } }
+        );
+
+        if (existingPending) {
+            return res.json({
+                success: true,
+                message: "A new key request is already pending.",
+                request: serializeKeyRequest(existingPending)
+            });
+        }
+
+        const now = new Date();
+        const ticketNumber = await getNextKeyRequestTicketNumber();
+        const requestDoc = {
+            email,
+            old_key: oldKey,
+            requested_game: requestedGame,
+            note,
+            status: "PENDING",
+            ticket_number: ticketNumber,
+            user_id: user?._id || null,
+            old_games: user?.games || [],
+            old_expiry: user?.expiry_date || null,
+            created_at: now,
+            date: now,
+            source: "loader_login"
+        };
+
+        const insertResult = await keyRequests.insertOne(requestDoc);
+        const savedRequest = {
+            ...requestDoc,
+            _id: insertResult.insertedId
+        };
+
+        postKeyRequestToDiscord(savedRequest)
+            .then(async (discordResult) => {
+                if (discordResult?.messageId) {
+                    await keyRequests.updateOne(
+                        { _id: insertResult.insertedId },
+                        { $set: { discord_message_id: discordResult.messageId, discord_channel_id: DISCORD_KEY_REQUEST_CHANNEL_ID } }
+                    );
+                }
+            })
+            .catch((error) => {
+                console.error("[KEY REQUEST DISCORD ERROR]", error);
+            });
+
+        return res.json({
+            success: true,
+            message: "Request sent to admins.",
+            request: serializeKeyRequest(savedRequest)
+        });
+    } catch (error) {
+        console.error("[KEY REQUEST ERROR]", error);
+        return res.status(500).json({ success: false, error: "Failed to submit new key request." });
+    }
+});
+
+app.get('/check-key-request-status', async (req, res) => {
+    try {
+        const requestId = String(req.query?.request_id || "").trim();
+        const email = String(req.query?.email || "").trim().toLowerCase();
+        const oldKey = String(req.query?.old_key || "").trim().toUpperCase();
+        const keyRequests = mongoose.connection.collection('key_requests');
+
+        let query = null;
+
+        if (requestId) {
+            try {
+                query = { _id: new mongoose.Types.ObjectId(requestId) };
+            } catch {
+                return res.status(400).json({ success: false, error: "Invalid request id." });
+            }
+        } else if (email && oldKey) {
+            query = { email, old_key: oldKey };
+        }
+
+        if (!query) {
+            return res.status(400).json({ success: false, error: "Request id or email + old key is required." });
+        }
+
+        const requestDoc = await keyRequests
+            .find(query)
+            .sort({ created_at: -1, date: -1 })
+            .limit(1)
+            .next();
+
+        if (!requestDoc) {
+            return res.json({ success: true, status: "NONE", request: null });
+        }
+
+        return res.json({
+            success: true,
+            status: requestDoc.status || "PENDING",
+            request: serializeKeyRequest(requestDoc)
+        });
+    } catch (error) {
+        console.error("[KEY REQUEST STATUS ERROR]", error);
+        return res.status(500).json({ success: false, status: "ERROR", error: "Failed to check key request status." });
     }
 });
 
