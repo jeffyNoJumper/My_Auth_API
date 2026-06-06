@@ -209,6 +209,26 @@ function buildResetActionRows(requests) {
     }));
 }
 
+function buildKeyRequestActionRows(requests) {
+    return requests.slice(0, 5).map(reqDoc => ({
+        type: 1,
+        components: [
+            {
+                type: 2,
+                custom_id: `approve_key:${reqDoc._id}`,
+                label: `Approve ${formatTicketNumber(reqDoc?.ticket_number) || String(reqDoc.email || 'Request').slice(0, 18)}`,
+                style: 3
+            },
+            {
+                type: 2,
+                custom_id: `deny_key:${reqDoc._id}`,
+                label: `Deny ${formatTicketNumber(reqDoc?.ticket_number) || String(reqDoc.email || 'Request').slice(0, 18)}`,
+                style: 4
+            }
+        ]
+    }));
+}
+
 function normalizeResetLookupInput(rawValue) {
     return String(rawValue || '').trim();
 }
@@ -560,6 +580,7 @@ function buildCommandDefinitions() {
         },
         { name: 'refresh_panels', description: 'Admin: re-post the Discord panel messages.', type: 1 },
         { name: 'resets', description: 'Admin: list pending HWID reset requests.', type: 1 },
+        { name: 'key_requests', description: 'Admin: list pending loader new-key requests.', type: 1 },
         {
             name: 'approve',
             description: 'Admin: approve a pending HWID reset request.',
@@ -643,6 +664,16 @@ async function getNextHwidTicketNumber(mongoose) {
     return Number(counterDoc?.value || 1);
 }
 
+async function getNextKeyRequestTicketNumber(mongoose) {
+    const counterDoc = await mongoose.connection.collection('counters').findOneAndUpdate(
+        { _id: 'key_request_ticket' },
+        { $inc: { value: 1 } },
+        { upsert: true, returnDocument: 'after', includeResultMetadata: false }
+    );
+
+    return Number(counterDoc?.value || 1);
+}
+
 async function ensureHwidTicketNumber(mongoose, requestDoc) {
     const existingTicket = Number(requestDoc?.ticket_number);
     if (Number.isFinite(existingTicket) && existingTicket > 0) {
@@ -701,6 +732,84 @@ async function processResetRequest(mongoose, User, requestId, status) {
     }
 
     return { ok: true, message: `Denied HWID reset for \`${licenseKey}\`.` };
+}
+
+async function processKeyRequest(mongoose, User, requestId, action, adminLabel = 'Discord Admin') {
+    let objectId;
+    try {
+        objectId = new ObjectId(String(requestId || '').trim());
+    } catch {
+        return { ok: false, message: 'Invalid key request ID.' };
+    }
+
+    const keyRequests = mongoose.connection.collection('key_requests');
+    const requestDoc = await keyRequests.findOne({ _id: objectId });
+
+    if (!requestDoc) {
+        return { ok: false, message: 'Key request not found.' };
+    }
+
+    if (requestDoc.status === 'APPROVED' && requestDoc.new_key) {
+        return { ok: true, message: `Already approved. Key: \`${requestDoc.new_key}\`` };
+    }
+
+    if (requestDoc.status !== 'PENDING') {
+        return { ok: false, message: `Request is already ${requestDoc.status || 'processed'}.` };
+    }
+
+    if (action === 'deny') {
+        await keyRequests.updateOne(
+            { _id: objectId },
+            {
+                $set: {
+                    status: 'DENIED',
+                    denial_reason: 'Denied from Discord.',
+                    resolved_at: new Date(),
+                    resolved_by: adminLabel,
+                    resolved_source: 'discord'
+                }
+            }
+        );
+
+        return { ok: true, message: `Denied key request ${formatTicketNumber(requestDoc.ticket_number) || String(requestDoc._id)} for \`${requestDoc.email || 'unknown'}\`.` };
+    }
+
+    const requestedGame = normalizeGameName(requestDoc.requested_game || 'All-Access');
+    const durationDays = Number(requestDoc.days || 30);
+    const newKey = generateLicenseKey(requestedGame);
+
+    await new User({
+        license_key: newKey,
+        duration_days: Number.isFinite(durationDays) && durationDays > 0 ? durationDays : 30,
+        games: [requestedGame],
+        email: buildPendingVoucherEmail(newKey),
+        password: null,
+        hwid: null,
+        expiry_date: null,
+        reserved_email: requestDoc.email || null,
+        source_request_id: String(requestDoc._id)
+    }).save();
+
+    await keyRequests.updateOne(
+        { _id: objectId },
+        {
+            $set: {
+                status: 'APPROVED',
+                new_key: newKey,
+                resolved_at: new Date(),
+                resolved_by: adminLabel,
+                resolved_source: 'discord'
+            }
+        }
+    );
+
+    return {
+        ok: true,
+        message:
+            `Approved key request ${formatTicketNumber(requestDoc.ticket_number) || String(requestDoc._id)}.\n` +
+            `Email: \`${requestDoc.email || 'unknown'}\`\n` +
+            `New key: \`${newKey}\``
+    };
 }
 
 function getModalTextValue(interaction, customId) {
@@ -1135,6 +1244,34 @@ function createDiscordInteractionsHandler({ User, mongoose }) {
                 });
             }
 
+            if (commandName === 'key_requests') {
+                if (!hasAdminAccess(interaction)) {
+                    return jsonResponse(res, 200, interactionMessageResponse({ content: 'Admin access required.' }));
+                }
+
+                return queueDeferredInteraction(res, interaction, async () => {
+                    const pending = await mongoose.connection.collection('key_requests')
+                        .find({ status: 'PENDING' })
+                        .sort({ created_at: -1, date: -1 })
+                        .limit(10)
+                        .toArray();
+
+                    if (pending.length === 0) {
+                        return { content: 'No pending new-key requests.' };
+                    }
+
+                    const lines = pending.map((reqDoc, index) => {
+                        const ticketLabel = formatTicketNumber(reqDoc?.ticket_number) || String(reqDoc._id);
+                        return `${index + 1}. \`${ticketLabel}\` | \`${reqDoc.email || 'unknown'}\` | \`${reqDoc.requested_game || 'All-Access'}\``;
+                    }).join('\n');
+
+                    return {
+                        content: `Pending new-key requests:\n${lines}`,
+                        components: buildKeyRequestActionRows(pending)
+                    };
+                });
+            }
+
             if (commandName === 'approve' || commandName === 'deny') {
                 if (!hasAdminAccess(interaction)) {
                     return jsonResponse(res, 200, interactionMessageResponse({ content: 'Admin access required.' }));
@@ -1186,6 +1323,26 @@ function createDiscordInteractionsHandler({ User, mongoose }) {
                     const [, requestId] = customId.split(':');
                     const status = customId.startsWith('approve_reset:') ? 'APPROVED' : 'DENIED';
                     const result = await processResetRequest(mongoose, User, requestId, status);
+
+                    return { content: result.message };
+                });
+            }
+
+            if (customId.startsWith('approve_key:') || customId.startsWith('deny_key:')) {
+                if (!hasAdminAccess(interaction)) {
+                    return jsonResponse(res, 200, interactionMessageResponse({ content: 'Admin access required.' }));
+                }
+
+                return queueDeferredInteraction(res, interaction, async () => {
+                    const [, requestId] = customId.split(':');
+                    const action = customId.startsWith('approve_key:') ? 'approve' : 'deny';
+                    const adminLabel =
+                        interaction?.member?.user?.global_name
+                        || interaction?.member?.user?.username
+                        || interaction?.user?.global_name
+                        || interaction?.user?.username
+                        || 'Discord Admin';
+                    const result = await processKeyRequest(mongoose, User, requestId, action, adminLabel);
 
                     return { content: result.message };
                 });
