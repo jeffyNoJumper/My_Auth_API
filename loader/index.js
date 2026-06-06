@@ -1182,6 +1182,9 @@ app.post('/admin/create-key', verifyAdmin, async (req, res) => {
             if (existingUser) {
                 if (!existingUser.password && cleanPassword) {
                     existingUser.password = cleanPassword;
+                    if (!existingUser.license_key && !existingUser.expiry_date) {
+                        existingUser.duration_days = 0;
+                    }
                     await existingUser.save();
                 }
             } else {
@@ -1192,7 +1195,7 @@ app.post('/admin/create-key', verifyAdmin, async (req, res) => {
                     games: [],
                     expiry_date: null,
                     license_key: null,
-                    duration_days: normalizedDays
+                    duration_days: 0
                 });
 
                 await preregisteredUser.save();
@@ -1777,7 +1780,9 @@ app.post('/register', async (req, res) => {
             password: cleanPass,
             hwid: hwid || null,
             games: [],
-            expiry_date: null
+            expiry_date: null,
+            duration_days: 0,
+            license_key: null
         });
 
         await newUser.save();
@@ -1836,8 +1841,10 @@ app.post('/login', async (req, res) => {
         // 4. Update data directly in DB using findOneAndUpdate (STOPS E11000 ERRORS)
         let updates = {};
 
-        // Activation Logic
-        if (!userData.expiry_date) {
+        const hasLicenseAccess = Boolean(String(userData.license_key || '').trim());
+
+        // Activation Logic: only keys/vouchers activate time. Plain registered accounts stay NO ACCESS.
+        if (!userData.expiry_date && hasLicenseAccess) {
             const days = (typeof userData.duration_days === 'number') ? userData.duration_days : 30;
             const expiry = new Date();
             if (days >= 999) {
@@ -1862,11 +1869,12 @@ app.post('/login', async (req, res) => {
         }
 
         const subscriptionExpired = Boolean(userData.expiry_date) && (new Date() > new Date(userData.expiry_date));
+        const hasActiveAccess = Boolean(hasLicenseAccess && userData.expiry_date && !subscriptionExpired);
 
         res.json({
             token: "VALID",
             expired: subscriptionExpired,
-            subscription: subscriptionExpired ? "Expired" : "Premium",
+            subscription: hasActiveAccess ? "Premium" : (subscriptionExpired ? "Expired" : "No Access"),
             expiry: userData.expiry_date,
             profile_pic: userData.profile_pic || '',
             games: userData.games || [],
@@ -2245,8 +2253,9 @@ app.post('/redeem', async (req, res) => {
         const redeemedLicenseKey = voucher.license_key ? voucher.license_key.toUpperCase().trim() : null;
 
         // 4. Update Expiry: If expired, start from now. If active, add to existing.
+        const hadPriorLicense = Boolean(String(user.license_key || '').trim());
         let currentExpiry = user.expiry_date ? new Date(user.expiry_date) : new Date();
-        const baseDate = (currentExpiry > new Date()) ? currentExpiry : new Date();
+        const baseDate = (hadPriorLicense && currentExpiry > new Date()) ? currentExpiry : new Date();
 
         user.expiry_date = applyDuration(baseDate, daysToAdd);
 
