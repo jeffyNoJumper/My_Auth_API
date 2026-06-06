@@ -31,6 +31,8 @@ let discordAnnouncementPollInterval = null;
 let latestDiscordAnnouncementId = localStorage.getItem('last_seen_discord_loader_notification_id') || "";
 let currentLoaderTab = "home";
 let lastDiscordPresencePayload = { type: "login", mode: "manual" };
+let newKeyRequestPollInterval = null;
+const NEW_KEY_REQUEST_STORAGE_KEY = "vexion_new_key_request";
 const AUTH_STARTUP_COMPLETE_MS = 220;
 const AUTH_FAILURE_DISPLAY_MS = 1000;
 const expiryLockedTabs = new Set(['games', 'hwid', 'spoofing', 'settings']);
@@ -211,7 +213,7 @@ const gameModuleConfigs = {
         accessGame: "CS2",
         accessRequirementLabel: "CS2X / CS2S",
         launcher: "Steam",
-        modalCopy: "Pick the CS2 route you want to launch. Internal and external use the main CS2 key. The skin changer uses its own key.",
+        modalCopy: "Pick the CS2 route you want to launch. Internal, external, and VS menu use the main CS2 key. The skin changer uses its own key.",
         internalNote: "Starts the injector and uses the CS2 DLL in your assets folder.",
         externalNote: "Starts the CS2 EXE in your assets folder.",
         routes: [
@@ -230,7 +232,17 @@ const gameModuleConfigs = {
                 choiceLabel: "EXTERNAL",
                 choiceIcon: "EXT",
                 note: "Starts the standalone CS2 EXE.",
-                foot: "Use this for the EXE route.",
+                foot: "Use this for the Ragging.",
+                requiredPrefixes: ["CS2X"],
+                requiredGames: ["CS2"],
+                requirementLabel: "CS2X"
+            },
+            {
+                id: "kernel-menu",
+                choiceLabel: "VS MENU",
+                choiceIcon: "VS",
+                note: "Starts Driver, then VS-usermode.exe.",
+                foot: "Use this for the DragonBurn plus VS menu route.",
                 requiredPrefixes: ["CS2X"],
                 requiredGames: ["CS2"],
                 requirementLabel: "CS2X"
@@ -662,7 +674,7 @@ function updateGameLaunchModal(gameName, availability) {
         } else if (availableAccessibleRoutes.length !== accessibleRoutes.length) {
             update.textContent = `Some of your routes are ready. Add the missing file to ${assetFolder} if you want the rest.`;
         } else {
-            update.textContent = `Everything needed for your available routes is in place. Pick one and launch.`;
+            update.textContent = `Everything needed for your available Games will be here. Pick one and launch.`;
         }
     }
 
@@ -780,6 +792,14 @@ function hideAutoLoginModal() {
 
 function setLoginNotice(message = "", state = "error") {
     const loginNotice = document.getElementById("login-notice");
+    const assistPanel = document.getElementById("login-assist-panel");
+    const assistCopy = document.getElementById("login-assist-copy");
+
+    if (assistPanel && assistCopy) {
+        assistPanel.dataset.tone = message ? (state === "info" ? "success" : "error") : "idle";
+        assistCopy.textContent = message || "Enter your account details to begin a secure session.";
+    }
+
     if (!loginNotice) return;
 
     if (message) {
@@ -802,6 +822,102 @@ function focusLoginField(input) {
     if (typeof input.select === "function") {
         input.select();
     }
+}
+
+function setLoginButtonIdle() {
+    const btn = document.getElementById('login-btn');
+    if (!btn) return;
+
+    btn.innerHTML = '<span>Login</span><i class="fas fa-arrow-right"></i>';
+}
+
+function updateLoginAssistPanel() {
+    const emailInput = document.getElementById('login-email');
+    const passwordInput = document.getElementById('login-password');
+    const emailState = document.getElementById('login-email-state');
+    const passwordState = document.getElementById('login-password-state');
+    const readinessPill = document.getElementById('login-readiness-pill');
+    const sessionSummary = document.getElementById('login-session-summary');
+    const meter = document.getElementById('login-password-meter-bar');
+    const helper = document.getElementById('login-password-helper');
+    const assistPanel = document.getElementById('login-assist-panel');
+    const assistCopy = document.getElementById('login-assist-copy');
+
+    const email = String(emailInput?.value || '').trim();
+    const password = String(passwordInput?.value || '');
+    const emailLooksValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    const rememberEnabled = localStorage.getItem('remember-me') === 'true'
+        || document.getElementById('remember-me')?.checked;
+    const savedEmail = localStorage.getItem('remembered_email');
+
+    if (emailState) {
+        emailState.textContent = email ? (emailLooksValid ? "Ready" : "Check") : "Required";
+        emailState.style.color = emailLooksValid ? "#d7fff6" : "";
+    }
+
+    if (passwordState) {
+        passwordState.textContent = password ? (password.length >= 10 ? "Long" : `${password.length}`) : "Required";
+        passwordState.style.color = password.length >= 6 ? "#d7fff6" : "";
+    }
+
+    const passwordScore = Math.min(100, Math.max(0, password.length * 10));
+    if (meter) {
+        meter.style.width = `${passwordScore}%`;
+        meter.style.background = password.length >= 10 ? "#44d67f" : password.length >= 6 ? "#f1c40f" : "var(--red)";
+    }
+
+    if (helper) {
+        helper.textContent = password
+            ? (password.length >= 6 ? "Password entered. Ready for secure verification." : "Password looks short. Double-check before signing in.")
+            : "Use your VEXION account password.";
+    }
+
+    if (readinessPill) {
+        readinessPill.textContent = emailLooksValid && password ? "Ready" : "Waiting";
+    }
+
+    if (sessionSummary) {
+        sessionSummary.textContent = rememberEnabled && savedEmail ? "Saved Device" : "Manual Login";
+    }
+
+    if (assistPanel && assistCopy && document.getElementById("login-notice")?.classList.contains("hidden")) {
+        if (!email && !password) {
+            assistPanel.dataset.tone = "idle";
+            assistCopy.textContent = "Enter your account details to begin a secure session.";
+        } else if (!emailLooksValid) {
+            assistPanel.dataset.tone = "warning";
+            assistCopy.textContent = "Use the email attached to your VEXION account.";
+        } else if (!password) {
+            assistPanel.dataset.tone = "warning";
+            assistCopy.textContent = "Password is still needed before the auth check can start.";
+        } else {
+            assistPanel.dataset.tone = "success";
+            assistCopy.textContent = "Credentials are staged. Login will verify your HWID and license.";
+        }
+    }
+}
+
+function initializeLoginExperience() {
+    const emailInput = document.getElementById('login-email');
+    const passwordInput = document.getElementById('login-password');
+    const rememberCheckbox = document.getElementById('remember-me');
+    const passwordHelper = document.getElementById('login-password-helper');
+
+    [emailInput, passwordInput].forEach((input) => {
+        input?.addEventListener('input', updateLoginAssistPanel);
+        input?.addEventListener('focus', updateLoginAssistPanel);
+    });
+
+    passwordInput?.addEventListener('keyup', (event) => {
+        if (!passwordHelper || typeof event.getModifierState !== "function") return;
+        if (event.getModifierState("CapsLock")) {
+            passwordHelper.textContent = "Caps Lock is on.";
+        }
+    });
+
+    rememberCheckbox?.addEventListener('change', updateLoginAssistPanel);
+    updateLoginAssistPanel();
+    setLoginButtonIdle();
 }
 
 function handleLoginSubmit(event) {
@@ -837,6 +953,7 @@ function showManualLoginState(noticeText = null, keepAutoLoginModal = false) {
     }
 
     setLoginNotice(noticeText, noticeText ? "info" : "error");
+    updateLoginAssistPanel();
     syncDiscordPresenceWithUI({ type: "login", mode: "manual" });
 }
 
@@ -2061,7 +2178,93 @@ function isRemoteReleaseNewer(release) {
 }
 
 function canInstallRelease(release) {
-    return Boolean(release?.url && isRemoteReleaseNewer(release));
+    return isRemoteReleaseNewer(release);
+}
+
+function setUpdateActionVisibility(state) {
+    const updateNowBtn = document.getElementById("update-now-btn");
+    const remindBtn = document.getElementById("update-remind-btn");
+    const snoozeBtn = document.getElementById("update-snooze-btn");
+    const closeBtn = document.getElementById("update-close-btn");
+    const canUpdate = state === "available";
+    const canSnooze = state === "available" || state === "snoozed";
+
+    if (updateNowBtn) updateNowBtn.classList.toggle("hidden", !canUpdate);
+    if (remindBtn) remindBtn.classList.toggle("hidden", !canUpdate);
+    if (snoozeBtn) snoozeBtn.classList.toggle("hidden", !canSnooze);
+    if (closeBtn) closeBtn.classList.toggle("hidden", state === "available");
+}
+
+function showUpdateModalState(state, options = {}) {
+    const modal = document.getElementById("update-modal");
+    const card = document.getElementById("update-modal-card");
+    const icon = document.getElementById("update-modal-icon");
+    const kicker = document.getElementById("update-modal-kicker");
+    const title = document.getElementById("update-modal-title");
+    const copy = document.getElementById("update-modal-copy");
+    const detail = document.getElementById("update-modal-detail");
+    const current = document.getElementById("update-current-version");
+    const latest = document.getElementById("update-version");
+    const release = options.release || cachedRemoteRelease || {};
+    const latestVersion = options.latestVersion || release.version || currentVersion || "--";
+
+    const states = {
+        checking: {
+            icon: "fas fa-spinner fa-spin",
+            kicker: "CHECKING",
+            title: "Checking Updates",
+            copy: "The loader is checking the latest published build.",
+            detail: options.detail || "This usually only takes a moment."
+        },
+        current: {
+            icon: "fas fa-circle-check",
+            kicker: "UP TO DATE",
+            title: "Loader Is Current",
+            copy: "You are already running the latest loader build.",
+            detail: options.detail || "No action is needed right now."
+        },
+        available: {
+            icon: "fas fa-cloud-arrow-down",
+            kicker: "UPDATE AVAILABLE",
+            title: "Update Ready",
+            copy: "A newer loader build is available with fixes and improvements.",
+            detail: options.detail || "You can update now or set a reminder and keep using the loader."
+        },
+        pending: {
+            icon: "fas fa-box-open",
+            kicker: "PACKAGE PENDING",
+            title: "Installer Pending",
+            copy: "The manifest is newer, but the installer package is not published yet.",
+            detail: options.detail || "Try checking again later from Settings."
+        },
+        snoozed: {
+            icon: "fas fa-clock",
+            kicker: "REMINDER SET",
+            title: "Update Snoozed",
+            copy: "The loader will remind you again later.",
+            detail: options.detail || "You can still update manually from Settings at any time."
+        },
+        error: {
+            icon: "fas fa-triangle-exclamation",
+            kicker: "UPDATE ERROR",
+            title: "Check Failed",
+            copy: "The loader could not complete the update check.",
+            detail: options.detail || "Try again later or check your connection."
+        }
+    };
+
+    const view = states[state] || states.available;
+    if (card) card.dataset.updateState = state;
+    if (icon) icon.className = view.icon;
+    if (kicker) kicker.textContent = view.kicker;
+    if (title) title.textContent = view.title;
+    if (copy) copy.textContent = view.copy;
+    if (detail) detail.textContent = view.detail;
+    if (current) current.textContent = currentVersion || "--";
+    if (latest) latest.textContent = latestVersion || "--";
+
+    setUpdateActionVisibility(state);
+    modal?.classList.remove("hidden");
 }
 
 async function runManualUpdateCheck() {
@@ -2074,6 +2277,10 @@ async function runManualUpdateCheck() {
     }
 
     setSettingsStatus("CHECKING UPDATES");
+    showUpdateModalState("checking", {
+        latestVersion: "Checking...",
+        detail: "Contacting the release manifest now."
+    });
 
     try {
         const release = await checkForUpdates({ manual: true });
@@ -2081,22 +2288,28 @@ async function runManualUpdateCheck() {
         if (canInstallRelease(release)) {
             addTerminalLine(`> [UPDATE] New build detected: ${release.version}`);
             setSettingsStatus("UPDATE AVAILABLE");
+            showUpdateModalState("available", { release });
         } else if (release?.version && compareVersions(release.version, currentVersion) < 0) {
             addTerminalLine(`> [UPDATE] Remote manifest is older (${release.version}). Staying on ${currentVersion}.`);
             setSettingsStatus("UP TO DATE");
+            showUpdateModalState("current", { release });
         } else if (release?.version && compareVersions(release.version, currentVersion) === 0) {
             addTerminalLine(`> [UPDATE] Already on the latest build (${currentVersion}).`);
             setSettingsStatus("UP TO DATE");
+            showUpdateModalState("current", { release });
         } else if (release?.version && !release?.url) {
             addTerminalLine(`> [UPDATE] Manifest found for ${release.version}, but no installer URL is published yet.`);
             setSettingsStatus("PACKAGE PENDING");
+            showUpdateModalState("pending", { release });
         } else {
             addTerminalLine(`> [UPDATE] Already on the latest build (${currentVersion}).`);
             setSettingsStatus("UP TO DATE");
+            showUpdateModalState("current", { release });
         }
     } catch (err) {
         addTerminalLine("> [ERROR] Update check failed.");
         setSettingsStatus("UPDATE ERROR");
+        showUpdateModalState("error", { detail: err?.message || "The update service did not respond." });
     } finally {
         if (button) {
             button.disabled = false;
@@ -2209,6 +2422,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     hoistModalToBody('register-modal');
+    hoistModalToBody('new-key-modal');
     hoistModalToBody('auto-login-modal');
     hoistModalToBody('game-launch-modal');
     hoistModalToBody('external-link-modal');
@@ -3070,7 +3284,7 @@ async function handleLogin(isAutoLogin = false, creds = {}) {
     }
 
     if (btn && !isAutoLogin) {
-        btn.textContent = "VERIFYING...";
+        btn.innerHTML = '<span>Verifying</span><i class="fas fa-circle-notch fa-spin"></i>';
         btn.disabled = true;
         btn.classList.add('is-loading');
     }
@@ -3289,11 +3503,12 @@ async function handleLogin(isAutoLogin = false, creds = {}) {
         isAuthProcessActive = false;
 
         if (btn && !isAutoLogin) {
-            btn.textContent = "LOGIN";
+            setLoginButtonIdle();
             btn.disabled = false;
             btn.classList.remove('is-loading');
             loginForm?.classList.remove('is-auth-loading');
             resetAuthProgressUI('login');
+            updateLoginAssistPanel();
         }
 
         if (isAutoLogin) {
@@ -3683,7 +3898,250 @@ function togglePasswordVisibility(inputId = 'login-password') {
 
     const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
     passwordInput.setAttribute('type', type);
-    toggle.textContent = type === 'password' ? 'SHOW' : 'HIDE';
+    toggle.innerHTML = type === 'password'
+        ? '<i class="fas fa-eye"></i>'
+        : '<i class="fas fa-eye-slash"></i>';
+    toggle.setAttribute('aria-label', type === 'password' ? 'Show password' : 'Hide password');
+}
+
+function getStoredNewKeyRequest() {
+    try {
+        const parsed = JSON.parse(localStorage.getItem(NEW_KEY_REQUEST_STORAGE_KEY) || "null");
+        return parsed && typeof parsed === "object" ? parsed : null;
+    } catch {
+        return null;
+    }
+}
+
+function storeNewKeyRequest(request, form = {}) {
+    if (!request?.id) return;
+
+    localStorage.setItem(NEW_KEY_REQUEST_STORAGE_KEY, JSON.stringify({
+        requestId: request.id,
+        email: form.email || request.email || "",
+        oldKey: form.oldKey || request.old_key || "",
+        ticketLabel: request.ticketLabel || "",
+        status: request.status || "PENDING",
+        newKey: request.new_key || "",
+        updatedAt: new Date().toISOString()
+    }));
+}
+
+function clearStoredNewKeyRequest() {
+    localStorage.removeItem(NEW_KEY_REQUEST_STORAGE_KEY);
+    if (newKeyRequestPollInterval) {
+        clearInterval(newKeyRequestPollInterval);
+        newKeyRequestPollInterval = null;
+    }
+}
+
+function setNewKeyRequestStatus(state, title, copy = "") {
+    const card = document.getElementById('new-key-status-card');
+    const titleEl = document.getElementById('new-key-status-title');
+    const copyEl = document.getElementById('new-key-status-copy');
+
+    if (card) card.dataset.state = state || "idle";
+    if (titleEl) titleEl.textContent = title || "Ready to submit";
+    if (copyEl) copyEl.textContent = copy || "Admins will review the request in the admin panel and Discord.";
+}
+
+function showNewKeyResult(key) {
+    const card = document.getElementById('new-key-result-card');
+    const value = document.getElementById('new-key-result-value');
+
+    if (!card || !value) return;
+    value.textContent = key || "---";
+    card.classList.toggle('hidden', !key);
+}
+
+function getNewKeyRequestFormValues() {
+    return {
+        email: String(document.getElementById('new-key-email')?.value || "").trim().toLowerCase(),
+        oldKey: String(document.getElementById('new-key-old-key')?.value || "").trim().toUpperCase(),
+        requestedGame: String(document.getElementById('new-key-product')?.value || "All-Access").trim(),
+        note: String(document.getElementById('new-key-note')?.value || "").trim()
+    };
+}
+
+function openNewKeyRequestModal() {
+    const stored = getStoredNewKeyRequest();
+    const emailInput = document.getElementById('new-key-email');
+    const oldKeyInput = document.getElementById('new-key-old-key');
+
+    if (emailInput && !emailInput.value) {
+        emailInput.value = stored?.email || localStorage.getItem('remembered_email') || localStorage.getItem('user_email') || "";
+    }
+
+    if (oldKeyInput && !oldKeyInput.value) {
+        oldKeyInput.value = stored?.oldKey || localStorage.getItem('license_key') || "";
+    }
+
+    if (stored?.newKey) {
+        setNewKeyRequestStatus("approved", "Request approved", "Copy the approved key below and redeem it from the loader.");
+        showNewKeyResult(stored.newKey);
+    } else if (stored?.requestId) {
+        setNewKeyRequestStatus("pending", `Pending ${stored.ticketLabel || "request"}`, "Admins can approve this from the admin panel or Discord.");
+        showNewKeyResult("");
+        void checkStoredNewKeyRequest();
+        startNewKeyRequestPolling();
+    } else {
+        setNewKeyRequestStatus("idle", "Ready to submit", "Admins will review the request in the admin panel and Discord.");
+        showNewKeyResult("");
+    }
+
+    openModal('new-key-modal');
+}
+
+async function submitNewKeyRequest() {
+    const values = getNewKeyRequestFormValues();
+    const submitBtn = document.getElementById('new-key-submit-btn');
+
+    if (!values.email || !values.oldKey) {
+        await showErrorDialog("Request Incomplete", "Enter your account email and old license key first.");
+        return;
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email)) {
+        await showErrorDialog("Invalid Email", "Enter the email attached to your VEXION account.");
+        return;
+    }
+
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = "SENDING...";
+    }
+
+    setNewKeyRequestStatus("pending", "Sending request", "Contacting the auth API and notifying admins...");
+
+    try {
+        const response = await fetch(`${API}/request-new-key`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                email: values.email,
+                old_key: values.oldKey,
+                requested_game: values.requestedGame,
+                note: values.note
+            })
+        });
+
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok || !data.success) {
+            const fallbackMessage = response.status === 404
+                ? "The live API has not been updated with the new-key request endpoint yet. Deploy/restart the API, then try again."
+                : `Request failed (${response.status}).`;
+            throw new Error(data.error || fallbackMessage);
+        }
+
+        storeNewKeyRequest(data.request, values);
+        setNewKeyRequestStatus(
+            "pending",
+            `Request sent ${data.request?.ticketLabel || ""}`.trim(),
+            "Admins were notified in the panel and Discord. Leave this open or check back later."
+        );
+        showNewKeyResult("");
+        startNewKeyRequestPolling();
+        await showSuccessDialog("Request Sent", data.message || "Your new-key request was sent to admins.");
+    } catch (error) {
+        console.error("[NEW KEY REQUEST ERROR]", error);
+        setNewKeyRequestStatus("error", "Request failed", error?.message || "The API could not accept the request.");
+        await showErrorDialog("Request Failed", "The new key request could not be sent.", error?.message || "");
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = "SEND REQUEST";
+        }
+    }
+}
+
+async function checkStoredNewKeyRequest() {
+    const stored = getStoredNewKeyRequest();
+    const values = getNewKeyRequestFormValues();
+    const requestId = stored?.requestId || "";
+    const email = stored?.email || values.email;
+    const oldKey = stored?.oldKey || values.oldKey;
+
+    if (!requestId && (!email || !oldKey)) {
+        setNewKeyRequestStatus("idle", "No request found", "Submit a request first, then check status.");
+        return null;
+    }
+
+    const query = requestId
+        ? `request_id=${encodeURIComponent(requestId)}`
+        : `email=${encodeURIComponent(email)}&old_key=${encodeURIComponent(oldKey)}`;
+
+    try {
+        const response = await fetch(`${API}/check-key-request-status?${query}`, { cache: "no-store" });
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok || !data.success) {
+            throw new Error(data.error || `Status check failed (${response.status}).`);
+        }
+
+        const request = data.request;
+
+        if (!request) {
+            setNewKeyRequestStatus("idle", "No request found", "Submit a request first, then check status.");
+            return null;
+        }
+
+        storeNewKeyRequest(request, { email, oldKey });
+
+        if (request.status === "APPROVED" && request.new_key) {
+            setNewKeyRequestStatus("approved", "Request approved", "Copy the approved key below and redeem it from the loader.");
+            showNewKeyResult(request.new_key);
+            if (newKeyRequestPollInterval) {
+                clearInterval(newKeyRequestPollInterval);
+                newKeyRequestPollInterval = null;
+            }
+            return request;
+        }
+
+        if (request.status === "DENIED") {
+            setNewKeyRequestStatus("denied", "Request denied", request.denial_reason || "Admin denied this request.");
+            showNewKeyResult("");
+            if (newKeyRequestPollInterval) {
+                clearInterval(newKeyRequestPollInterval);
+                newKeyRequestPollInterval = null;
+            }
+            return request;
+        }
+
+        setNewKeyRequestStatus("pending", `Pending ${request.ticketLabel || ""}`.trim(), "Admins can approve this from the admin panel or Discord.");
+        showNewKeyResult("");
+        return request;
+    } catch (error) {
+        console.error("[NEW KEY STATUS ERROR]", error);
+        setNewKeyRequestStatus("error", "Status check failed", error?.message || "The API could not be reached.");
+        return null;
+    }
+}
+
+function startNewKeyRequestPolling() {
+    if (newKeyRequestPollInterval || !getStoredNewKeyRequest()?.requestId) {
+        return;
+    }
+
+    newKeyRequestPollInterval = setInterval(() => {
+        void checkStoredNewKeyRequest();
+    }, 30000);
+}
+
+async function copyApprovedNewKey() {
+    const key = document.getElementById('new-key-result-value')?.textContent?.trim();
+
+    if (!key || key === "---") {
+        await showErrorDialog("No Key Ready", "There is no approved key to copy yet.");
+        return;
+    }
+
+    try {
+        await navigator.clipboard.writeText(key);
+        await showSuccessDialog("Key Copied", "Paste this key into the redeem field after logging in.");
+    } catch (error) {
+        await showErrorDialog("Copy Failed", "The loader could not copy the key automatically.", key);
+    }
 }
 
 window.addEventListener('DOMContentLoaded', async () => {
@@ -3729,6 +4187,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
+    initializeLoginExperience();
     syncHwidRequestBadge();
     console.log(`[LOADER] Session Restored: ${savedEmail || 'Guest'} | Prefix: ${savedPrefix}`);
 });
@@ -3941,6 +4400,109 @@ async function saveProfileChanges() {
 
 let selectedSpoofMode = "hwid";
 let spoofState = "idle";
+const SPOOF_STATE_STORAGE_KEY = "spoofState";
+const SPOOF_BOOT_MARKER_STORAGE_KEY = "spoofBootMarker";
+const SPOOF_BOOT_MARKER_TOLERANCE_SECONDS = 120;
+
+async function getCurrentSystemBootMarker() {
+    try {
+        const marker = await window.api?.getSystemBootMarker?.();
+        return Number.isFinite(Number(marker)) ? Number(marker) : null;
+    } catch (error) {
+        console.warn("[SPOOF STATE] Could not read system boot marker", error);
+        return null;
+    }
+}
+
+function clearPersistedSpoofState() {
+    localStorage.removeItem(SPOOF_STATE_STORAGE_KEY);
+    localStorage.removeItem(SPOOF_BOOT_MARKER_STORAGE_KEY);
+}
+
+async function persistSpoofStateForCurrentBoot(state) {
+    localStorage.setItem(SPOOF_STATE_STORAGE_KEY, state);
+
+    const bootMarker = await getCurrentSystemBootMarker();
+    if (bootMarker === null) {
+        localStorage.removeItem(SPOOF_BOOT_MARKER_STORAGE_KEY);
+        return;
+    }
+
+    localStorage.setItem(SPOOF_BOOT_MARKER_STORAGE_KEY, String(bootMarker));
+}
+
+function setSpoofedVisualState() {
+    const status = document.getElementById("spoof-main-status");
+    const subtext = document.getElementById("spoof-subtext");
+
+    if (status) {
+        status.textContent = "SPOOFED";
+        status.classList.remove("status-inactive", "status-temp", "status-perm");
+        status.classList.add("status-active");
+    }
+
+    if (subtext) {
+        subtext.textContent = "Spoofing is active for this Windows session.";
+    }
+
+    const shield = document.querySelector(".shield-img");
+    if (shield) {
+        shield.src = "imgs/green-check.svg";
+    }
+
+    updateSpoofRunSteps("restart", ["prepare", "execute"]);
+}
+
+function updateSpoofRunSteps(activeStep = "prepare", completedSteps = []) {
+    document.querySelectorAll("[data-spoof-step]").forEach((step) => {
+        const key = step.dataset.spoofStep || "";
+        step.classList.toggle("is-active", key === activeStep);
+        step.classList.toggle("is-complete", completedSteps.includes(key));
+    });
+}
+
+function updateSpoofSummary() {
+    const modeReadout = document.getElementById("spoof-mode-readout");
+    const boardReadout = document.getElementById("spoof-board-readout");
+    const optionsReadout = document.getElementById("spoof-options-readout");
+    const motherboardSelect = document.getElementById("motherboard-select");
+    const optionIds = ["bios-flash", "clean-reg", "clean-disk", "deep-clean"];
+    const enabledCount = optionIds.filter((id) => document.getElementById(id)?.checked).length;
+
+    if (modeReadout) {
+        modeReadout.textContent = selectedSpoofMode === "traces" ? "TRACES" : "HWID";
+    }
+
+    if (boardReadout) {
+        boardReadout.textContent = String(motherboardSelect?.value || "ASUS").toUpperCase();
+    }
+
+    if (optionsReadout) {
+        optionsReadout.textContent = `${enabledCount} ENABLED`;
+    }
+}
+
+async function restoreSpoofStateForCurrentBoot() {
+    const savedState = localStorage.getItem(SPOOF_STATE_STORAGE_KEY);
+    if (savedState !== "perm" && savedState !== "temp") {
+        clearPersistedSpoofState();
+        return;
+    }
+
+    const savedBootMarker = Number(localStorage.getItem(SPOOF_BOOT_MARKER_STORAGE_KEY));
+    const currentBootMarker = await getCurrentSystemBootMarker();
+    const hasMatchingBootMarker =
+        currentBootMarker !== null &&
+        Number.isFinite(savedBootMarker) &&
+        Math.abs(currentBootMarker - savedBootMarker) <= SPOOF_BOOT_MARKER_TOLERANCE_SECONDS;
+
+    if (!hasMatchingBootMarker) {
+        resetSpoofUI();
+        return;
+    }
+
+    setSpoofedVisualState();
+}
 
 
 // ---------------- MODE TOGGLE ----------------
@@ -3955,6 +4517,7 @@ function setSpoofMode(mode) {
     document.getElementById(`mode-${mode}`)?.classList.add("active");
 
     updateModeDescription();
+    updateSpoofSummary();
 }
 
 window.setSpoofMode = setSpoofMode;
@@ -3971,24 +4534,32 @@ function updateSpoofStatus(state) {
 
     if (!status || !subtext) return;
 
-    status.classList.remove("status-inactive", "status-temp", "status-perm");
+    status.classList.remove("status-inactive", "status-active", "status-temp", "status-perm");
 
     if (state === "inactive") {
         status.textContent = "NOT SPOOFED";
         subtext.textContent = "Your hardware identifiers are currently exposed.";
         status.classList.add("status-inactive");
+        updateSpoofRunSteps("prepare", []);
+
+        const shield = document.querySelector(".shield-img");
+        if (shield) {
+            shield.src = "imgs/shield.svg";
+        }
     }
 
     if (state === "temp") {
         status.textContent = "TEMPORARY SPOOF ACTIVE";
         subtext.textContent = "Session-based masking is enabled.";
         status.classList.add("status-temp");
+        updateSpoofRunSteps("restart", ["prepare", "execute"]);
     }
 
     if (state === "perm") {
         status.textContent = "PERMANENT SPOOF ACTIVE";
         subtext.textContent = "Firmware-level spoof successfully applied.";
         status.classList.add("status-perm");
+        updateSpoofRunSteps("restart", ["prepare", "execute"]);
     }
 }
 
@@ -4004,12 +4575,12 @@ function updateModeDescription() {
 
     if (selectedSpoofMode === "hwid") {
         title.textContent = "Natural Spoof (Permanent)";
-        desc.textContent = "Firmware-level hardware masking.";
+        desc.textContent = "Firmware-level hardware masking with persistent identity changes.";
     }
 
     if (selectedSpoofMode === "traces") {
         title.textContent = "Trace Cleaner (Temporary)";
-        desc.textContent = "Removes local tracking artifacts.";
+        desc.textContent = "Removes local tracking artifacts for the current cleanup session.";
     }
 }
 
@@ -4021,6 +4592,7 @@ document.addEventListener("DOMContentLoaded", () => {
     updateSpoofStatus("inactive");
     updateModeDescription();
     setHwidResetControls("idle");
+    void restoreSpoofStateForCurrentBoot();
 
     // ---------- CHECKBOX MODALS ----------
 
@@ -4056,12 +4628,16 @@ document.addEventListener("DOMContentLoaded", () => {
         confirmBtn?.addEventListener("click", () => {
             checkbox.checked = true;
             modal.classList.add("hidden");
+            updateSpoofSummary();
         });
 
         cancelBtn?.addEventListener("click", () => {
             checkbox.checked = false;
             modal.classList.add("hidden");
+            updateSpoofSummary();
         });
+
+        checkbox.addEventListener("change", updateSpoofSummary);
 
     });
 
@@ -4083,8 +4659,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const brand = motherboardSelect.value;
         mbIcon.src = motherboardIcons[brand] || motherboardIcons.other;
+        updateSpoofSummary();
 
     });
+
+    updateSpoofSummary();
+    updateSpoofRunSteps("prepare", []);
 
 });
 
@@ -4116,6 +4696,7 @@ async function startSpoofing() {
     }
 
     spoofState = "running";
+    updateSpoofRunSteps("execute", ["prepare"]);
     loader?.classList.remove("hidden");
     spinner?.classList.remove("hidden");
     success?.classList.add("hidden");
@@ -4148,23 +4729,16 @@ async function startSpoofing() {
         const result = await window.api.startSpoof(options);
 
         // 3. HANDLE RESULT
-        if (result) { // If C++ returns the object {User: true, Kernel: true...}
+        if (result?.success) { // If C++ returns the object {User: true, Kernel: true...}
             const state = (typeof selectedSpoofMode !== 'undefined' && selectedSpoofMode === "hwid") ? "perm" : "temp";
 
             updateSpoofStatus(state);
-            localStorage.setItem("spoofState", state);
+            await persistSpoofStateForCurrentBoot(state);
             await updateHWIDDisplay(true);
 
             spinner?.classList.add("hidden");
             success?.classList.remove("hidden");
-            document.querySelector(".shield-img").src = "imgs/green-check.svg";
-
-            const statusText = document.getElementById("spoof-main-status");
-            if (statusText) {
-                statusText.textContent = "SPOOFED";
-                statusText.classList.remove("status-inactive");
-                statusText.classList.add("status-active");
-            }
+            setSpoofedVisualState();
 
             await showSuccessDialog("Spoof Complete", "Please restart your PC before launching the game.");
         } else {
@@ -5048,29 +5622,30 @@ async function checkForUpdates(options = {}) {
 
     updateCheckPromise = (async () => {
         try {
-            const release = await window.api.getLatestRelease();
-            cachedRemoteRelease = release || null;
-            const updateModal = document.getElementById("update-modal");
+            const remoteVersionRaw = await window.api.checkVersion();
+            const remoteVersion = String(remoteVersionRaw?.version || remoteVersionRaw || "").trim();
 
-            if (canInstallRelease(release)) {
-                document.getElementById("update-version").innerText = release.version;
-                updateModal?.classList.remove("hidden");
-                if (manual) {
-                    setSettingsStatus("UPDATE AVAILABLE");
-                }
+            const release = {
+                version: remoteVersion,
+                url: null,
+                name: null
+            };
+
+            cachedRemoteRelease = release;
+
+            if (remoteVersion && compareVersions(remoteVersion, currentVersion) > 0) {
+                showUpdateModalState("available", { release });
+                if (manual) setSettingsStatus("UPDATE AVAILABLE");
             } else {
-                updateModal?.classList.add("hidden");
-
-                if (manual && release?.version && compareVersions(release.version, currentVersion) < 0) {
+                if (manual && remoteVersion && compareVersions(remoteVersion, currentVersion) < 0) {
                     setSettingsStatus("UP TO DATE");
-                } else if (manual && release?.version && compareVersions(release.version, currentVersion) === 0) {
+                } else if (manual && remoteVersion && compareVersions(remoteVersion, currentVersion) === 0) {
                     setSettingsStatus("UP TO DATE");
-                } else if (manual && release?.version && !release?.url) {
-                    setSettingsStatus("PACKAGE PENDING");
                 } else if (manual) {
                     setSettingsStatus("UP TO DATE");
                 }
             }
+
             return release;
         } catch (err) {
             console.error("Check failed:", err);
@@ -5087,64 +5662,92 @@ async function checkForUpdates(options = {}) {
 }
 
     // ==== UPDATE MODAL FUNCTIONS ====
-    async function updateNow() {
+async function updateNow() {
+    try {
+        const versionInfo = await window.api.checkVersion();
+        const remoteVersion = String(versionInfo?.version || versionInfo || "").trim();
 
-        try {
-            const release = cachedRemoteRelease || await window.api.getLatestRelease();
-            cachedRemoteRelease = release || null;
-
-            if (!canInstallRelease(release)) {
-                throw new Error("No newer published installer is available yet.");
-            }
-
-            const filePath = await window.api.downloadUpdate(
-                release.url,
-                release.name
-            );
-
-            await window.api.runUpdate(filePath);
-
-            await showSuccessDialog("Update Ready", "The update finished downloading. The installer is launching now.");
-
-            setTimeout(() => {
-                closeModal('update-modal');
-            }, 2000);
-
-            window.close();
-
-        } catch (err) {
-
-            console.error("Update failed:", err);
-            await showErrorDialog("Update Failed", "The loader could not finish the update. Try again.", err?.message || "");
-
+        if (!remoteVersion || compareVersions(remoteVersion, currentVersion) <= 0) {
+            throw new Error("No newer published installer is available yet.");
         }
+
+        const release = await window.api.getLatestRelease();
+        cachedRemoteRelease = release || null;
+
+        if (!release?.url || !release?.name) {
+            throw new Error("The update installer is not published yet.");
+        }
+
+        const filePath = await window.api.downloadUpdate(
+            release.url,
+            release.name
+        );
+
+        await window.api.runUpdate(filePath);
+
+        await showSuccessDialog("Update Ready", "The update finished downloading. The installer is launching now.");
+
+        setTimeout(() => {
+            closeModal('update-modal');
+        }, 2000);
+
+        window.close();
+    } catch (err) {
+        console.error("Update failed:", err);
+        await showErrorDialog("Update Failed", "The loader could not finish the update. Try again.", err?.message || "");
+    }
+}
+
+function updateLater() {
+    const autoUpdateEnabled = localStorage.getItem('auto-update-loader') === 'true';
+
+    const modal = document.getElementById("update-modal");
+    modal?.classList.add("hidden");
+
+    setSettingsStatus(autoUpdateEnabled ? "AUTO UPDATE ON" : "REMINDER SNOOZED");
+
+    if (updateReminderInterval) {
+        clearInterval(updateReminderInterval);
+        updateReminderInterval = null;
     }
 
-    function updateLater() {
-        const autoUpdateEnabled = localStorage.getItem('auto-update-loader') === 'true';
+    if (autoUpdateEnabled) return;
 
-        // Hide the modal immediately
-        document.getElementById("update-modal").classList.add("hidden");
-        setSettingsStatus(autoUpdateEnabled ? "AUTO UPDATE ON" : "REMINDER SNOOZED");
-
-        if (autoUpdateEnabled) return;
-
-        // Otherwise, schedule reminder toast every 5 minutes
-        if (!updateReminderInterval) {
-            updateReminderInterval = setInterval(() => {
-                showUpdateReminder();
-            }, 5 * 60 * 1000); // 5 minutes
+    updateReminderInterval = setInterval(() => {
+        if (cachedRemoteRelease && canInstallRelease(cachedRemoteRelease)) {
+            showUpdateReminder();
         }
-    }
+    }, 5 * 60 * 1000);
 
+    showUpdateModalState("snoozed", {
+        release: cachedRemoteRelease,
+        detail: "Reminder set for 5 minutes. You can update manually from Settings anytime."
+    });
+    document.getElementById("update-modal")?.classList.add("hidden");
+}
+
+function snoozeUpdateReminder() {
+    updateLater();
+    createToast(
+        "Update Snoozed",
+        "I will remind you again in a few minutes.",
+        () => showUpdateModalState("available", { release: cachedRemoteRelease }),
+        { meta: "Reminder set" }
+    );
+}
 
 function showUpdateReminder() {
-        createToast(
-            "Update Available!",
-            "Click here to open the update modal.",
-            () => document.getElementById("update-modal").classList.toggle("hidden")
-        );
+    if (!cachedRemoteRelease || !canInstallRelease(cachedRemoteRelease)) {
+        return;
     }
+
+    createToast(
+        "Update Available",
+        `Build ${cachedRemoteRelease.version} is ready. Click to update or snooze.`,
+        () => showUpdateModalState("available", { release: cachedRemoteRelease }),
+        { meta: "Click to open updater", variant: "admin" }
+    );
+}
 
 function createToast(title, message, onClick, options = {}) {
     const stack = getToastStack();
@@ -5257,36 +5860,27 @@ function startDiscordAnnouncementPolling() {
     }, 30000);
 }
 
-document.addEventListener("DOMContentLoaded", () => {
-
-    const savedState = localStorage.getItem("spoofState");
-
-    if (savedState === "perm" || savedState === "temp") {
-
-        const status = document.getElementById("spoof-main-status");
-
-        status.textContent = "SPOOFED";
-        status.classList.remove("status-inactive");
-        status.classList.add("status-active");
-
-        // change shield → green check
-        document.querySelector(".shield-img").src = "imgs/green-check.svg";
-
-    }
-
-});
-
 function resetSpoofUI() {
 
-    localStorage.removeItem("spoofState");
+    clearPersistedSpoofState();
 
     const status = document.getElementById("spoof-main-status");
+    const subtext = document.getElementById("spoof-subtext");
 
-    status.textContent = "NOT SPOOFED";
-    status.classList.remove("status-active");
-    status.classList.add("status-inactive");
+    if (status) {
+        status.textContent = "NOT SPOOFED";
+        status.classList.remove("status-active", "status-temp", "status-perm");
+        status.classList.add("status-inactive");
+    }
 
-    document.querySelector(".shield-img").src = "imgs/shield.svg";
+    if (subtext) {
+        subtext.textContent = "Your hardware identifiers are currently exposed.";
+    }
+
+    const shield = document.querySelector(".shield-img");
+    if (shield) {
+        shield.src = "imgs/shield.svg";
+    }
 }
 
 async function compressImage(base64Str, maxWidth = 400, maxHeight = 400) {
