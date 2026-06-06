@@ -39,7 +39,7 @@ const userSchema = new mongoose.Schema({
 
     duration_days: {
         type: Number,
-        default: 30
+        default: 0
     },
 
     is_banned: {
