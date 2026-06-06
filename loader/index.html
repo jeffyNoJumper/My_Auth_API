@@ -12,41 +12,110 @@
     <!-- 2. LOGIN SCREEN -->
     <div id="login-screen" class="screen">
         <div class="login-card">
+            <div class="login-shell-bg" aria-hidden="true">
+                <span class="login-scanline"></span>
+                <span class="login-grid-plane"></span>
+            </div>
             <div class="card-header">
-                <div class="login-card-headline">
-                    <h2 class="glow-text-cyan">AUTHENTICATION</h2>
-                    <p>Enter your credentials to access the loader</p>
+                <div class="login-brand-lockup">
+                    <img src="./imgs/VEXION.png" alt="VEXION" class="login-brand-mark">
+                    <div>
+                        <span class="login-brand-kicker">Secure Loader</span>
+                        <strong>VEXION ALL-IN-ONE</strong>
+                    </div>
                 </div>
                 <button type="button" class="login-card-close" onclick="window.api?.close?.()" aria-label="Close loader">&times;</button>
             </div>
 
             <form id="login-form" class="login-form" onsubmit="handleLoginSubmit(event)" novalidate>
+            <div class="login-card-headline">
+                <span class="panel-kicker">Authentication Hub</span>
+                <h2 class="glow-text-cyan">Welcome Back</h2>
+                <p>Sign in to restore your profile, verify this device, and open your modules.</p>
+            </div>
+
+            <div class="login-status-grid">
+                <div class="login-status-tile">
+                    <span>Server</span>
+                    <strong><i class="fas fa-circle"></i> Online</strong>
+                </div>
+                <div class="login-status-tile">
+                    <span>Device</span>
+                    <strong>HWID Check</strong>
+                </div>
+                <div class="login-status-tile">
+                    <span>Session</span>
+                    <strong id="login-session-summary">Manual Login</strong>
+                </div>
+            </div>
+
+            <div class="login-form-head">
+                <div>
+                    <span class="login-form-kicker">Account Access</span>
+                    <h3>Sign In</h3>
+                </div>
+                <span id="login-readiness-pill" class="login-readiness-pill">Ready</span>
+            </div>
+
             <!-- Login Notice (hidden by default) -->
             <p id="login-notice" class="hidden login-warning"></p>
 
-            <div class="input-group">
+            <div class="input-group login-field">
                 <label for="login-email">EMAIL ADDRESS</label>
-                <input type="email" id="login-email" placeholder="user@example.com">
+                <div class="input-relative">
+                    <i class="fas fa-envelope login-input-icon" aria-hidden="true"></i>
+                    <input type="email" id="login-email" placeholder="user@example.com" autocomplete="email">
+                    <span id="login-email-state" class="login-field-state">Required</span>
+                </div>
             </div>
 
-            <div class="input-group password-wrapper">
+            <div class="input-group password-wrapper login-field">
                 <label for="login-password">PASSWORD</label>
                 <div class="input-relative">
+                    <i class="fas fa-lock login-input-icon" aria-hidden="true"></i>
                     <input type="password" id="login-password" placeholder="••••••••">
-                    <button type="button" id="toggle-password" onclick="togglePasswordVisibility('login-password')" class="eye-icon">SHOW</button>
+                    <button type="button" id="toggle-password" onclick="togglePasswordVisibility('login-password')" class="eye-icon" aria-label="Show password">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                    <span id="login-password-state" class="login-field-state">Required</span>
                 </div>
+                <div class="login-password-meter" aria-hidden="true">
+                    <span id="login-password-meter-bar"></span>
+                </div>
+                <small id="login-password-helper" class="login-field-helper">Use your VEXION account password.</small>
             </div>
 
             <div class="login-options">
                 <label class="remember-me">
                     <input type="checkbox" id="remember-me">
-                    <span>REMEMBER ME</span>
+                    <span class="remember-toggle-ui" aria-hidden="true"></span>
+                    <span>Remember this device</span>
                 </label>
                 <!-- Trigger for Register Modal -->
-                <button type="button" class="login-link-btn" onclick="openModal('register-modal')">CREATE ACCOUNT</button>
+                <button type="button" class="login-link-btn" onclick="openModal('register-modal')">
+                    <i class="fas fa-user-plus"></i>
+                    Create Account
+                </button>
             </div>
 
-            <button type="submit" id="login-btn">LOGIN</button>
+            <button type="submit" id="login-btn">
+                <span>Login</span>
+                <i class="fas fa-arrow-right"></i>
+            </button>
+            <div class="login-support-row">
+                <button type="button" class="login-mini-action" onclick="openShop()">
+                    <i class="fab fa-discord"></i>
+                    Support
+                </button>
+                <button type="button" class="login-mini-action" onclick="openNewKeyRequestModal()">
+                    <i class="fas fa-ticket"></i>
+                    New Key
+                </button>
+            </div>
+            <div id="login-assist-panel" class="login-assist-panel" data-tone="idle">
+                <i class="fas fa-circle-info"></i>
+                <span id="login-assist-copy">Enter your account details to begin a secure session.</span>
+            </div>
             <div id="login-progress-shell" class="loader-progress-shell loader-progress-shell-inline hidden" aria-live="polite">
                 <div class="loader-progress-ambient"></div>
                 <div class="loader-progress-grid">
@@ -184,28 +253,47 @@
                             <span class="panel-kicker">Control Center</span>
                             <h2>Welcome Back, <span id="home-username" class="accent-text">USER</span></h2>
                             <p id="home-welcome" class="tab-shell-subtitle">Your session is synced and ready for the next launch.</p>
+                            <div class="home-hero-actions">
+                                <button type="button" class="home-primary-action" onclick="showTab('games')">
+                                    <i class="fas fa-play"></i>
+                                    Launch Modules
+                                </button>
+                                <button type="button" class="home-secondary-action" onclick="showTab('settings')">
+                                    <i class="fas fa-sliders"></i>
+                                    Client Settings
+                                </button>
+                            </div>
                         </div>
 
-                        <div class="home-hero-badge">
-                            <span>BUILD</span>
-                            <strong id="loader-version"></strong>
+                        <div class="home-hero-side">
+                            <div class="home-hero-badge">
+                                <span>BUILD</span>
+                                <strong id="loader-version"></strong>
+                            </div>
+                            <div class="home-hero-live">
+                                <span class="home-live-dot"></span>
+                                <span>Client Ready</span>
+                            </div>
                         </div>
                     </div>
 
                     <div class="home-overview-grid">
                         <article class="home-stat-card">
+                            <div class="home-stat-icon"><i class="fas fa-hourglass-half"></i></div>
                             <span>Subscription Clock</span>
                             <strong id="home-exp">--</strong>
                             <small id="home-expiry-note">Checking entitlement timer...</small>
                         </article>
 
                         <article class="home-stat-card">
+                            <div class="home-stat-icon"><i class="fas fa-id-card"></i></div>
                             <span>Access Tier</span>
                             <strong id="home-plan">PENDING</strong>
                             <small id="home-license">No license linked yet</small>
                         </article>
 
                         <article class="home-stat-card">
+                            <div class="home-stat-icon"><i class="fas fa-signal"></i></div>
                             <span>Server Link</span>
                             <strong id="home-server-status" class="home-status-pill checking">CHECKING</strong>
                             <small id="home-server-copy">Syncing loader health...</small>
@@ -247,16 +335,19 @@
 
                             <div class="home-action-grid">
                                 <button type="button" class="home-action-btn" onclick="showTab('games')">
+                                    <i class="fas fa-gamepad"></i>
                                     <span class="home-action-kicker">Launch</span>
                                     <strong>Games Panel</strong>
                                     <small>Open module cards and start injection flow.</small>
                                 </button>
                                 <button type="button" class="home-action-btn" onclick="showTab('hwid')">
+                                    <i class="fas fa-microchip"></i>
                                     <span class="home-action-kicker">Support</span>
                                     <strong>HWID Panel</strong>
                                     <small>Review device identity and admin approval state.</small>
                                 </button>
                                 <button type="button" class="home-action-btn" onclick="showTab('settings')">
+                                    <i class="fas fa-gear"></i>
                                     <span class="home-action-kicker">Client</span>
                                     <strong>Settings Panel</strong>
                                     <small>Manage update, launcher, RPC, and terminal preferences.</small>
@@ -264,6 +355,18 @@
                             </div>
                         </section>
                     </div>
+
+                    <section class="home-readiness-panel">
+                        <div class="home-readiness-copy">
+                            <span class="panel-kicker">Launch Readiness</span>
+                            <strong>Quick pre-flight</strong>
+                        </div>
+                        <div class="home-readiness-steps">
+                            <span><i class="fas fa-circle-check"></i> Session synced</span>
+                            <span><i class="fas fa-circle-check"></i> License checked</span>
+                            <span><i class="fas fa-circle-dot"></i> Pick a module</span>
+                        </div>
+                    </section>
                 </div>
 
                 <!-- Games Window (Matches showTab('games')) -->
@@ -406,10 +509,11 @@
                                     <strong>CS2</strong>
                                     <span class="game-card-state" data-game-state>LOCKED</span>
                                 </div>
-                                <span>Open the CS2 Steam flow and choose the internal, external, or skin-changer route before launch.</span>
+                                <span>Open the CS2 Steam flow and choose the internal, external, VS menu, or skin-changer route before launch.</span>
                                 <div class="game-card-modules">
                                     <span class="game-card-module-pill" data-module-type="internal">INTERNAL</span>
                                     <span class="game-card-module-pill" data-module-type="external">EXTERNAL</span>
+                                    <span class="game-card-module-pill" data-module-type="kernel-menu">VS</span>
                                     <span class="game-card-module-pill" data-module-type="skin-changer">INVENTORY</span>
                                 </div>
                             </div>
@@ -417,7 +521,7 @@
                                 <div class="game-hover-panel">
                                     <span class="game-hover-kicker">MODULE FEED</span>
                                     <strong data-game-feed-title>CS2 Launch Control</strong>
-                                    <p data-game-feed-copy>CS2 binaries are detected now, including the dedicated skin changer route when its EXE is present.</p>
+                                    <p data-game-feed-copy>CS2 binaries are detected now, including the DragonBurn plus VS menu route and dedicated skin changer when their EXEs are present.</p>
                                     <div class="game-hover-meta">
                                         <span data-game-access-pill>Requires CS2X / CS2S</span>
                                         <span data-game-feed-meta>Ready Now</span>
@@ -534,6 +638,21 @@
                                 </div>
                             </div>
 
+                            <div class="spoof-status-strip">
+                                <div class="spoof-status-chip" data-spoof-chip="mode">
+                                    <span>Mode</span>
+                                    <strong id="spoof-mode-readout">HWID</strong>
+                                </div>
+                                <div class="spoof-status-chip" data-spoof-chip="board">
+                                    <span>Board</span>
+                                    <strong id="spoof-board-readout">ASUS</strong>
+                                </div>
+                                <div class="spoof-status-chip" data-spoof-chip="options">
+                                    <span>Options</span>
+                                    <strong id="spoof-options-readout">0 ENABLED</strong>
+                                </div>
+                            </div>
+
                             <div class="spoof-mode-container">
                                 <div class="spoof-mode-toggle">
                                     <button id="mode-hwid" class="mode-btn active" onclick="setSpoofMode('hwid')">
@@ -622,6 +741,21 @@
                                 <p id="spoof-action-desc">
                                     Firmware-level hardware masking for maximum persistence.
                                 </p>
+
+                                <div class="spoof-run-steps">
+                                    <div class="spoof-run-step is-active" data-spoof-step="prepare">
+                                        <span>01</span>
+                                        <strong>Prepare</strong>
+                                    </div>
+                                    <div class="spoof-run-step" data-spoof-step="execute">
+                                        <span>02</span>
+                                        <strong>Execute</strong>
+                                    </div>
+                                    <div class="spoof-run-step" data-spoof-step="restart">
+                                        <span>03</span>
+                                        <strong>Restart</strong>
+                                    </div>
+                                </div>
 
                                 <div class="warning-box">
                                     <i class="fas fa-exclamation-triangle"></i>
@@ -855,37 +989,42 @@
 
         <!-- MODALS -->
         <div id="update-modal" class="modal-overlay hidden">
-            <div class="modal-content glass-card" style="width:420px;text-align:center;">
+            <div id="update-modal-card" class="modal-content glass-card update-modal-card" data-update-state="available">
 
-                <h2 class="glow-text-cyan">🚀 Loader Update Ready</h2>
-
-                <p style="margin-top:12px; font-size:15px; line-height:1.5;">
-                    A new version of the loader is available with improvements,
-                    fixes, and performance upgrades.
-                </p>
-
-                <div style="
-            margin-top:18px;
-            padding:10px 15px;
-            background:rgba(0,242,255,0.08);
-            border:1px solid rgba(0,242,255,0.2);
-            border-radius:8px;
-            font-size:14px;
-            color:#9ffcff;
-        ">
-                    Latest Version: <span id="update-version"></span>
+                <div class="update-modal-head">
+                    <div class="update-modal-icon">
+                        <i id="update-modal-icon" class="fas fa-cloud-arrow-down"></i>
+                    </div>
+                    <div>
+                        <span id="update-modal-kicker" class="update-modal-kicker">LOADER UPDATE</span>
+                        <h2 id="update-modal-title" class="glow-text-cyan">Update Ready</h2>
+                    </div>
                 </div>
 
-                <div style="margin-top:25px;display:flex;gap:15px;justify-content:center;">
+                <p id="update-modal-copy" class="update-modal-copy">
+                    A newer loader build is available with fixes and improvements.
+                </p>
 
-                    <button class="btn-primary" onclick="updateNow()">
-                        Update Now
-                    </button>
+                <div class="update-version-grid">
+                    <div class="update-version-box">
+                        <span>Current</span>
+                        <strong id="update-current-version">--</strong>
+                    </div>
+                    <div class="update-version-box">
+                        <span>Latest</span>
+                        <strong id="update-version">--</strong>
+                    </div>
+                </div>
 
-                    <button class="btn-secondary" onclick="updateLater()">
-                        Remind Me Later
-                    </button>
+                <div id="update-modal-detail" class="update-modal-detail">
+                    Updates are downloaded first, then the installer is launched.
+                </div>
 
+                <div class="update-modal-actions">
+                    <button id="update-now-btn" class="btn-primary" onclick="updateNow()">Update Now</button>
+                    <button id="update-remind-btn" class="btn-secondary" onclick="updateLater()">Remind Me Later</button>
+                    <button id="update-snooze-btn" class="btn-secondary" onclick="snoozeUpdateReminder()">Snooze</button>
+                    <button id="update-close-btn" class="btn-secondary" onclick="closeModal('update-modal')">Close</button>
                 </div>
 
             </div>
@@ -1081,13 +1220,13 @@
 
         <!-- REGISTRATION MODAL -->
         <div id="register-modal" class="modal-overlay hidden">
-            <div class="modal-content glass-card" style="width: 380px;">
+            <div class="modal-content glass-card register-modal-card">
                 <div class="modal-header">
                     <h3 class="glow-text-cyan">CREATE ACCOUNT</h3>
                     <span class="close-x" onclick="closeModal('register-modal')">&times;</span>
                 </div>
                 <div class="modal-body">
-                    <p style="font-size: 11px; color: #888; margin-bottom: 20px;">Register with a valid email to begin your session.</p>
+                    <p class="register-modal-copy">Register with a valid email to begin your session.</p>
 
                     <div class="input-group">
                         <label>EMAIL ADDRESS</label>
@@ -1102,7 +1241,66 @@
                         <input type="password" id="reg-confirm" placeholder="Repeat password...">
                     </div>
 
-                    <button id="register-btn" onclick="handleRegister()" class="action-btn" style="width: 100%; margin-top: 15px; background: var(--accent-teal); color: #000; font-weight: bold;">REGISTER NOW</button>
+                    <button id="register-btn" onclick="handleRegister()" class="action-btn register-submit-btn">REGISTER NOW</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- NEW KEY REQUEST MODAL -->
+        <div id="new-key-modal" class="modal-overlay hidden">
+            <div class="modal-content glass-card new-key-modal-card">
+                <div class="modal-header">
+                    <h3 class="glow-text-cyan">REQUEST NEW KEY</h3>
+                    <span class="close-x" onclick="closeModal('new-key-modal')">&times;</span>
+                </div>
+
+                <div class="modal-body">
+                    <p class="new-key-modal-copy">
+                        Send your account email and old key to admins for review. Once approved, the new key will appear here for copy and paste.
+                    </p>
+
+                    <div class="input-group">
+                        <label for="new-key-email">ACCOUNT EMAIL</label>
+                        <input type="email" id="new-key-email" placeholder="user@example.com">
+                    </div>
+
+                    <div class="input-group">
+                        <label for="new-key-old-key">OLD LICENSE KEY</label>
+                        <input type="text" id="new-key-old-key" placeholder="CS2X-XXXX-XXXX-XXXX">
+                    </div>
+
+                    <div class="input-group">
+                        <label for="new-key-product">REQUESTED ACCESS</label>
+                        <select id="new-key-product">
+                            <option value="All-Access">All-Access</option>
+                            <option value="CS2">CS2</option>
+                            <option value="CS2 Skin Changer">CS2 Skin Changer</option>
+                            <option value="FiveM">FiveM</option>
+                            <option value="GTAV">GTAV</option>
+                            <option value="Warzone">Warzone</option>
+                        </select>
+                    </div>
+
+                    <div class="input-group">
+                        <label for="new-key-note">NOTE FOR ADMIN</label>
+                        <textarea id="new-key-note" rows="3" placeholder="Tell admin why you need a new key..."></textarea>
+                    </div>
+
+                    <div id="new-key-status-card" class="new-key-status-card" data-state="idle">
+                        <span id="new-key-status-title">Ready to submit</span>
+                        <p id="new-key-status-copy">Admins will review the request in the admin panel and Discord.</p>
+                    </div>
+
+                    <div id="new-key-result-card" class="new-key-result-card hidden">
+                        <span>APPROVED KEY</span>
+                        <strong id="new-key-result-value">---</strong>
+                        <button type="button" class="new-key-copy-btn" onclick="copyApprovedNewKey()">COPY KEY</button>
+                    </div>
+
+                    <div class="new-key-actions">
+                        <button type="button" id="new-key-submit-btn" class="register-submit-btn" onclick="submitNewKeyRequest()">SEND REQUEST</button>
+                        <button type="button" class="btn-secondary" onclick="checkStoredNewKeyRequest()">CHECK STATUS</button>
+                    </div>
                 </div>
             </div>
         </div>
