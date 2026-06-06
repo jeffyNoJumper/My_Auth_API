@@ -270,6 +270,88 @@
             background: rgba(0, 149, 255, 0.02);
         }
 
+        .key-request-panel {
+            margin-top: 14px;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #1d2a3a;
+            background: rgba(0,149,255,0.03);
+        }
+
+        .key-request-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .key-request-head .section-label {
+            margin: 0;
+            font-size: 9px;
+            border-left-width: 2px;
+        }
+
+        .key-request-refresh {
+            width: auto;
+            margin: 0;
+            padding: 5px 8px;
+            background: #1b202b;
+            color: #c6d4dc;
+            border: 1px solid #2b3445;
+            font-size: 9px;
+        }
+
+        .key-request-list {
+            display: grid;
+            gap: 8px;
+            max-height: 138px;
+            overflow-y: auto;
+        }
+
+        .key-request-empty {
+            color: #7f98a6;
+            font-size: 10px;
+            line-height: 1.4;
+        }
+
+        .key-request-item {
+            padding: 9px;
+            border-radius: 8px;
+            border: 1px solid #263347;
+            background: rgba(0,0,0,0.28);
+        }
+
+        .key-request-item strong {
+            display: block;
+            color: #fff;
+            font-size: 11px;
+            margin-bottom: 5px;
+            word-break: break-all;
+        }
+
+        .key-request-item span,
+        .key-request-item small {
+            display: block;
+            color: #8fa8b8;
+            font-size: 9px;
+            line-height: 1.45;
+            word-break: break-all;
+        }
+
+        .key-request-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 5px;
+            margin-top: 7px;
+        }
+
+        .key-request-actions button {
+            margin: 0;
+            padding: 5px;
+            font-size: 9px;
+        }
+
         .info-grid {
             display: grid;
             gap: 7px;
@@ -733,6 +815,16 @@
                     <div id="key-expiry" style="font-size:10px; color:#888;">No key generated</div>
                 </div>
 
+                <div class="key-request-panel">
+                    <div class="key-request-head">
+                        <div class="section-label">Pending Key Requests</div>
+                        <button type="button" class="key-request-refresh" onclick="loadKeyRequests()">Refresh</button>
+                    </div>
+                    <div id="key-request-list" class="key-request-list">
+                        <div class="key-request-empty">Unlock the panel to load pending requests.</div>
+                    </div>
+                </div>
+
                 <div id="owner-admin-create-card" style="margin-top:14px; padding:12px; background:rgba(0,149,255,0.03); border-radius:8px; border:1px solid #1d2a3a; display:none;">
                     <div class="section-label" style="font-size:9px; margin-bottom:10px; border-left-width: 2px;">Owner: Create Admin Login</div>
                     <input type="text" id="new-admin-login-name" placeholder="Admin Username">
@@ -1149,6 +1241,7 @@
                 setAdminAuthState(true);
                 setAdminAuthStatus(`Restored admin session as ${activeAdminLabel}.`, 'success');
                 await loadKeysDropdown('', { silent: true });
+                await loadKeyRequests();
                 return true;
             } catch (error) {
                 console.warn('[ADMIN] Saved session restore failed:', error);
@@ -1599,6 +1692,119 @@
             return `${status} | ${identifier} | ${detail}`;
         }
 
+        function renderKeyRequests(requests = []) {
+            const list = document.getElementById('key-request-list');
+            if (!list) {
+                return;
+            }
+
+            if (!requests.length) {
+                list.innerHTML = '<div class="key-request-empty">No pending new-key requests.</div>';
+                return;
+            }
+
+            list.innerHTML = requests.map((request) => {
+                const id = String(request.id || '');
+                const ticket = request.ticketLabel || '#----';
+                const email = request.email || 'Unknown email';
+                const oldKey = request.masked_old_key || request.old_key || 'No old key';
+                const product = request.requested_game || 'All-Access';
+                const note = request.note || 'No note provided.';
+
+                return `
+                    <div class="key-request-item" data-request-id="${id}">
+                        <strong>${ticket} | ${email}</strong>
+                        <span>Old Key: ${oldKey}</span>
+                        <span>Requested: ${product}</span>
+                        <small>${note}</small>
+                        <div class="key-request-actions">
+                            <button onclick="approveKeyRequest('${id}')" style="background:#24d78f;color:#031015;">APPROVE</button>
+                            <button onclick="denyKeyRequest('${id}')" style="background:#4a2424;color:#ffb0b0;border:1px solid #713333;">DENY</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function loadKeyRequests() {
+            const list = document.getElementById('key-request-list');
+            const adminPass = getAdminPassword();
+            const sessionToken = getAdminSessionToken();
+
+            if (!adminPass && !sessionToken) {
+                if (list) list.innerHTML = '<div class="key-request-empty">Unlock the panel first.</div>';
+                return false;
+            }
+
+            if (list) list.innerHTML = '<div class="key-request-empty">Loading key requests...</div>';
+
+            try {
+                const payload = { status: 'PENDING' };
+                if (adminPass && !sessionToken) {
+                    payload.admin_password = adminPass;
+                }
+
+                const data = await postJson('/admin/key-requests', payload);
+                if (!data.success) {
+                    throw new Error(data.error || 'Failed to load key requests.');
+                }
+
+                renderKeyRequests(data.requests || []);
+                return true;
+            } catch (error) {
+                console.error('[ADMIN] Load key requests failed:', error);
+                if (list) list.innerHTML = `<div class="key-request-empty">${error.message || 'Connection failed.'}</div>`;
+                return false;
+            }
+        }
+
+        async function approveKeyRequest(requestId) {
+            if (!requestId) return;
+
+            try {
+                const data = await postJson('/admin/approve-key-request', { request_id: requestId });
+                if (!data.success) {
+                    throw new Error(data.error || 'Approval failed.');
+                }
+
+                const keyText = document.getElementById('key-text');
+                const expiryText = document.getElementById('key-expiry');
+                if (keyText) keyText.textContent = data.key || data.request?.new_key || 'KEY GENERATED';
+                if (expiryText) expiryText.textContent = `${data.message || 'Request approved.'} Click key to copy.`;
+
+                if (data.key) {
+                    await copyText(data.key).catch(() => {});
+                }
+
+                await loadKeyRequests();
+                await loadKeysDropdown(data.key || '', { silent: true });
+                alert(data.key ? `Approved. New key copied:\n${data.key}` : (data.message || 'Approved.'));
+            } catch (error) {
+                console.error('[ADMIN] Approve key request failed:', error);
+                alert(error.message || 'Approval failed.');
+            }
+        }
+
+        async function denyKeyRequest(requestId) {
+            if (!requestId) return;
+
+            try {
+                const data = await postJson('/admin/deny-key-request', {
+                    request_id: requestId,
+                    reason: 'Denied from admin panel.'
+                });
+                if (!data.success) {
+                    throw new Error(data.error || 'Deny failed.');
+                }
+
+                await loadKeyRequests();
+                alert(data.message || 'Denied.');
+            } catch (error) {
+                console.error('[ADMIN] Deny key request failed:', error);
+                alert(error.message || 'Deny failed.');
+            }
+        }
+
         async function loadKeysDropdown(preferredIdentifier = '', options = {}) {
             const { silent = false } = options;
 
@@ -1772,6 +1978,7 @@
                 if (!success) {
                     return false;
                 }
+                await loadKeyRequests();
 
                 return true;
             } finally {
