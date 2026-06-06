@@ -1576,6 +1576,10 @@ function getCurrentPrefix() {
 }
 
 function getAccessPlanLabel(prefix) {
+    if (!prefix || prefix === "NONE" || prefix === "NULL") {
+        return "NO ACCESS";
+    }
+
     const planMap = {
         ALLX: "ALL ACCESS",
         LIFE: "LIFETIME",
@@ -1586,7 +1590,7 @@ function getAccessPlanLabel(prefix) {
         WARZ: "WARZONE ACCESS"
     };
 
-    return planMap[prefix] || "PENDING";
+    return planMap[prefix] || "NO ACCESS";
 }
 
 function isSubscriptionExpired(expiryDate = localStorage.getItem('expiry_date')) {
@@ -1662,9 +1666,12 @@ function getHomeExpirySnapshot(expiry, prefix) {
     }
 
     if (!expiry || expiry === "null") {
+        const hasKey = Boolean(getCurrentLicenseKey());
         return {
-            label: "PENDING",
-            detail: "No active subscription timer detected yet.",
+            label: hasKey ? "PENDING" : "NO ACCESS",
+            detail: hasKey
+                ? "No active subscription timer detected yet."
+                : "Redeem a key to activate subscription time.",
             color: "var(--text-secondary)",
             glow: "none"
         };
@@ -3355,7 +3362,7 @@ async function handleLogin(isAutoLogin = false, creds = {}) {
 
             window.currentUser = {
                 username: username,
-                subscription: data.subscription || "Premium",
+                subscription: data.subscription || "No Access",
                 expiry: data.expiry
             };
 
@@ -3364,7 +3371,11 @@ async function handleLogin(isAutoLogin = false, creds = {}) {
 
             // ---------- SAVE SESSION ----------
             localStorage.setItem("user_email", email);
-            localStorage.setItem("expiry_date", data.expiry);
+            if (data.expiry) {
+                localStorage.setItem("expiry_date", data.expiry);
+            } else {
+                localStorage.removeItem("expiry_date");
+            }
 
             if (rememberMe || isAutoLogin) {
                 localStorage.setItem("remember-me", "true");
@@ -3389,10 +3400,18 @@ async function handleLogin(isAutoLogin = false, creds = {}) {
             if (navName) navName.innerText = username;
 
             const expiryDisplay = document.getElementById("user-expiry");
-            if (expiryDisplay) expiryDisplay.innerText = "EXP: " + new Date(data.expiry).toLocaleDateString();
+            if (expiryDisplay) {
+                expiryDisplay.innerText = data.expiry
+                    ? "EXP: " + new Date(data.expiry).toLocaleDateString()
+                    : "EXP: NO ACCESS";
+            }
 
             const homeExpiry = document.getElementById("home-exp");
-            if (homeExpiry) homeExpiry.innerText = new Date(data.expiry).toLocaleDateString();
+            if (homeExpiry) {
+                homeExpiry.innerText = data.expiry
+                    ? new Date(data.expiry).toLocaleDateString()
+                    : "NO ACCESS";
+            }
 
             setLoaderProgress(authProgressScope, {
                 percent: 64,
@@ -3426,8 +3445,10 @@ async function handleLogin(isAutoLogin = false, creds = {}) {
             }
 
             expirySequenceTriggered = false;
-            updateSubscriptionStatus(data.expiry);
-            startExpiryHeartbeat(data.expiry);
+            if (data.expiry) {
+                updateSubscriptionStatus(data.expiry);
+                startExpiryHeartbeat(data.expiry);
+            }
             updateUIForAccess();
 
             if (typeof showTab === "function") showTab("home");
@@ -3636,7 +3657,7 @@ function updateHomeTabUI() {
         } else if (expiry) {
             sidebarExpiry.innerText = "EXP: " + new Date(expiry).toLocaleDateString();
         } else {
-            sidebarExpiry.innerText = "EXP: PENDING";
+            sidebarExpiry.innerText = key ? "EXP: PENDING" : "EXP: NO ACCESS";
         }
     }
 
@@ -3869,11 +3890,13 @@ function updateUIForAccess() {
             const d = new Date(expiry);
             navExp.innerText = "EXP: " + d.toLocaleDateString();
         } else {
-            navExp.innerText = "EXP: PENDING";
+            navExp.innerText = currentPrefix === "NONE" || currentPrefix === "NULL"
+                ? "EXP: NO ACCESS"
+                : "EXP: PENDING";
         }
     }
 
-    if (expiry) {
+    if (expiry && expiry !== "null") {
         updateSubscriptionStatus(expiry);
     }
 
